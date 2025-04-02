@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -23,7 +24,7 @@ type Opts struct {
 	Anthropic AnthropicOpts `group:"anthropic" namespace:"anthropic" env-namespace:"ANTHROPIC"`
 	Google    GoogleOpts    `group:"google" namespace:"google" env-namespace:"GOOGLE"`
 
-	Prompt  string `short:"p" long:"prompt" description:"prompt text" required:"true"`
+	Prompt  string `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
 	Timeout int    `short:"t" long:"timeout" description:"timeout in seconds" default:"60"`
 
 	// common options
@@ -83,6 +84,38 @@ func run() error {
 	}
 
 	setupLog(opts.Debug) // set up logging
+
+	// read prompt from stdin if not provided
+	if opts.Prompt == "" {
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			// data is being piped in
+			scanner := bufio.NewScanner(os.Stdin)
+			var sb strings.Builder
+			for scanner.Scan() {
+				sb.WriteString(scanner.Text())
+				sb.WriteString("\n")
+			}
+			if err := scanner.Err(); err != nil {
+				return fmt.Errorf("error reading from stdin: %w", err)
+			}
+			opts.Prompt = strings.TrimSpace(sb.String())
+		} else {
+			// no data piped, interactive mode
+			fmt.Print("Enter prompt: ")
+			reader := bufio.NewReader(os.Stdin)
+			prompt, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("error reading prompt: %w", err)
+			}
+			opts.Prompt = strings.TrimSpace(prompt)
+		}
+	}
+
+	// check if we have a prompt after all attempts
+	if opts.Prompt == "" {
+		return fmt.Errorf("no prompt provided")
+	}
 
 	// initialize providers
 	openaiProvider := provider.NewOpenAI(provider.Options{

@@ -25,8 +25,13 @@ Or download binary from [Releases](https://github.com/umputun/mpt/releases).
 ## Usage
 
 ```
-mpt --prompt "Your prompt here" [options]
+mpt [options]
 ```
+
+You can provide a prompt in three ways:
+1. Using the `--prompt` flag: `mpt --prompt "Your question here"`
+2. Piping content: `echo "Your question" | mpt`
+3. Interactive mode: If no prompt is provided via command line or pipe, you'll be prompted to enter one
 
 ### Provider Configuration
 
