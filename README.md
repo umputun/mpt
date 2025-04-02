@@ -10,8 +10,10 @@ MPT is a command-line utility that sends prompts to multiple AI language model p
 
 - Parallel execution of prompts across multiple LLM providers
 - Support for OpenAI, Anthropic (Claude), and Google (Gemini) models
+- Support for custom OpenAI-compatible providers (local LLMs, alternative APIs)
 - Easy configuration via command-line flags or environment variables
 - Customizable timeout for requests
+- Configurable token limits for each provider
 - Clear results formatting with provider-specific headers
 
 ## Installation
@@ -41,6 +43,7 @@ You can provide a prompt in three ways:
 --openai.api-key      OpenAI API key (or OPENAI_API_KEY env var)
 --openai.model        OpenAI model to use (default: gpt-4-turbo-preview)
 --openai.enabled      Enable OpenAI provider
+--openai.max-tokens   Maximum number of tokens to generate (default: 1024)
 ```
 
 #### Anthropic (Claude)
@@ -49,6 +52,7 @@ You can provide a prompt in three ways:
 --anthropic.api-key   Anthropic API key (or ANTHROPIC_API_KEY env var)
 --anthropic.model     Anthropic model to use (default: claude-3-sonnet-20240229)
 --anthropic.enabled   Enable Anthropic provider
+--anthropic.max-tokens Maximum number of tokens to generate (default: 1024)
 ```
 
 #### Google (Gemini)
@@ -57,6 +61,27 @@ You can provide a prompt in three ways:
 --google.api-key      Google API key (or GOOGLE_API_KEY env var)
 --google.model        Google model to use (default: gemini-1.5-pro)
 --google.enabled      Enable Google provider
+--google.max-tokens   Maximum number of tokens to generate (default: 1024)
+```
+
+#### Custom OpenAI-Compatible Providers
+
+You can add multiple custom providers that implement the OpenAI-compatible API:
+
+```
+--custom.name         Name for the custom provider (required)
+--custom.url          Base URL for the custom provider API (required)
+--custom.api-key      API key for the custom provider (if needed)
+--custom.model        Model to use (required)
+--custom.enabled      Enable this custom provider (default: true)
+--custom.max-tokens   Maximum number of tokens to generate (default: 1024)
+```
+
+Example for adding a local LLM server:
+
+```
+mpt --custom.name "LocalLLM" --custom.url "http://localhost:1234/v1" \
+    --custom.model "mixtral-8x7b" --prompt "Explain quantum computing"
 ```
 
 ### General Options
@@ -101,14 +126,24 @@ You can use environment variables instead of command-line flags:
 OPENAI_API_KEY="your-openai-key"
 OPENAI_MODEL="gpt-4"
 OPENAI_ENABLED=true
+OPENAI_MAX_TOKENS=1024
 
 ANTHROPIC_API_KEY="your-anthropic-key"
 ANTHROPIC_MODEL="claude-3-opus-20240229"
 ANTHROPIC_ENABLED=true
+ANTHROPIC_MAX_TOKENS=1024
 
 GOOGLE_API_KEY="your-google-key"
 GOOGLE_MODEL="gemini-1.5-pro"
 GOOGLE_ENABLED=true
+GOOGLE_MAX_TOKENS=1024
+
+# Custom OpenAI-compatible provider
+CUSTOM_NAME="LocalLLM"
+CUSTOM_URL="http://localhost:1234/v1"
+CUSTOM_MODEL="mixtral-8x7b"
+CUSTOM_ENABLED=true
+CUSTOM_MAX_TOKENS=1024
 ```
 
 ## Contributing

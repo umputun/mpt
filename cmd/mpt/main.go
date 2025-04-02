@@ -20,9 +20,10 @@ import (
 
 // Opts with all CLI options
 type Opts struct {
-	OpenAI    OpenAIOpts    `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
-	Anthropic AnthropicOpts `group:"anthropic" namespace:"anthropic" env-namespace:"ANTHROPIC"`
-	Google    GoogleOpts    `group:"google" namespace:"google" env-namespace:"GOOGLE"`
+	OpenAI         OpenAIOpts       `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
+	Anthropic      AnthropicOpts    `group:"anthropic" namespace:"anthropic" env-namespace:"ANTHROPIC"`
+	Google         GoogleOpts       `group:"google" namespace:"google" env-namespace:"GOOGLE"`
+	CustomProviders []CustomOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
 
 	Prompt  string `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
 	Timeout int    `short:"t" long:"timeout" description:"timeout in seconds" default:"60"`
@@ -55,6 +56,16 @@ type GoogleOpts struct {
 	Model     string `long:"model" env:"MODEL" description:"Google model" default:"gemini-1.5-pro"`
 	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Google provider"`
 	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"1024"`
+}
+
+// CustomOpenAIProvider defines options for custom OpenAI-compatible providers
+type CustomOpenAIProvider struct {
+	Name      string `long:"name" env:"NAME" description:"Name for the custom provider" required:"true"`
+	URL       string `long:"url" env:"URL" description:"Base URL for the custom provider API" required:"true"`
+	APIKey    string `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
+	Model     string `long:"model" env:"MODEL" description:"Model to use" required:"true"`
+	Enabled   bool   `long:"enabled" env:"ENABLED" description:"Enable this custom provider" default:"true"`
+	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate" default:"1024"`
 }
 
 var revision = "unknown"
@@ -142,8 +153,28 @@ func run() error {
 		MaxTokens: opts.Google.MaxTokens,
 	})
 
+	// create a slice to hold all providers
+	providers := []provider.Provider{openaiProvider, anthropicProvider, googleProvider}
+
+	// add custom providers
+	for _, customOpt := range opts.CustomProviders {
+		if customOpt.Enabled {
+			customProvider := provider.NewCustomOpenAI(provider.CustomOptions{
+				Name:      customOpt.Name,
+				BaseURL:   customOpt.URL,
+				APIKey:    customOpt.APIKey,
+				Model:     customOpt.Model,
+				Enabled:   customOpt.Enabled,
+				MaxTokens: customOpt.MaxTokens,
+			})
+			providers = append(providers, customProvider)
+			lgr.Printf("[INFO] added custom provider: %s, URL: %s, model: %s", 
+				customOpt.Name, customOpt.URL, customOpt.Model)
+		}
+	}
+
 	// create runner with all providers
-	r := runner.New(openaiProvider, anthropicProvider, googleProvider)
+	r := runner.New(providers...)
 
 	// create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(opts.Timeout)*time.Second)

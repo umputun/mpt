@@ -12,6 +12,8 @@
 # Output of the go coverage tool
 *.out
 coverage.txt
+coverage.html
+coverage.out
 
 # IDE files
 .idea/
