@@ -2,9 +2,13 @@ package provider
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestOpenAI_Name(t *testing.T) {
@@ -57,4 +61,147 @@ func TestOpenAI_Generate_NotEnabled(t *testing.T) {
 	_, err := provider.Generate(context.Background(), "test prompt")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not enabled")
+}
+
+// mockOpenAIClient creates a custom OpenAI client that uses a test server
+func mockOpenAIClient(t *testing.T, jsonResponse string) (*openai.Client, *httptest.Server) {
+	// create a test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(jsonResponse))
+		require.NoError(t, err)
+	}))
+
+	// create a custom client configuration
+	config := openai.DefaultConfig("test-key")
+	config.BaseURL = server.URL
+	client := openai.NewClientWithConfig(config)
+
+	return client, server
+}
+
+func TestOpenAI_Generate_Success(t *testing.T) {
+	// create a mock response
+	jsonResponse := `{
+		"id": "test-id",
+		"object": "chat.completion",
+		"created": 123,
+		"model": "gpt-4",
+		"choices": [
+			{
+				"index": 0,
+				"message": {
+					"role": "assistant",
+					"content": "This is a test response"
+				},
+				"finish_reason": "stop"
+			}
+		]
+	}`
+
+	// create a mock client
+	client, server := mockOpenAIClient(t, jsonResponse)
+	defer server.Close()
+
+	// create a provider with the mock client
+	provider := &OpenAI{
+		client:  client,
+		model:   "gpt-4",
+		enabled: true,
+	}
+
+	// test the Generate method
+	response, err := provider.Generate(context.Background(), "test prompt")
+	assert.NoError(t, err)
+	assert.Equal(t, "This is a test response", response)
+}
+
+func TestOpenAI_Generate_EmptyChoices(t *testing.T) {
+	// create a mock response with empty choices
+	jsonResponse := `{
+		"id": "test-id",
+		"object": "chat.completion",
+		"created": 123,
+		"model": "gpt-4",
+		"choices": []
+	}`
+
+	// create a mock client
+	client, server := mockOpenAIClient(t, jsonResponse)
+	defer server.Close()
+
+	// create a provider with the mock client
+	provider := &OpenAI{
+		client:  client,
+		model:   "gpt-4",
+		enabled: true,
+	}
+
+	// test the Generate method
+	_, err := provider.Generate(context.Background(), "test prompt")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no choices")
+}
+
+func TestOpenAI_Generate_MalformedJSON(t *testing.T) {
+	// create a mock server directly to simulate malformed JSON
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(`{malformed json`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	// create a custom client configuration
+	config := openai.DefaultConfig("test-key")
+	config.BaseURL = server.URL
+	client := openai.NewClientWithConfig(config)
+
+	// create a provider with the mock client
+	provider := &OpenAI{
+		client:  client,
+		model:   "gpt-4",
+		enabled: true,
+	}
+
+	// test the Generate method
+	_, err := provider.Generate(context.Background(), "test prompt")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "openai api error")
+}
+
+func TestOpenAI_Generate_APIError(t *testing.T) {
+	// create a mock server directly to simulate API error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, err := w.Write([]byte(`{
+			"error": {
+				"message": "Invalid API key",
+				"type": "invalid_request_error",
+				"code": "invalid_api_key"
+			}
+		}`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	// create a custom client configuration
+	config := openai.DefaultConfig("test-key")
+	config.BaseURL = server.URL
+	client := openai.NewClientWithConfig(config)
+
+	// create a provider with the mock client
+	provider := &OpenAI{
+		client:  client,
+		model:   "gpt-4",
+		enabled: true,
+	}
+
+	// test the Generate method
+	_, err := provider.Generate(context.Background(), "test prompt")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "openai api error")
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -11,7 +12,7 @@ import (
 
 // Anthropic implements Provider interface for Anthropic
 type Anthropic struct {
-	client  *anthropic.Client
+	client  anthropic.Client
 	model   string
 	enabled bool
 }
@@ -22,13 +23,11 @@ func NewAnthropic(opts Options) *Anthropic {
 		return &Anthropic{enabled: false}
 	}
 
-	// per the SDK, NewClient returns a Client, not *Client
-	client := anthropic.NewClient(
-		option.WithAPIKey(opts.APIKey),
-	)
+	// initialize Anthropic client with the API key
+	client := anthropic.NewClient(option.WithAPIKey(opts.APIKey))
 
 	return &Anthropic{
-		client:  &client,
+		client:  client,
 		model:   opts.Model,
 		enabled: true,
 	}
@@ -45,31 +44,26 @@ func (a *Anthropic) Generate(ctx context.Context, prompt string) (string, error)
 		return "", errors.New("anthropic provider is not enabled")
 	}
 
-	// create message request using the SDK
-	message, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+	// create a message request using the SDK
+	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     a.model,
 		MaxTokens: 1024,
 		Messages: []anthropic.MessageParam{
-			{
-				Role: anthropic.MessageParamRoleUser,
-				Content: []anthropic.ContentBlockParamUnion{
-					{
-						OfRequestTextBlock: &anthropic.TextBlockParam{Text: prompt},
-					},
-				},
-			},
+			anthropic.NewUserMessage(
+				anthropic.NewTextBlock(prompt),
+			),
 		},
-		Model: a.model,
 	})
 
 	if err != nil {
 		return "", fmt.Errorf("anthropic api error: %w", err)
 	}
 
-	// extract text from response content
+	// extract text from response
 	var textParts []string
-	for _, block := range message.Content {
-		if textBlock, ok := block.AsAny().(anthropic.TextBlock); ok {
-			textParts = append(textParts, textBlock.Text)
+	for _, content := range resp.Content {
+		if content.Type == "text" {
+			textParts = append(textParts, content.Text)
 		}
 	}
 
@@ -77,7 +71,7 @@ func (a *Anthropic) Generate(ctx context.Context, prompt string) (string, error)
 		return "", errors.New("anthropic returned empty response")
 	}
 
-	return textParts[0], nil
+	return strings.Join(textParts, ""), nil
 }
 
 // Enabled returns whether this provider is enabled
