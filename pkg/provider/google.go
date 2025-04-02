@@ -11,9 +11,10 @@ import (
 
 // Google implements Provider interface for Google's Gemini models
 type Google struct {
-	client  *genai.Client
-	model   string
-	enabled bool
+	client    *genai.Client
+	model     string
+	enabled   bool
+	maxTokens int
 }
 
 // NewGoogle creates a new Google provider
@@ -28,10 +29,17 @@ func NewGoogle(opts Options) *Google {
 		return &Google{enabled: false}
 	}
 
+	// set default max tokens if not specified
+	maxTokens := opts.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = 1024 // default value
+	}
+
 	return &Google{
-		client:  client,
-		model:   opts.Model,
-		enabled: true,
+		client:    client,
+		model:     opts.Model,
+		enabled:   true,
+		maxTokens: maxTokens,
 	}
 }
 
@@ -47,6 +55,16 @@ func (g *Google) Generate(ctx context.Context, prompt string) (string, error) {
 	}
 
 	model := g.client.GenerativeModel(g.model)
+	// set max output tokens with safe conversion to int32
+	var maxTokensInt32 int32
+	if g.maxTokens <= 0 {
+		maxTokensInt32 = 1024 // default
+	} else if g.maxTokens > 2147483647 { // max int32 value
+		maxTokensInt32 = 2147483647
+	} else {
+		maxTokensInt32 = int32(g.maxTokens)
+	}
+	model.SetMaxOutputTokens(maxTokensInt32)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		return "", fmt.Errorf("google api error: %w", err)

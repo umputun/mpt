@@ -35,23 +35,26 @@ type Opts struct {
 
 // OpenAIOpts defines options for OpenAI provider
 type OpenAIOpts struct {
-	APIKey  string `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
-	Model   string `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4-turbo-preview"`
-	Enabled bool   `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
+	APIKey    string `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
+	Model     string `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4-turbo-preview"`
+	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
+	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"1024"`
 }
 
 // AnthropicOpts defines options for Anthropic provider
 type AnthropicOpts struct {
-	APIKey  string `long:"api-key" env:"API_KEY" description:"Anthropic API key"`
-	Model   string `long:"model" env:"MODEL" description:"Anthropic model" default:"claude-3-sonnet-20240229"`
-	Enabled bool   `long:"enabled" env:"ENABLED" description:"enable Anthropic provider"`
+	APIKey    string `long:"api-key" env:"API_KEY" description:"Anthropic API key"`
+	Model     string `long:"model" env:"MODEL" description:"Anthropic model" default:"claude-3-sonnet-20240229"`
+	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Anthropic provider"`
+	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"1024"`
 }
 
 // GoogleOpts defines options for Google provider
 type GoogleOpts struct {
-	APIKey  string `long:"api-key" env:"API_KEY" description:"Google API key"`
-	Model   string `long:"model" env:"MODEL" description:"Google model" default:"gemini-1.5-pro"`
-	Enabled bool   `long:"enabled" env:"ENABLED" description:"enable Google provider"`
+	APIKey    string `long:"api-key" env:"API_KEY" description:"Google API key"`
+	Model     string `long:"model" env:"MODEL" description:"Google model" default:"gemini-1.5-pro"`
+	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Google provider"`
+	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"1024"`
 }
 
 var revision = "unknown"
@@ -119,21 +122,24 @@ func run() error {
 
 	// initialize providers
 	openaiProvider := provider.NewOpenAI(provider.Options{
-		APIKey:  opts.OpenAI.APIKey,
-		Model:   opts.OpenAI.Model,
-		Enabled: opts.OpenAI.Enabled,
+		APIKey:    opts.OpenAI.APIKey,
+		Model:     opts.OpenAI.Model,
+		Enabled:   opts.OpenAI.Enabled,
+		MaxTokens: opts.OpenAI.MaxTokens,
 	})
 
 	anthropicProvider := provider.NewAnthropic(provider.Options{
-		APIKey:  opts.Anthropic.APIKey,
-		Model:   opts.Anthropic.Model,
-		Enabled: opts.Anthropic.Enabled,
+		APIKey:    opts.Anthropic.APIKey,
+		Model:     opts.Anthropic.Model,
+		Enabled:   opts.Anthropic.Enabled,
+		MaxTokens: opts.Anthropic.MaxTokens,
 	})
 
 	googleProvider := provider.NewGoogle(provider.Options{
-		APIKey:  opts.Google.APIKey,
-		Model:   opts.Google.Model,
-		Enabled: opts.Google.Enabled,
+		APIKey:    opts.Google.APIKey,
+		Model:     opts.Google.Model,
+		Enabled:   opts.Google.Enabled,
+		MaxTokens: opts.Google.MaxTokens,
 	})
 
 	// create runner with all providers

@@ -10,9 +10,10 @@ import (
 
 // OpenAI implements Provider interface for OpenAI
 type OpenAI struct {
-	client  *openai.Client
-	model   string
-	enabled bool
+	client    *openai.Client
+	model     string
+	enabled   bool
+	maxTokens int
 }
 
 // NewOpenAI creates a new OpenAI provider
@@ -22,11 +23,18 @@ func NewOpenAI(opts Options) *OpenAI {
 	}
 
 	client := openai.NewClient(opts.APIKey)
+	
+	// set default max tokens if not specified
+	maxTokens := opts.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = 1024 // default value
+	}
 
 	return &OpenAI{
-		client:  client,
-		model:   opts.Model,
-		enabled: true,
+		client:    client,
+		model:     opts.Model,
+		enabled:   true,
+		maxTokens: maxTokens,
 	}
 }
 
@@ -51,6 +59,7 @@ func (o *OpenAI) Generate(ctx context.Context, prompt string) (string, error) {
 					Content: prompt,
 				},
 			},
+			MaxTokens: o.maxTokens,
 		},
 	)
 

@@ -12,9 +12,10 @@ import (
 
 // Anthropic implements Provider interface for Anthropic
 type Anthropic struct {
-	client  anthropic.Client
-	model   string
-	enabled bool
+	client    anthropic.Client
+	model     string
+	enabled   bool
+	maxTokens int
 }
 
 // NewAnthropic creates a new Anthropic provider
@@ -26,10 +27,17 @@ func NewAnthropic(opts Options) *Anthropic {
 	// initialize Anthropic client with the API key
 	client := anthropic.NewClient(option.WithAPIKey(opts.APIKey))
 
+	// set default max tokens if not specified
+	maxTokens := opts.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = 1024 // default value
+	}
+
 	return &Anthropic{
-		client:  client,
-		model:   opts.Model,
-		enabled: true,
+		client:    client,
+		model:     opts.Model,
+		enabled:   true,
+		maxTokens: maxTokens,
 	}
 }
 
@@ -47,7 +55,7 @@ func (a *Anthropic) Generate(ctx context.Context, prompt string) (string, error)
 	// create a message request using the SDK
 	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     a.model,
-		MaxTokens: 1024,
+		MaxTokens: int64(a.maxTokens), // convert to int64 for the API
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(
 				anthropic.NewTextBlock(prompt),

@@ -107,9 +107,10 @@ func TestAnthropic_Generate_Success(t *testing.T) {
 
 	// create a provider that uses the test client
 	provider := &Anthropic{
-		client:  client,
-		model:   "claude-3-sonnet-20240229",
-		enabled: true,
+		client:    client,
+		model:     "claude-3-sonnet-20240229",
+		enabled:   true,
+		maxTokens: 1024,
 	}
 
 	// test the Generate method
@@ -149,9 +150,10 @@ func TestAnthropic_Generate_EmptyResponse(t *testing.T) {
 
 	// create a provider that uses the test client
 	provider := &Anthropic{
-		client:  client,
-		model:   "claude-3-sonnet-20240229",
-		enabled: true,
+		client:    client,
+		model:     "claude-3-sonnet-20240229",
+		enabled:   true,
+		maxTokens: 1024,
 	}
 
 	// test the Generate method - should return an error for empty response
@@ -185,9 +187,10 @@ func TestAnthropic_Generate_APIError(t *testing.T) {
 
 	// create a provider that uses the test client
 	provider := &Anthropic{
-		client:  client,
-		model:   "claude-3-sonnet-20240229",
-		enabled: true,
+		client:    client,
+		model:     "claude-3-sonnet-20240229",
+		enabled:   true,
+		maxTokens: 1024,
 	}
 
 	// test the Generate method - should return an error for API error

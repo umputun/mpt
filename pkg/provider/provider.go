@@ -29,7 +29,8 @@ func (r Result) Format() string {
 
 // Options defines common options for all providers
 type Options struct {
-	APIKey string
-	Enabled bool
-	Model   string
+	APIKey    string
+	Enabled   bool
+	Model     string
+	MaxTokens int // maximum number of tokens to generate
 }
