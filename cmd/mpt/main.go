@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 	"strings"
 	"time"
 
@@ -56,10 +55,13 @@ type GoogleOpts struct {
 
 var revision = "unknown"
 
+// osExit is a variable for testing to mock os.Exit
+var osExit = os.Exit
+
 func main() {
 	if err := run(); err != nil {
 		lgr.Printf("[ERROR] %v", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -70,14 +72,14 @@ func run() error {
 	if _, err := parser.Parse(); err != nil {
 		var flagsErr *flags.Error
 		if errors.As(err, &flagsErr) && errors.Is(flagsErr.Type, flags.ErrHelp) {
-			os.Exit(0)
+			osExit(0)
 		}
 		return err
 	}
 
 	if opts.Version {
-		fmt.Printf("Version: %s\nGolang: %s\n", revision, runtime.Version())
-		os.Exit(0)
+		fmt.Printf("Version: %s\n", revision)
+		osExit(0)
 	}
 
 	setupLog(opts.Debug) // set up logging
