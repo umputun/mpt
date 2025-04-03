@@ -11,6 +11,9 @@ import (
 	"github.com/go-pkgz/lgr"
 )
 
+// MaxFileSize defines the maximum size of individual files to process (10MB)
+const MaxFileSize = 10 * 1024 * 1024
+
 // LoadContent loads content from files matching the given patterns and returns a formatted string
 // with file names as comments and their contents. Supports recursive directory traversal.
 // Exclude patterns can be provided to filter out unwanted files.
@@ -84,6 +87,12 @@ func processBashStylePattern(pattern string, matchedFiles map[string]struct{}) e
 		}
 
 		if !info.IsDir() {
+			// skip files that exceed the size limit
+			if info.Size() > MaxFileSize {
+				lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", absPath, info.Size())
+				continue
+			}
+
 			matchedFiles[absPath] = struct{}{}
 			matchCount++
 		}
@@ -116,7 +125,14 @@ func processGoStylePattern(pattern string, matchedFiles map[string]struct{}) err
 			return nil // skip files that can't be accessed
 		}
 
+		// check file size if it's not a directory
 		if !info.IsDir() {
+			// skip files that exceed the size limit
+			if info.Size() > MaxFileSize {
+				lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", path, info.Size())
+				return nil
+			}
+
 			// if filter is specified, check if file matches
 			if filter == "" {
 				// no filter, include all files
@@ -172,6 +188,12 @@ func processStandardGlobPattern(pattern string, matchedFiles map[string]struct{}
 		}
 
 		if !info.IsDir() {
+			// skip files that exceed the size limit
+			if info.Size() > MaxFileSize {
+				lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", match, info.Size())
+				continue
+			}
+
 			matchedFiles[match] = struct{}{}
 			matchCount++
 		} else {
@@ -183,6 +205,12 @@ func processStandardGlobPattern(pattern string, matchedFiles map[string]struct{}
 				}
 
 				if !info.IsDir() {
+					// skip files that exceed the size limit
+					if info.Size() > MaxFileSize {
+						lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", path, info.Size())
+						return nil
+					}
+
 					matchedFiles[path] = struct{}{}
 					dirMatchCount++
 				}

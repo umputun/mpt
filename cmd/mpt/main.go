@@ -30,7 +30,7 @@ type Opts struct {
 	Prompt   string        `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
 	Files    []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
 	Excludes []string      `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
-	Timeout  time.Duration `short:"t" long:"timeout" description:"timeout duration (e.g., 60s, 2m)" default:"60s"`
+	Timeout  time.Duration `short:"t" long:"timeout" description:"timeout duration (e.g., 60s, 2m)"`
 
 	// common options
 	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -73,6 +73,13 @@ type CustomOpenAIProvider struct {
 	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate" default:"16384"`
 }
 
+// Default constants used throughout the application
+const (
+	DefaultTimeout   = 60 * time.Second
+	DefaultMaxTokens = 16384
+	MaxFileSize      = 10 * 1024 * 1024 // 10MB limit for individual files
+)
+
 var revision = "unknown"
 
 // osExit is a variable for testing to mock os.Exit
@@ -100,12 +107,8 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	// setup logging with API keys as secrets
-	secrets := collectSecrets(opts)
-	setupLog(opts.Debug, secrets...)
-
-	// process the prompt (from CLI args or stdin)
-	if err := processPrompt(opts); err != nil {
+	// setup logging and process input
+	if err := setupLoggingAndProcessInput(opts); err != nil {
 		return err
 	}
 
@@ -116,10 +119,25 @@ func run(ctx context.Context) error {
 	return executePrompt(ctx, opts, providers)
 }
 
+// setupLoggingAndProcessInput configures logging and processes the user's input
+func setupLoggingAndProcessInput(opts *Opts) error {
+	// setup logging with API keys as secrets
+	secrets := collectSecrets(opts)
+	setupLog(opts.Debug, secrets...)
+
+	// process the prompt (from CLI args or stdin)
+	if err := processPrompt(opts); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // parseCommandLine parses command-line flags and handles special flag cases
 func parseCommandLine() (*Opts, error) {
 	opts := &Opts{
 		CustomProviders: make(map[string]CustomOpenAIProvider),
+		Timeout:         DefaultTimeout,
 	}
 
 	parser := flags.NewParser(opts, flags.Default)
@@ -211,30 +229,44 @@ func appendFileContent(opts *Opts) error {
 
 // initializeProviders creates provider instances from the options
 func initializeProviders(opts *Opts) []provider.Provider {
-	// initialize standard providers
-	openaiProvider := provider.NewOpenAI(provider.Options{
-		APIKey:    opts.OpenAI.APIKey,
-		Model:     opts.OpenAI.Model,
-		Enabled:   opts.OpenAI.Enabled,
-		MaxTokens: opts.OpenAI.MaxTokens,
-	})
+	// create a slice to hold enabled providers
+	providers := []provider.Provider{}
 
-	anthropicProvider := provider.NewAnthropic(provider.Options{
-		APIKey:    opts.Anthropic.APIKey,
-		Model:     opts.Anthropic.Model,
-		Enabled:   opts.Anthropic.Enabled,
-		MaxTokens: opts.Anthropic.MaxTokens,
-	})
+	// add OpenAI provider only if enabled
+	if opts.OpenAI.Enabled {
+		openaiProvider := provider.NewOpenAI(provider.Options{
+			APIKey:    opts.OpenAI.APIKey,
+			Model:     opts.OpenAI.Model,
+			Enabled:   true, // if we got here, it's enabled
+			MaxTokens: opts.OpenAI.MaxTokens,
+		})
+		providers = append(providers, openaiProvider)
+		lgr.Printf("[DEBUG] added OpenAI provider, model: %s", opts.OpenAI.Model)
+	}
 
-	googleProvider := provider.NewGoogle(provider.Options{
-		APIKey:    opts.Google.APIKey,
-		Model:     opts.Google.Model,
-		Enabled:   opts.Google.Enabled,
-		MaxTokens: opts.Google.MaxTokens,
-	})
+	// add Anthropic provider only if enabled
+	if opts.Anthropic.Enabled {
+		anthropicProvider := provider.NewAnthropic(provider.Options{
+			APIKey:    opts.Anthropic.APIKey,
+			Model:     opts.Anthropic.Model,
+			Enabled:   true, // if we got here, it's enabled
+			MaxTokens: opts.Anthropic.MaxTokens,
+		})
+		providers = append(providers, anthropicProvider)
+		lgr.Printf("[DEBUG] added Anthropic provider, model: %s", opts.Anthropic.Model)
+	}
 
-	// create a slice with standard providers
-	providers := []provider.Provider{openaiProvider, anthropicProvider, googleProvider}
+	// add Google provider only if enabled
+	if opts.Google.Enabled {
+		googleProvider := provider.NewGoogle(provider.Options{
+			APIKey:    opts.Google.APIKey,
+			Model:     opts.Google.Model,
+			Enabled:   true, // if we got here, it's enabled
+			MaxTokens: opts.Google.MaxTokens,
+		})
+		providers = append(providers, googleProvider)
+		lgr.Printf("[DEBUG] added Google provider, model: %s", opts.Google.Model)
+	}
 
 	// add enabled custom providers
 	for providerID, customOpt := range opts.CustomProviders {
@@ -247,7 +279,7 @@ func initializeProviders(opts *Opts) []provider.Provider {
 			BaseURL:   customOpt.URL,
 			APIKey:    customOpt.APIKey,
 			Model:     customOpt.Model,
-			Enabled:   customOpt.Enabled,
+			Enabled:   true, // if we got here, it's enabled
 			MaxTokens: customOpt.MaxTokens,
 		})
 		providers = append(providers, customProvider)
