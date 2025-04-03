@@ -113,6 +113,13 @@ sudo apk add mpt_v0.1.0_linux_x86_64.apk
 
 ## Usage
 
+MPT can be used in two modes:
+
+1. **Standard Mode**: Query multiple providers and get responses
+2. **MCP Server Mode**: Run as a Model Context Protocol server
+
+### Standard Mode
+
 ```
 mpt [options]
 ```
@@ -123,6 +130,14 @@ You can provide a prompt in the following ways:
 3. Combining flag and piped content: `echo "Additional context" | mpt --prompt "Main question"`
    - This combines both inputs with a newline separator
 4. Interactive mode: If no prompt is provided via command line or pipe, you'll be prompted to enter one
+
+### MCP Server Mode
+
+```
+mpt --mcp.server [other options]
+```
+
+In MCP server mode, MPT acts as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that makes your configured providers accessible via the MCP protocol. This allows any MCP-compatible client to interact with multiple LLM providers through a single unified interface.
 
 ### Provider Configuration
 
@@ -181,6 +196,13 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
     --custom.together.name "Together" --custom.together.url "https://api.together.xyz/v1" \
     --custom.together.api-key "your-key" --custom.together.model "llama-3-70b" \
     --prompt "Compare the approaches to implementing recursion in different programming languages"
+```
+
+### MCP Server Options
+
+```
+--mcp.server          Run in MCP server mode
+--mcp.server-name     MCP server name (default: "MPT MCP Server")
 ```
 
 ### General Options
@@ -384,6 +406,22 @@ Recursion is a technique in programming where a function solves a problem by...
 Recursion in programming is when a function calls itself during its execution...
 ```
 
+### Using MPT as an MCP Tool
+
+MPT can be used as an MCP tool that MCP-compatible clients can invoke. When used this way, MPT acts as a bridge between the MCP client and multiple LLM providers:
+
+```bash
+# The MCP client app invokes MPT with the required providers
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
+export GOOGLE_API_KEY="your-google-key"
+
+# MCP client runs MPT with the providers you want to use
+mpt --mcp.server --openai.enabled --anthropic.enabled --google.enabled
+```
+
+When run in MCP server mode, MPT communicates with the MCP client using the Model Context Protocol over standard input/output. The client can then use MPT's multiple providers as if they were a single provider, with MPT handling all the provider-specific details.
+
 ## Using Environment Variables
 
 You can use environment variables instead of command-line flags:
@@ -403,6 +441,10 @@ GOOGLE_API_KEY="your-google-key"
 GOOGLE_MODEL="gemini-2.5-pro-exp-03-25"
 GOOGLE_ENABLED=true
 GOOGLE_MAX_TOKENS=16384
+
+# MCP Server Mode
+MCP_SERVER=true
+MCP_SERVER_NAME="My MPT MCP Server"
 
 # Custom OpenAI-compatible provider
 CUSTOM_NAME="LocalLLM"

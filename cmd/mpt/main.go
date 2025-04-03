@@ -16,6 +16,7 @@ import (
 	"github.com/jessevdk/go-flags"
 
 	"github.com/umputun/mpt/pkg/files"
+	"github.com/umputun/mpt/pkg/mcp"
 	"github.com/umputun/mpt/pkg/provider"
 	"github.com/umputun/mpt/pkg/runner"
 )
@@ -25,6 +26,7 @@ type Opts struct {
 	OpenAI          OpenAIOpts                      `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
 	Anthropic       AnthropicOpts                   `group:"anthropic" namespace:"anthropic" env-namespace:"ANTHROPIC"`
 	Google          GoogleOpts                      `group:"google" namespace:"google" env-namespace:"GOOGLE"`
+	MCP             MCPOpts                         `group:"mcp" namespace:"mcp" env-namespace:"MCP"`
 	CustomProviders map[string]CustomOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
 
 	Prompt   string        `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
@@ -61,6 +63,12 @@ type GoogleOpts struct {
 	Model     string `long:"model" env:"MODEL" description:"Google model" default:"gemini-2.5-pro-exp-03-25"`
 	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Google provider"`
 	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
+}
+
+// MCPOpts defines options for MCP server mode
+type MCPOpts struct {
+	Server     bool   `long:"server" env:"SERVER" description:"run in MCP server mode"`
+	ServerName string `long:"server-name" env:"SERVER_NAME" description:"MCP server name" default:"MPT MCP Server"`
 }
 
 // CustomOpenAIProvider defines options for custom OpenAI-compatible providers
@@ -107,6 +115,12 @@ func run(ctx context.Context) error {
 		return err
 	}
 
+	// Check if running in MCP server mode
+	if opts.MCP.Server {
+		return runMCPServer(ctx, opts)
+	}
+
+	// Standard MPT mode
 	// setup logging and process input
 	if err := setupLoggingAndProcessInput(opts); err != nil {
 		return err
@@ -117,6 +131,40 @@ func run(ctx context.Context) error {
 
 	// execute the prompt against providers
 	return executePrompt(ctx, opts, providers)
+}
+
+// runMCPServer starts MPT in MCP server mode
+func runMCPServer(ctx context.Context, opts *Opts) error {
+	// Setup logging with API keys as secrets
+	secrets := collectSecrets(opts)
+	setupLog(opts.Debug, secrets...)
+
+	// Initialize all providers
+	providers := initializeProviders(opts)
+	if len(providers) == 0 {
+		return fmt.Errorf("no providers enabled for MCP server mode")
+	}
+
+	// Create runner with all providers
+	r := runner.New(providers...)
+
+	// Create MCP server using our runner
+	mcpServer := mcp.NewServer(r, mcp.ServerOptions{
+		Name:    opts.MCP.ServerName,
+		Version: revision,
+	})
+
+	lgr.Printf("[INFO] MCP server initialized with %d providers", len(providers))
+	lgr.Printf("[INFO] server name: %s, version: %s", opts.MCP.ServerName, revision)
+	
+	// Print enabled providers
+	for _, p := range providers {
+		lgr.Printf("[INFO] enabled provider: %s", p.Name())
+	}
+
+		// Start the MCP server
+	lgr.Printf("[INFO] starting MPT in MCP server mode with stdio transport")
+	return mcpServer.Start()
 }
 
 // setupLoggingAndProcessInput configures logging and processes the user's input
