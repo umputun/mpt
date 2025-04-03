@@ -20,9 +20,9 @@ import (
 
 // Opts with all CLI options
 type Opts struct {
-	OpenAI         OpenAIOpts       `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
-	Anthropic      AnthropicOpts    `group:"anthropic" namespace:"anthropic" env-namespace:"ANTHROPIC"`
-	Google         GoogleOpts       `group:"google" namespace:"google" env-namespace:"GOOGLE"`
+	OpenAI          OpenAIOpts             `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
+	Anthropic       AnthropicOpts          `group:"anthropic" namespace:"anthropic" env-namespace:"ANTHROPIC"`
+	Google          GoogleOpts             `group:"google" namespace:"google" env-namespace:"GOOGLE"`
 	CustomProviders []CustomOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
 
 	Prompt  string `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
@@ -37,25 +37,25 @@ type Opts struct {
 // OpenAIOpts defines options for OpenAI provider
 type OpenAIOpts struct {
 	APIKey    string `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
-	Model     string `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4-turbo-preview"`
+	Model     string `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4o"`
 	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
-	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"1024"`
+	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
 }
 
 // AnthropicOpts defines options for Anthropic provider
 type AnthropicOpts struct {
 	APIKey    string `long:"api-key" env:"API_KEY" description:"Anthropic API key"`
-	Model     string `long:"model" env:"MODEL" description:"Anthropic model" default:"claude-3-sonnet-20240229"`
+	Model     string `long:"model" env:"MODEL" description:"Anthropic model" default:"claude-3-7-sonnet-20250219"`
 	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Anthropic provider"`
-	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"1024"`
+	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
 }
 
 // GoogleOpts defines options for Google provider
 type GoogleOpts struct {
 	APIKey    string `long:"api-key" env:"API_KEY" description:"Google API key"`
-	Model     string `long:"model" env:"MODEL" description:"Google model" default:"gemini-1.5-pro"`
+	Model     string `long:"model" env:"MODEL" description:"Google model" default:"gemini-2.5-pro-exp-03-25"`
 	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Google provider"`
-	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"1024"`
+	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
 }
 
 // CustomOpenAIProvider defines options for custom OpenAI-compatible providers
@@ -65,7 +65,7 @@ type CustomOpenAIProvider struct {
 	APIKey    string `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
 	Model     string `long:"model" env:"MODEL" description:"Model to use" required:"true"`
 	Enabled   bool   `long:"enabled" env:"ENABLED" description:"Enable this custom provider" default:"true"`
-	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate" default:"1024"`
+	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate" default:"16384"`
 }
 
 var revision = "unknown"
@@ -113,7 +113,7 @@ func run() error {
 			return fmt.Errorf("error reading from stdin: %w", err)
 		}
 		stdinContent := strings.TrimSpace(sb.String())
-		
+
 		// append stdin to existing prompt if present, or use stdin as prompt
 		if opts.Prompt != "" {
 			opts.Prompt = opts.Prompt + "\n" + stdinContent
@@ -173,7 +173,7 @@ func run() error {
 				MaxTokens: customOpt.MaxTokens,
 			})
 			providers = append(providers, customProvider)
-			lgr.Printf("[INFO] added custom provider: %s, URL: %s, model: %s", 
+			lgr.Printf("[INFO] added custom provider: %s, URL: %s, model: %s",
 				customOpt.Name, customOpt.URL, customOpt.Model)
 		}
 	}
