@@ -1,28 +1,30 @@
-# MPT - Multi-Provider Tool
+# MPT - Multi-Provider Tool for AI Language Models
 
 [![Build Status](https://github.com/umputun/mpt/actions/workflows/ci.yml/badge.svg)](https://github.com/umputun/mpt/actions/workflows/ci.yml)
 [![Coverage Status](https://coveralls.io/repos/github/umputun/mpt/badge.svg?branch=master)](https://coveralls.io/github/umputun/mpt?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/umputun/mpt)](https://goreportcard.com/report/github.com/umputun/mpt)
 
-MPT is a command-line utility that sends prompts to multiple AI language model providers in parallel and combines the results.
+MPT is a command-line utility that sends prompts to multiple AI language model providers (OpenAI, Anthropic, Google, and custom providers) in parallel and combines the results. It enables easy file inclusion for context and supports flexible pattern matching to quickly include relevant code or documentation in your prompts.
 
-## Why MPT?
+## What MPT Does
 
-When working with AI language models, different providers often have unique strengths and perspectives. MPT allows you to:
+MPT makes working with AI language models simpler and more powerful by:
 
-1. **Compare responses across providers**: See how different models approach the same problem, revealing insights that a single model might miss.
+1. **Querying multiple AI providers simultaneously**: Get responses from OpenAI, Claude, Gemini, and custom models all at once, with clear provider labeling.
 
-2. **Leverage specialized capabilities**: Each AI system has strengths - one might excel at coding tasks while another provides clearer explanations or more creative solutions.
+2. **Including files as context using smart pattern matching**: 
+   - Easily add code files to your prompt with flexible patterns: `--file "**/*.go"` or `--file "pkg/..."`
+   - Filter out unwanted files with exclusion patterns: `--exclude "**/tests/**"`
+   - Provide comprehensive context from your codebase without manual copying
 
-3. **Get multiple perspectives quickly**: Instead of sequentially querying each provider, get all responses in a single operation, saving time and effort.
+3. **Streamlining your AI workflow**: 
+   - Pipe content from other commands directly to MPT: `git diff | mpt --prompt "Review this code"`
+   - Combine stdin with files: `cat error.log | mpt --file "app/server.go" --prompt "Why am I seeing this error?"`
+   - Use environment variables to manage API keys
 
-4. **Improve reliability**: By not relying on a single provider, you reduce the risk of service outages or rate limiting affecting your workflow.
+4. **Getting multiple perspectives**: Different AI models have different strengths—MPT lets you leverage them all at once to get more comprehensive insights.
 
-5. **Customize for your needs**: With support for local LLMs via custom OpenAI-compatible endpoints, you can combine private and public models in one interface.
-
-6. **Cleaner single-provider output**: When only one provider is enabled, MPT automatically skips the provider headers for cleaner, more usable output.
-
-7. **Cascade and summarize responses**: Use the output from multiple models as input for a secondary analysis.
+5. **Providing cleaner single-provider output**: When using just one AI provider, MPT automatically removes headers for cleaner results.
 
 For example, when reviewing code changes:
 ```
@@ -45,15 +47,16 @@ cat reviews.txt | mpt --anthropic.enabled \
 
 The second command will produce clean output without any provider headers, since only one provider is enabled.
 
-## Features
+## Key Features
 
-- Parallel execution of prompts across multiple LLM providers
-- Support for OpenAI, Anthropic (Claude), and Google (Gemini) models
-- Support for custom OpenAI-compatible providers (local LLMs, alternative APIs)
-- Easy configuration via command-line flags or environment variables
-- Customizable timeout for requests
-- Configurable token limits for each provider
-- Clear results formatting with provider-specific headers
+- **Multi-Provider Support**: Run prompts in parallel across OpenAI, Anthropic (Claude), Google (Gemini), and custom LLMs
+- **File Context Inclusion**: Easily add files, directories, or patterns to provide context for your prompts
+- **Smart Pattern Matching**: Include files using standard glob patterns, directory paths, bash-style wildcards (`**/*.go`), or Go-style patterns (`pkg/...`)
+- **Exclusion Filtering**: Filter out unwanted files with the same pattern matching syntax (`--exclude "**/tests/**"`)
+- **Stdin Integration**: Pipe content directly from other tools (like `git diff`) for AI analysis
+- **Customizable Execution**: Configure timeouts, token limits, and models per provider
+- **Clean Output Formatting**: Provider-specific headers (or none when using a single provider)
+- **Environment Variable Support**: Store API keys and settings in environment variables instead of flags
 
 ## Installation
 
@@ -176,21 +179,25 @@ Using Go-style recursive patterns:
 mpt --anthropic.enabled --prompt "Find bugs in my Go code" --file "pkg/..." --file "cmd/.../*.go"
 ```
 
-### File Pattern Reference
+### File Pattern and Filtering Reference
 
-MPT supports several types of file patterns for the `--file` flag:
+MPT provides powerful file inclusion and exclusion capabilities to provide contextual information to AI models. You can easily include all the necessary files for your prompt while filtering out unwanted content.
+
+#### Including Files with `--file`
+
+Add relevant files to your prompt context using various pattern types:
 
 1. **Specific Files**
    ```
-   --file "README.md"              # A single file
-   --file "Makefile"               # Another single file
+   --file "README.md"              # Include a specific file
+   --file "Makefile"               # Include another specific file
    ```
 
 2. **Standard Glob Patterns**
    ```
    --file "*.go"                   # All Go files in current directory
-   --file "cmd/*.go"               # All Go files in cmd directory
-   --file "pkg/*_test.go"          # All Go test files in pkg directory
+   --file "cmd/*.go"               # All Go files in the cmd directory
+   --file "pkg/*_test.go"          # All test files in the pkg directory
    ```
 
 3. **Directories (Recursive)**
@@ -214,23 +221,45 @@ MPT supports several types of file patterns for the `--file` flag:
    --file "pkg/.../*_test.go"      # All test files in pkg/ directory and subdirectories
    ```
 
-> **Note:** You can use either bash-style patterns with `**` or Go-style patterns with `/...` for recursive matching. Choose whichever syntax you prefer.
+#### Excluding Files with `--exclude`
 
-When multiple patterns are provided, all matching files are included in the prompt context:
+Filter out unwanted files using the **same pattern syntax** as `--file`:
 
 ```
-# Include all Go files and all markdown files
-mpt --anthropic.enabled --prompt "Explain this codebase" --file "**/*.go" --file "*.md"
+# Exclude all test files
+--exclude "**/*_test.go"
 
-# Include all code files from pkg and documentation
-mpt --openai.enabled --prompt "Document this API" --file "pkg/..." --file "*.md"
+# Exclude all mock files
+--exclude "**/mocks/**"
 
-# Show the prompt that's being sent to the models
-mpt --anthropic.enabled --prompt "Explain this code" --file "*.go" -v
+# Exclude vendor directory
+--exclude "vendor/**"
 
-# Include Go files but exclude test files and mocks
-mpt --openai.enabled --prompt "Explain this code" --file "**/*.go" --exclude "**/*_test.go" --exclude "**/mocks/**"
+# Exclude generated files
+--exclude "**/*.gen.go"
 ```
+
+#### Common Pattern Examples
+
+```bash
+# Basic: Include Go files, exclude tests
+mpt --anthropic.enabled --prompt "Explain this code" \
+    --file "**/*.go" --exclude "**/*_test.go"
+
+# Include code files from specific package, exclude mocks
+mpt --openai.enabled --prompt "Document this API" \
+    --file "pkg/api/..." --exclude "**/mocks/**"
+
+# Include all code but exclude tests and generated files
+mpt --google.enabled --prompt "Review code quality" \
+    --file "**/*.go" --exclude "**/*_test.go" --exclude "**/*.gen.go"
+
+# Include only model and controller files
+mpt --anthropic.enabled --prompt "Explain architecture" \
+    --file "**/*model.go" --file "**/*controller.go"
+```
+
+> **Tip:** You can use either bash-style patterns with `**` or Go-style patterns with `/...` for recursive matching—choose whichever syntax you prefer. The exclusion patterns use the same syntax as inclusion patterns.
 
 ### File Content Formatting
 
