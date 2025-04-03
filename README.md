@@ -133,6 +133,7 @@ mpt --custom.name "LocalLLM" --custom.url "http://localhost:1234/v1" \
                       Supports:
                       - Standard glob patterns like "*.go" or "cmd/*.js"
                       - Directories (traversed recursively)
+                      - Bash-style recursive patterns like "**/*.go" or "pkg/**/*.js"
                       - Go-style recursive patterns like "pkg/..." or "cmd/.../*.go"
 -t, --timeout         Timeout in seconds (default: 60)
 -v, --verbose         Verbose output, shows the complete prompt sent to models
@@ -188,7 +189,6 @@ MPT supports several types of file patterns for the `--file` flag:
    --file "*.go"                   # All Go files in current directory
    --file "cmd/*.go"               # All Go files in cmd directory
    --file "pkg/*_test.go"          # All Go test files in pkg directory
-   --file "**/*.js"                # All JavaScript files in any directory (bash expansion)
    ```
 
 3. **Directories (Recursive)**
@@ -197,13 +197,22 @@ MPT supports several types of file patterns for the `--file` flag:
    --file "pkg/api/"               # All files in pkg/api/ directory and subdirectories
    ```
 
-4. **Go-style Recursive Patterns**
+4. **Bash-style Recursive Patterns**
+   ```
+   --file "**/*.go"                # All Go files in any directory recursively
+   --file "pkg/**/*.js"            # All JavaScript files in pkg/ recursively
+   --file "**/*_test.go"           # All test files in any directory recursively
+   ```
+
+5. **Go-style Recursive Patterns**
    ```
    --file "pkg/..."                # All files in pkg/ directory and subdirectories
    --file "./..."                  # All files in current directory and subdirectories
    --file "cmd/.../*.go"           # All Go files in cmd/ directory and subdirectories
    --file "pkg/.../*_test.go"      # All test files in pkg/ directory and subdirectories
    ```
+
+> **Note:** You can use either bash-style patterns with `**` or Go-style patterns with `/...` for recursive matching. Choose whichever syntax you prefer.
 
 When multiple patterns are provided, all matching files are included in the prompt context:
 

@@ -4,9 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -27,99 +25,6 @@ func TestSetupLog(t *testing.T) {
 	setupLog(true, "secret1", "secret2")
 }
 
-func TestParseRecursivePattern(t *testing.T) {
-	testCases := []struct {
-		pattern  string
-		basePath string
-		filter   string
-	}{
-		{"pkg/...", "pkg", ""},
-		{"cmd/.../*.go", "cmd", "*.go"},
-		{"./...", ".", ""},
-		{"./.../cmd/*.go", ".", "cmd/*.go"},
-		{"src/.../*.{go,js}", "src", "*.{go,js}"},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.pattern, func(t *testing.T) {
-			basePath, filter := parseRecursivePattern(tc.pattern)
-			assert.Equal(t, tc.basePath, basePath)
-			assert.Equal(t, tc.filter, filter)
-		})
-	}
-}
-
-func TestGetFileHeader(t *testing.T) {
-	testCases := []struct {
-		filePath    string
-		expectedFmt string
-	}{
-		{"test.go", "// file: %s\n"},
-		{"test.py", "# file: %s\n"},
-		{"test.html", "<!-- file: %s -->\n"},
-		{"test.css", "/* file: %s */\n"},
-		{"test.sql", "-- file: %s\n"},
-		{"test.clj", ";; file: %s\n"},
-		{"test.hs", "-- file: %s\n"},
-		{"test.ps1", "# file: %s\n"},
-		{"test.bat", ":: file: %s\n"},
-		{"test.f90", "! file: %s\n"},
-		{"test.unknown", "// file: %s\n"}, // default
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.filePath, func(t *testing.T) {
-			expected := fmt.Sprintf(tc.expectedFmt, tc.filePath)
-			actual := getFileHeader(tc.filePath)
-			assert.Equal(t, expected, actual)
-		})
-	}
-}
-
-func TestLoadFiles(t *testing.T) {
-	// create temporary files with different extensions
-	dir, err := os.MkdirTemp("", "loadfiles_test")
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
-
-	// create test files
-	files := map[string]string{
-		"test.go":   "package main\n\nfunc main() {\n\tfmt.Println(\"Hello world\")\n}",
-		"test.py":   "def hello():\n    print(\"Hello world\")",
-		"test.html": "<html>\n<body>\n<h1>Hello world</h1>\n</body>\n</html>",
-	}
-
-	patterns := []string{}
-	for name, content := range files {
-		path := filepath.Join(dir, name)
-		err := os.WriteFile(path, []byte(content), 0o644)
-		require.NoError(t, err)
-		patterns = append(patterns, path)
-	}
-
-	// test loading files
-	result, err := loadFiles(patterns)
-	require.NoError(t, err)
-
-	// verify each file's content is present
-	assert.Contains(t, result, "package main")
-	assert.Contains(t, result, "def hello():")
-	assert.Contains(t, result, "<h1>Hello world</h1>")
-
-	// verify comment styles for each file type
-	assert.Contains(t, result, "// file:")
-	assert.Contains(t, result, "# file:")
-	assert.Contains(t, result, "<!-- file:")
-
-	// test with non-existent pattern
-	_, err = loadFiles([]string{"non-existent-pattern-*.xyz"})
-	assert.Error(t, err)
-
-	// test with empty pattern list
-	result, err = loadFiles([]string{})
-	assert.NoError(t, err)
-	assert.Equal(t, "", result)
-}
 
 func TestVerboseOutput(t *testing.T) {
 	// create a buffer to capture output
