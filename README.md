@@ -30,10 +30,12 @@ Or download binary from [Releases](https://github.com/umputun/mpt/releases).
 mpt [options]
 ```
 
-You can provide a prompt in three ways:
+You can provide a prompt in the following ways:
 1. Using the `--prompt` flag: `mpt --prompt "Your question here"`
 2. Piping content: `echo "Your question" | mpt`
-3. Interactive mode: If no prompt is provided via command line or pipe, you'll be prompted to enter one
+3. Combining flag and piped content: `echo "Additional context" | mpt --prompt "Main question"`
+   - This combines both inputs with a newline separator
+4. Interactive mode: If no prompt is provided via command line or pipe, you'll be prompted to enter one
 
 ### Provider Configuration
 
@@ -94,8 +96,9 @@ mpt --custom.name "LocalLLM" --custom.url "http://localhost:1234/v1" \
 --no-color            Disable color output
 ```
 
-### Example
+### Examples
 
+Basic usage with prompt flag:
 ```
 export OPENAI_API_KEY="your-openai-key"
 export ANTHROPIC_API_KEY="your-anthropic-key"
@@ -103,6 +106,11 @@ export GOOGLE_API_KEY="your-google-key"
 
 mpt --openai.enabled --anthropic.enabled --google.enabled \
     --prompt "Explain the concept of recursion in programming"
+```
+
+Combining prompt flag with piped input:
+```
+git diff HEAD~1 | mpt --openai.enabled --prompt "Analyze this git diff and suggest improvements"
 ```
 
 Output:
