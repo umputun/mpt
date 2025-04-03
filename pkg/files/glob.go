@@ -13,7 +13,8 @@ import (
 
 // LoadContent loads content from files matching the given patterns and returns a formatted string
 // with file names as comments and their contents. Supports recursive directory traversal.
-func LoadContent(patterns []string) (string, error) {
+// Exclude patterns can be provided to filter out unwanted files.
+func LoadContent(patterns, excludePatterns []string) (string, error) {
 	if len(patterns) == 0 {
 		return "", nil
 	}
@@ -40,6 +41,12 @@ func LoadContent(patterns []string) (string, error) {
 				return "", err
 			}
 		}
+	}
+
+	// apply exclusion patterns if any
+	if len(excludePatterns) > 0 {
+		// process and remove excluded files
+		matchedFiles = applyExcludePatterns(matchedFiles, excludePatterns)
 	}
 
 	// get sorted list of files
@@ -238,6 +245,110 @@ func formatFileContents(files []string) (string, error) {
 	}
 
 	return sb.String(), nil
+}
+
+// applyExcludePatterns removes files that match any of the exclude patterns from the matched files
+func applyExcludePatterns(matchedFiles map[string]struct{}, excludePatterns []string) map[string]struct{} {
+	if len(excludePatterns) == 0 {
+		return matchedFiles
+	}
+
+	// create a new map to store the filtered results
+	filteredFiles := make(map[string]struct{})
+
+	// track how many files were excluded per pattern
+	patternExcludeCount := make(map[string]int)
+	cwd, err := os.Getwd()
+	if err != nil {
+		lgr.Printf("[WARN] failed to get current working directory: %v", err)
+		return matchedFiles // return original map if we can't get the working directory
+	}
+
+	// initialize the exclusion counts
+	for _, pattern := range excludePatterns {
+		patternExcludeCount[pattern] = 0
+	}
+
+	// process each file and check if it should be excluded
+outer:
+	for filePath := range matchedFiles {
+		// get the relative path for pattern matching
+		relPath, err := filepath.Rel(cwd, filePath)
+		if err != nil {
+			// if we can't get a relative path, use the absolute path
+			relPath = filePath
+		}
+
+		// check each exclude pattern
+		for _, pattern := range excludePatterns {
+			// handle bash-style patterns with **
+			if strings.Contains(pattern, "**") {
+				// check if the relative path matches the exclude pattern
+				matched, err := doublestar.Match(pattern, relPath)
+				if err != nil {
+					lgr.Printf("[WARN] error matching exclude pattern %s: %v", pattern, err)
+					continue
+				}
+
+				if matched {
+					patternExcludeCount[pattern]++
+					continue outer // skip this file
+				}
+			} else if strings.Contains(pattern, "/...") {
+				// handle Go-style recursive patterns
+				basePath, filter := parseRecursivePattern(pattern)
+
+				// check if the file is under the base path
+				if strings.HasPrefix(filePath, basePath) {
+					// if there's a filter, check if the file matches it
+					if filter == "" {
+						// no filter, exclude all files under basePath
+						patternExcludeCount[pattern]++
+						continue outer
+					} else if strings.HasPrefix(filter, "*.") {
+						// extension filter
+						ext := filter[1:] // remove * prefix
+						if strings.HasSuffix(filePath, ext) {
+							patternExcludeCount[pattern]++
+							continue outer
+						}
+					} else if matched, _ := filepath.Match(filter, filepath.Base(filePath)); matched {
+						// standard glob pattern for filename
+						patternExcludeCount[pattern]++
+						continue outer
+					}
+				}
+			} else {
+				// handle standard glob patterns
+				matched, err := filepath.Match(pattern, filepath.Base(filePath))
+				if err != nil {
+					lgr.Printf("[WARN] error matching exclude pattern %s: %v", pattern, err)
+					continue
+				}
+
+				if matched {
+					patternExcludeCount[pattern]++
+					continue outer
+				}
+			}
+		}
+
+		// if we get here, the file didn't match any exclude pattern
+		filteredFiles[filePath] = struct{}{}
+	}
+
+	// log how many files were excluded for each pattern
+	totalExcluded := len(matchedFiles) - len(filteredFiles)
+	if totalExcluded > 0 {
+		lgr.Printf("[DEBUG] excluded %d files in total", totalExcluded)
+		for pattern, count := range patternExcludeCount {
+			if count > 0 {
+				lgr.Printf("[DEBUG] pattern %s excluded %d files", pattern, count)
+			}
+		}
+	}
+
+	return filteredFiles
 }
 
 // parseRecursivePattern parses a Go-style recursive pattern like "pkg/..." or "cmd/.../*.go"

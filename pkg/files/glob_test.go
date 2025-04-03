@@ -93,7 +93,7 @@ func TestLoadContent(t *testing.T) {
 		result, err := LoadContent([]string{
 			filepath.Join(testDataDir, "test1.go"),
 			filepath.Join(testDataDir, "test2.txt"),
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package testdata")
@@ -106,7 +106,7 @@ func TestLoadContent(t *testing.T) {
 	t.Run("standard_glob", func(t *testing.T) {
 		result, err := LoadContent([]string{
 			filepath.Join(testDataDir, "*.go"),
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "func TestFunc1")
@@ -118,7 +118,7 @@ func TestLoadContent(t *testing.T) {
 	t.Run("directory_recursive", func(t *testing.T) {
 		result, err := LoadContent([]string{
 			filepath.Join(testDataDir, "nested"),
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package nested")
@@ -130,7 +130,7 @@ func TestLoadContent(t *testing.T) {
 	t.Run("go_style_recursive_go_files", func(t *testing.T) {
 		// construct the path properly to avoid linter warnings about path separators
 		goStylePath := testDataDir + "/.../*.go"
-		result, err := LoadContent([]string{goStylePath})
+		result, err := LoadContent([]string{goStylePath}, nil)
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package testdata")
@@ -144,7 +144,7 @@ func TestLoadContent(t *testing.T) {
 	t.Run("go_style_recursive_all", func(t *testing.T) {
 		// construct the path properly to avoid linter warnings about path separators
 		goStylePath := testDataDir + "/..."
-		result, err := LoadContent([]string{goStylePath})
+		result, err := LoadContent([]string{goStylePath}, nil)
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package testdata")
@@ -165,7 +165,7 @@ func TestLoadContent(t *testing.T) {
 
 		result, err := LoadContent([]string{
 			"**/*.go", // use relative pattern
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package testdata")
@@ -186,7 +186,7 @@ func TestLoadContent(t *testing.T) {
 
 		result, err := LoadContent([]string{
 			"nested/**/*.go", // use relative pattern
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		assert.NotContains(t, result, "package testdata") // should not include root level files
@@ -208,7 +208,7 @@ func TestLoadContent(t *testing.T) {
 		result, err := LoadContent([]string{
 			"**/*.go",  // use relative pattern
 			"**/*.txt", // use relative pattern
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package testdata")
@@ -220,14 +220,14 @@ func TestLoadContent(t *testing.T) {
 
 	// test with empty pattern list
 	t.Run("empty_pattern", func(t *testing.T) {
-		result, err := LoadContent([]string{})
+		result, err := LoadContent([]string{}, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, "", result)
 	})
 
 	// test with non-existent pattern
 	t.Run("non_existent_pattern", func(t *testing.T) {
-		_, err := LoadContent([]string{"non-existent-pattern-*.xyz"})
+		_, err := LoadContent([]string{"non-existent-pattern-*.xyz"}, nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "no files matched the provided patterns")
 	})
@@ -236,7 +236,7 @@ func TestLoadContent(t *testing.T) {
 	t.Run("invalid_directory", func(t *testing.T) {
 		// construct the path properly to avoid linter warnings about path separators
 		invalidPath := filepath.Join(testDataDir, "non-existent-dir") + "/..."
-		_, err := LoadContent([]string{invalidPath})
+		_, err := LoadContent([]string{invalidPath}, nil)
 		assert.Error(t, err)
 	})
 
@@ -252,7 +252,7 @@ func TestLoadContent(t *testing.T) {
 		result, err := LoadContent([]string{
 			filepath.Join(testDataDir, "*.go"), // standard glob
 			nestedPath,                         // go-style recursive
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		// now change to testDataDir for the bash-style pattern
@@ -260,7 +260,7 @@ func TestLoadContent(t *testing.T) {
 		require.NoError(t, err)
 
 		// add content from bash-style pattern
-		txtContent, err := LoadContent([]string{"**/*.txt"})
+		txtContent, err := LoadContent([]string{"**/*.txt"}, nil)
 		require.NoError(t, err)
 
 		// return to original directory
@@ -275,6 +275,55 @@ func TestLoadContent(t *testing.T) {
 		assert.Contains(t, result, "package deep")
 		assert.Contains(t, result, "This is a text file for testing")
 		assert.Contains(t, result, "This is another text file for testing")
+	})
+
+	// test with exclude patterns
+	t.Run("exclude_patterns", func(t *testing.T) {
+		// test excluding specific files
+		result, err := LoadContent([]string{
+			filepath.Join(testDataDir, "..."), // all files
+		}, []string{
+			"**/*.txt", // exclude all text files
+		})
+		require.NoError(t, err)
+
+		// should contain go files but not txt files
+		assert.Contains(t, result, "package testdata")
+		assert.Contains(t, result, "package nested")
+		assert.Contains(t, result, "package deep")
+		assert.NotContains(t, result, "This is a text file for testing")
+		assert.NotContains(t, result, "This is another text file for testing")
+
+		// test excluding directories
+		result, err = LoadContent([]string{
+			filepath.Join(testDataDir, "..."), // all files
+		}, []string{
+			"**/nested/**", // exclude all files in nested directory and its subdirectories
+		})
+		require.NoError(t, err)
+
+		// should contain root level files but not nested directory files
+		assert.Contains(t, result, "package testdata")
+		assert.Contains(t, result, "This is a text file for testing")
+		assert.NotContains(t, result, "package nested")
+		assert.NotContains(t, result, "package deep")
+		assert.NotContains(t, result, "This is another text file for testing")
+
+		// test multiple exclude patterns
+		result, err = LoadContent([]string{
+			filepath.Join(testDataDir, "..."), // all files
+		}, []string{
+			"**/*.txt",        // exclude text files
+			"**/deep/**/*.go", // exclude go files in deep directory
+		})
+		require.NoError(t, err)
+
+		// should contain some go files but not txt files or deep go files
+		assert.Contains(t, result, "package testdata")
+		assert.Contains(t, result, "package nested")
+		assert.NotContains(t, result, "package deep")
+		assert.NotContains(t, result, "This is a text file for testing")
+		assert.NotContains(t, result, "This is another text file for testing")
 	})
 }
 
@@ -400,5 +449,50 @@ func TestProcessPatterns(t *testing.T) {
 		assert.Contains(t, result, "// file:") // Both Go and txt files use // comments in our impl
 		assert.Contains(t, result, "package testdata")
 		assert.Contains(t, result, "This is a text file for testing")
+	})
+
+	// test applyExcludePatterns
+	t.Run("applyExcludePatterns", func(t *testing.T) {
+		// create a map of matched files
+		matchedFiles := map[string]struct{}{
+			filepath.Join(testDataDir, "test1.go"):                   {},
+			filepath.Join(testDataDir, "test2.txt"):                  {},
+			filepath.Join(testDataDir, "nested", "test3.go"):         {},
+			filepath.Join(testDataDir, "nested", "test5.txt"):        {},
+			filepath.Join(testDataDir, "nested", "deep", "test4.go"): {},
+		}
+
+		// test excluding by extension
+		excludePatterns := []string{"**/*.txt"}
+		filtered := applyExcludePatterns(matchedFiles, excludePatterns)
+		assert.Equal(t, 3, len(filtered), "Should have 3 files after excluding *.txt")
+		_, hasGo1 := filtered[filepath.Join(testDataDir, "test1.go")]
+		assert.True(t, hasGo1, "Should have test1.go")
+		_, hasTxt := filtered[filepath.Join(testDataDir, "test2.txt")]
+		assert.False(t, hasTxt, "Should not have test2.txt")
+
+		// test excluding by directory
+		excludePatterns = []string{"**/nested/**"}
+		filtered = applyExcludePatterns(matchedFiles, excludePatterns)
+		assert.Equal(t, 2, len(filtered), "Should have 2 files after excluding nested directory")
+		_, hasNested := filtered[filepath.Join(testDataDir, "nested", "test3.go")]
+		assert.False(t, hasNested, "Should not have nested/test3.go")
+
+		// test multiple exclude patterns
+		excludePatterns = []string{"**/*.txt", "**/deep/**"}
+		filtered = applyExcludePatterns(matchedFiles, excludePatterns)
+		assert.Equal(t, 2, len(filtered), "Should have 2 files after excluding *.txt and deep directory")
+		_, hasDeep := filtered[filepath.Join(testDataDir, "nested", "deep", "test4.go")]
+		assert.False(t, hasDeep, "Should not have nested/deep/test4.go")
+		_, hasNestedGo := filtered[filepath.Join(testDataDir, "nested", "test3.go")]
+		assert.True(t, hasNestedGo, "Should still have nested/test3.go")
+
+		// test no exclude patterns
+		filtered = applyExcludePatterns(matchedFiles, nil)
+		assert.Equal(t, len(matchedFiles), len(filtered), "Should have all files when no exclude patterns")
+
+		// test empty exclude patterns
+		filtered = applyExcludePatterns(matchedFiles, []string{})
+		assert.Equal(t, len(matchedFiles), len(filtered), "Should have all files when empty exclude patterns")
 	})
 }

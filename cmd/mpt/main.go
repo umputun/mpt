@@ -26,15 +26,16 @@ type Opts struct {
 	Google          GoogleOpts             `group:"google" namespace:"google" env-namespace:"GOOGLE"`
 	CustomProviders []CustomOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
 
-	Prompt  string   `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
-	Files   []string `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
-	Timeout int      `short:"t" long:"timeout" description:"timeout in seconds" default:"60"`
+	Prompt   string   `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
+	Files    []string `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
+	Excludes []string `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
+	Timeout  int      `short:"t" long:"timeout" description:"timeout in seconds" default:"60"`
 
 	// common options
-	Debug    bool `long:"dbg" env:"DEBUG" description:"debug mode"`
-	Verbose  bool `short:"v" long:"verbose" description:"verbose output, shows prompt sent to models"`
-	Version  bool `short:"V" long:"version" description:"show version info"`
-	NoColor  bool `long:"no-color" env:"NO_COLOR" description:"disable color output"`
+	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
+	Verbose bool `short:"v" long:"verbose" description:"verbose output, shows prompt sent to models"`
+	Version bool `short:"V" long:"version" description:"show version info"`
+	NoColor bool `long:"no-color" env:"NO_COLOR" description:"disable color output"`
 }
 
 // OpenAIOpts defines options for OpenAI provider
@@ -78,9 +79,9 @@ var osExit = os.Exit
 
 func main() {
 	if err := run(); err != nil {
-		// Log the error with detailed info for debugging
+		// log the error with detailed info for debugging
 		lgr.Printf("[ERROR] %v", err)
-		// Print a user-friendly error message to stderr
+		// print a user-friendly error message to stderr
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(1)
 	}
@@ -145,7 +146,10 @@ func run() error {
 	// load files if specified and append to prompt
 	if len(opts.Files) > 0 {
 		lgr.Printf("[DEBUG] loading files from patterns: %v", opts.Files)
-		fileContent, err := files.LoadContent(opts.Files)
+		if len(opts.Excludes) > 0 {
+			lgr.Printf("[DEBUG] excluding patterns: %v", opts.Excludes)
+		}
+		fileContent, err := files.LoadContent(opts.Files, opts.Excludes)
 		if err != nil {
 			return fmt.Errorf("failed to load files: %w", err)
 		}
@@ -209,7 +213,7 @@ func run() error {
 	if opts.Verbose {
 		showVerbosePrompt(os.Stdout, opts)
 	}
-	
+
 	// run the prompt
 	result, err := r.Run(ctx, opts.Prompt)
 	if err != nil {
@@ -220,7 +224,6 @@ func run() error {
 	fmt.Println(strings.TrimSpace(result))
 	return nil
 }
-
 
 // showVerbosePrompt displays the prompt text that will be sent to the models
 func showVerbosePrompt(w io.Writer, opts Opts) {

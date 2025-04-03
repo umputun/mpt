@@ -135,6 +135,8 @@ mpt --custom.name "LocalLLM" --custom.url "http://localhost:1234/v1" \
                       - Directories (traversed recursively)
                       - Bash-style recursive patterns like "**/*.go" or "pkg/**/*.js"
                       - Go-style recursive patterns like "pkg/..." or "cmd/.../*.go"
+-x, --exclude         Patterns to exclude from file matching (can be used multiple times)
+                      Uses the same pattern syntax as --file
 -t, --timeout         Timeout in seconds (default: 60)
 -v, --verbose         Verbose output, shows the complete prompt sent to models
 --dbg                 Enable debug mode
@@ -225,6 +227,9 @@ mpt --openai.enabled --prompt "Document this API" --file "pkg/..." --file "*.md"
 
 # Show the prompt that's being sent to the models
 mpt --anthropic.enabled --prompt "Explain this code" --file "*.go" -v
+
+# Include Go files but exclude test files and mocks
+mpt --openai.enabled --prompt "Explain this code" --file "**/*.go" --exclude "**/*_test.go" --exclude "**/mocks/**"
 ```
 
 ### File Content Formatting
