@@ -61,24 +61,24 @@ func TestRun_Flags(t *testing.T) {
 		validateFunc func(*testing.T)
 	}{
 		{
-			name:      "version_flag",
-			args:      []string{"mpt", "--version"},
-			exitCode:  0,
-			setupMock: func() {},
+			name:         "version_flag",
+			args:         []string{"mpt", "--version"},
+			exitCode:     0,
+			setupMock:    func() {},
 			validateFunc: func(t *testing.T) {},
 		},
 		{
-			name:      "help_flag",
-			args:      []string{"mpt", "--help"},
-			exitCode:  0,
-			setupMock: func() {},
+			name:         "help_flag",
+			args:         []string{"mpt", "--help"},
+			exitCode:     0,
+			setupMock:    func() {},
 			validateFunc: func(t *testing.T) {},
 		},
 		{
-			name:      "invalid_flag",
-			args:      []string{"mpt", "--invalid-flag"},
-			exitCode:  1,
-			setupMock: func() {},
+			name:         "invalid_flag",
+			args:         []string{"mpt", "--invalid-flag"},
+			exitCode:     1,
+			setupMock:    func() {},
 			validateFunc: func(t *testing.T) {},
 		},
 	}
@@ -88,8 +88,8 @@ func TestRun_Flags(t *testing.T) {
 			// save original osExit and args, restore after the test
 			oldOsExit := osExit
 			oldArgs := os.Args
-			defer func() { 
-				osExit = oldOsExit 
+			defer func() {
+				osExit = oldOsExit
 				os.Args = oldArgs
 			}()
 
@@ -111,7 +111,7 @@ func TestRun_Flags(t *testing.T) {
 				if r := recover(); r != nil {
 					assert.Equal(t, "os.Exit called", r)
 					assert.Equal(t, tc.exitCode, actualExitCode)
-					
+
 					// run additional validations
 					tc.validateFunc(t)
 				}
@@ -124,15 +124,19 @@ func TestRun_Flags(t *testing.T) {
 	}
 }
 
-func TestContextCancel(t *testing.T) {
-	// Create a mock provider that respects context cancellation
+func TestProviderCancellation(t *testing.T) {
+	// this test directly tests if a provider properly handles context cancellation
+
+	// create a mock provider that blocks until context is canceled
 	mockProvider := &mocks.ProviderMock{
 		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
-			// Check if context is already canceled
-			if ctx.Err() != nil {
+			// block until context is canceled or a long timeout
+			select {
+			case <-ctx.Done():
 				return "", ctx.Err()
+			case <-time.After(10 * time.Second): // this should never happen in the test
+				return "This should never happen", nil
 			}
-			return "Test response", nil
 		},
 		NameFunc: func() string {
 			return "MockProvider"
@@ -141,20 +145,95 @@ func TestContextCancel(t *testing.T) {
 			return true
 		},
 	}
-	
-	// Create a runner with our mock provider
-	r := runner.New(mockProvider)
-	
-	// Create an already canceled context
+
+	// create a context we can cancel
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel it immediately
-	
-	// Try to run with an already canceled context
-	_, err := r.Run(ctx, "test prompt")
-	
-	// Verify we got a context canceled error
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+
+	// start the provider in a goroutine
+	resultCh := make(chan struct {
+		text string
+		err  error
+	})
+
+	go func() {
+		text, err := mockProvider.Generate(ctx, "test prompt")
+		resultCh <- struct {
+			text string
+			err  error
+		}{text, err}
+	}()
+
+	// let it start and then cancel
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+
+	// wait for result with timeout
+	select {
+	case result := <-resultCh:
+		// should have context.Canceled error
+		assert.Error(t, result.err)
+		assert.ErrorIs(t, result.err, context.Canceled)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Test timed out waiting for provider to handle context cancellation")
+	}
+}
+
+// TestRunnerCancellation tests that the runner properly propagates context cancellation
+// to the providers. Note: the runner doesn't return an error, but includes the error in
+// the result text.
+func TestRunnerCancellation(t *testing.T) {
+	doneCh := make(chan struct{})
+
+	// create a mock provider with a Generate function that checks for context cancellation
+	mockProvider := &mocks.ProviderMock{
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			// signal that we've started
+			select {
+			case doneCh <- struct{}{}:
+			default:
+			}
+
+			// block until context is canceled
+			<-ctx.Done()
+			return "", ctx.Err()
+		},
+		NameFunc: func() string {
+			return "TestProvider"
+		},
+		EnabledFunc: func() bool {
+			return true
+		},
+	}
+
+	r := runner.New(mockProvider)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// run in a goroutine and collect the result
+	resultCh := make(chan string, 1)
+	go func() {
+		result, err := r.Run(ctx, "test prompt")
+		assert.NoError(t, err, "Runner.Run should not return an error")
+		resultCh <- result
+	}()
+
+	// wait for generate to start
+	select {
+	case <-doneCh:
+		// generate function has started, now cancel the context
+		cancel()
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Timed out waiting for Generate to start")
+	}
+
+	// wait for result
+	select {
+	case result := <-resultCh:
+		// for a single provider, Runner returns the error as the result text
+		assert.Contains(t, result, "context canceled")
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Timed out waiting for Run to return after cancellation")
+	}
 }
 
 func TestGetPrompt(t *testing.T) {
@@ -262,12 +341,11 @@ func getPromptForTest(opts *Opts, isPiped bool) error {
 
 // MockRunnerTester provides helper functions for testing with mocked providers
 type MockRunnerTester struct {
-	t               *testing.T
-	mockProvider    *mocks.ProviderMock
-	originalArgs    []string
-	originalStdin   *os.File
-	generatedOutput string
-	promptSeen      string
+	t             *testing.T
+	mockProvider  *mocks.ProviderMock
+	originalArgs  []string
+	originalStdin *os.File
+	promptSeen    string
 }
 
 // NewMockRunnerTester creates a new tester with a mock provider
@@ -283,7 +361,7 @@ func NewMockRunnerTester(t *testing.T) *MockRunnerTester {
 			return true
 		},
 	}
-	
+
 	return &MockRunnerTester{
 		t:             t,
 		mockProvider:  mockProvider,
@@ -317,142 +395,143 @@ func (m *MockRunnerTester) Cleanup() {
 }
 
 // CreateTempFileWithContent creates a temporary file with the given content
-func CreateTempFileWithContent(t *testing.T, content string) (string, func()) {
+// Returns the file path and a cleanup function
+func CreateTempFileWithContent(t *testing.T, content string) (filePath string, cleanup func()) {
 	tempDir, err := os.MkdirTemp("", "mpt-test")
 	require.NoError(t, err)
-	
-	filePath := filepath.Join(tempDir, "test.txt")
-	err = os.WriteFile(filePath, []byte(content), 0600)
+
+	filePath = filepath.Join(tempDir, "test.txt")
+	err = os.WriteFile(filePath, []byte(content), 0o600)
 	require.NoError(t, err)
-	
-	cleanup := func() {
+
+	cleanup = func() {
 		os.RemoveAll(tempDir)
 	}
-	
+
 	return filePath, cleanup
 }
 
 func TestRun_WithFileInput(t *testing.T) {
-	// Create test helper
+	// create test helper
 	tester := NewMockRunnerTester(t)
 	defer tester.Cleanup()
-	
-	// Create a temporary file
+
+	// create a temporary file
 	testFilePath, cleanup := CreateTempFileWithContent(t, "Test file content")
 	defer cleanup()
-	
-	// Set up the mock provider to validate the prompt
+
+	// set up the mock provider to validate the prompt
 	tester.MockProviderResponse("Test response", func(prompt string) {
 		assert.Contains(t, prompt, "analyze this")
 		assert.Contains(t, prompt, "Test file content")
 	})
-	
-	// Set command line args
+
+	// set command line args
 	tester.SetupArgs([]string{"mpt", "--prompt", "analyze this", "--file", testFilePath, "--timeout", "1"})
-	
-	// Create a test runner that uses our mock
+
+	// create a test runner that uses our mock
 	testRun := func(ctx context.Context) error {
 		var opts Opts
 		parser := flags.NewParser(&opts, flags.Default)
 		if _, err := parser.Parse(); err != nil {
 			return err
 		}
-		
+
 		if err := getPrompt(&opts); err != nil {
 			return err
 		}
-		
-		// Load file content
+
+		// load file content
 		if len(opts.Files) > 0 {
 			fileContent, err := os.ReadFile(opts.Files[0])
 			if err != nil {
 				return err
 			}
-			
+
 			opts.Prompt += "\n\n" + string(fileContent)
 		}
-		
-		// Skip the normal provider initialization and just use our mock
+
+		// skip the normal provider initialization and just use our mock
 		r := runner.New(tester.mockProvider)
-		
-		// Create timeout context
+
+		// create timeout context
 		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(opts.Timeout)*time.Second)
 		defer cancel()
-		
-		// Run the prompt
+
+		// run the prompt
 		_, err := r.Run(timeoutCtx, opts.Prompt)
 		return err
 	}
-	
-	// Run with a context
+
+	// run with a context
 	err := testRun(context.Background())
 	require.NoError(t, err)
-	
-	// Verify the mock was called properly
+
+	// verify the mock was called properly
 	require.NotEmpty(t, tester.mockProvider.GenerateCalls())
 }
 
 func TestRun_PromptCombination(t *testing.T) {
-	// Create test helper
+	// create test helper
 	tester := NewMockRunnerTester(t)
 	defer tester.Cleanup()
-	
-	// Create a temp file to simulate stdin
+
+	// create a temp file to simulate stdin
 	tmpFile, err := os.CreateTemp("", "stdin")
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
-	// Write content to the temp file
+	// write content to the temp file
 	_, err = tmpFile.WriteString("piped content")
 	require.NoError(t, err)
 	tmpFile.Close()
 
-	// Reopen file for reading and set as stdin
+	// reopen file for reading and set as stdin
 	stdinFile, err := os.Open(tmpFile.Name())
 	require.NoError(t, err)
 	defer stdinFile.Close()
-	
-	// Save original stdin and restore it later
+
+	// save original stdin and restore it later
 	tester.originalStdin = os.Stdin
 	os.Stdin = stdinFile
 
-	// Set up the mock provider to validate the prompt
+	// set up the mock provider to validate the prompt
 	tester.MockProviderResponse("Test response", func(prompt string) {
 		assert.Contains(t, prompt, "cli prompt")
 		assert.Contains(t, prompt, "piped content")
 	})
-	
-	// Set command line args
+
+	// set command line args
 	tester.SetupArgs([]string{"mpt", "--prompt", "cli prompt", "--dbg"})
-	
-	// Create a test runner that uses our mock
+
+	// create a test runner that uses our mock
 	testRun := func(ctx context.Context) error {
 		var opts Opts
 		parser := flags.NewParser(&opts, flags.Default)
 		if _, err := parser.Parse(); err != nil {
 			return err
 		}
-		
+
 		if err := getPrompt(&opts); err != nil {
 			return err
 		}
-		
-		// Skip the normal provider initialization and just use our mock
+
+		// skip the normal provider initialization and just use our mock
 		r := runner.New(tester.mockProvider)
-		
-		// Create timeout context
+
+		// create timeout context
 		timeoutCtx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
-		
-		// Run the prompt
+
+		// run the prompt
 		_, err := r.Run(timeoutCtx, opts.Prompt)
 		return err
 	}
-	
-	// Run with a context
+
+	// run with a context
 	err = testRun(context.Background())
 	require.NoError(t, err)
-	
-	// Verify the mock was called properly
+
+	// verify the mock was called properly
 	require.NotEmpty(t, tester.mockProvider.GenerateCalls())
 }

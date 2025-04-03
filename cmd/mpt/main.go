@@ -79,7 +79,7 @@ var revision = "unknown"
 var osExit = os.Exit
 
 func main() {
-	// Create a context that's canceled when ctrl+c is pressed
+	// create a context that's canceled when ctrl+c is pressed
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
