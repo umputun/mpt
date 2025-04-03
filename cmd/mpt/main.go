@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -78,7 +79,11 @@ var revision = "unknown"
 var osExit = os.Exit
 
 func main() {
-	if err := run(); err != nil {
+	// Create a context that's canceled when ctrl+c is pressed
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	if err := run(ctx); err != nil {
 		// log the error with detailed info for debugging
 		lgr.Printf("[ERROR] %v", err)
 		// print a user-friendly error message to stderr
@@ -88,7 +93,7 @@ func main() {
 }
 
 // run executes the main program logic and returns an error if it fails
-func run() error {
+func run(ctx context.Context) error {
 	var opts Opts
 	parser := flags.NewParser(&opts, flags.Default)
 	if _, err := parser.Parse(); err != nil {
@@ -104,38 +109,28 @@ func run() error {
 		osExit(0)
 	}
 
-	setupLog(opts.Debug) // set up logging
+	var secrets []string
+	if opts.OpenAI.APIKey != "" {
+		secrets = append(secrets, opts.OpenAI.APIKey)
+	}
+	if opts.Anthropic.APIKey != "" {
+		secrets = append(secrets, opts.Anthropic.APIKey)
+	}
+	if opts.Google.APIKey != "" {
+		secrets = append(secrets, opts.Google.APIKey)
+	}
+	if opts.CustomProviders != nil {
+		for _, customOpt := range opts.CustomProviders {
+			if customOpt.APIKey != "" {
+				secrets = append(secrets, customOpt.APIKey)
+			}
+		}
+	}
+	setupLog(opts.Debug, secrets...) // set up logging
 
-	// check if data is being piped in, and append it to the prompt if present
-	stat, _ := os.Stdin.Stat()
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		// data is being piped in
-		scanner := bufio.NewScanner(os.Stdin)
-		var sb strings.Builder
-		for scanner.Scan() {
-			sb.WriteString(scanner.Text())
-			sb.WriteString("\n")
-		}
-		if err := scanner.Err(); err != nil {
-			return fmt.Errorf("error reading from stdin: %w", err)
-		}
-		stdinContent := strings.TrimSpace(sb.String())
-
-		// append stdin to existing prompt if present, or use stdin as prompt
-		if opts.Prompt != "" {
-			opts.Prompt = opts.Prompt + "\n" + stdinContent
-		} else {
-			opts.Prompt = stdinContent
-		}
-	} else if opts.Prompt == "" {
-		// no data piped, no prompt provided, interactive mode
-		fmt.Print("Enter prompt: ")
-		reader := bufio.NewReader(os.Stdin)
-		prompt, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("error reading prompt: %w", err)
-		}
-		opts.Prompt = strings.TrimSpace(prompt)
+	// get prompt from stdin (piped data or interactive input) or command line
+	if err := getPrompt(&opts); err != nil {
+		return fmt.Errorf("failed to get prompt: %w", err)
 	}
 
 	// check if we have a prompt after all attempts
@@ -205,8 +200,8 @@ func run() error {
 	// create runner with all providers
 	r := runner.New(providers...)
 
-	// create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(opts.Timeout)*time.Second)
+	// create timeout context as a child of the passed ctx (which handles interrupts)
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(opts.Timeout)*time.Second)
 	defer cancel()
 
 	// show prompt in verbose mode
@@ -215,8 +210,11 @@ func run() error {
 	}
 
 	// run the prompt
-	result, err := r.Run(ctx, opts.Prompt)
+	result, err := r.Run(timeoutCtx, opts.Prompt)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return fmt.Errorf("operation canceled by user")
+		}
 		return fmt.Errorf("failed to run prompt: %w", err)
 	}
 
@@ -239,6 +237,41 @@ func showVerbosePrompt(w io.Writer, opts Opts) {
 		fmt.Fprintln(w, headerColor.Sprint("============================"))
 	}
 	fmt.Fprintln(w)
+}
+
+// getPrompt handles reading the prompt from stdin (piped or interactive) or command line
+func getPrompt(opts *Opts) error {
+	stat, _ := os.Stdin.Stat()
+	if (stat.Mode() & os.ModeCharDevice) == 0 {
+		// data is being piped in
+		scanner := bufio.NewScanner(os.Stdin)
+		var sb strings.Builder
+		for scanner.Scan() {
+			sb.WriteString(scanner.Text())
+			sb.WriteString("\n")
+		}
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("error reading from stdin: %w", err)
+		}
+		stdinContent := strings.TrimSpace(sb.String())
+
+		// append stdin to existing prompt if present, or use stdin as prompt
+		if opts.Prompt != "" {
+			opts.Prompt = opts.Prompt + "\n" + stdinContent
+		} else {
+			opts.Prompt = stdinContent
+		}
+	} else if opts.Prompt == "" {
+		// no data piped, no prompt provided, interactive mode
+		fmt.Print("Enter prompt: ")
+		reader := bufio.NewReader(os.Stdin)
+		prompt, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("error reading prompt: %w", err)
+		}
+		opts.Prompt = strings.TrimSpace(prompt)
+	}
+	return nil
 }
 
 func setupLog(dbg bool, secs ...string) {
