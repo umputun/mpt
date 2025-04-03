@@ -2,69 +2,64 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-
-	"github.com/umputun/mpt/pkg/provider"
-	"github.com/umputun/mpt/pkg/runner"
-	"github.com/umputun/mpt/pkg/runner/mocks"
 )
 
-func TestServer_handleSampling(t *testing.T) {
-	// Create a mock provider for testing
-	mockProvider := &mocks.ProviderMock{
-		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
-			return "Generated response for: " + prompt, nil
-		},
-		NameFunc: func() string {
-			return "MockProvider"
-		},
-		EnabledFunc: func() bool {
-			return true
-		},
+// MockRunner mocks the runner.Runner interface for testing
+type MockRunner struct{}
+
+func (mr *MockRunner) Run(ctx context.Context, prompt string) (string, error) {
+	if prompt == "error" {
+		return "", errors.New("test error")
+	}
+	return "Generated response for: " + prompt, nil
+}
+
+func TestServer_handleGenerateTool(t *testing.T) {
+	// create a server with our mock runner
+	srv := &Server{
+		runner: &MockRunner{},
 	}
 
-	// Create runner with the mock provider
-	r := runner.New(mockProvider)
+	// test with valid prompt
+	request := mcp.CallToolRequest{}
+	request.Params.Arguments = map[string]interface{}{
+		"prompt": "Test prompt",
+	}
 
-	// Create MCP server
-	server := NewServer(r, ServerOptions{
-		Name:    "Test Server",
-		Version: "1.0.0",
-	})
-
-	// Basic test for handleSampling
-	result, err := server.handleSampling(context.Background(), mcp.SampleModelParams{
-		Prompt: mcp.UserMessageParams{
-			Content: "Test prompt",
-		},
-	})
-
+	result, err := srv.handleGenerateTool(context.Background(), request)
 	require.NoError(t, err)
-	assert.Contains(t, result.Content, "Generated response for: Test prompt")
 
-	// Test with resource
-	result, err = server.handleSampling(context.Background(), mcp.SampleModelParams{
-		Prompt: mcp.UserMessageParams{
-			Content: "Test prompt with resource",
-		},
-		Resources: []mcp.Resource{
-			{
-				Data:     "This is a test file content",
-				MimeType: "text/plain",
-				Metadata: map[string]interface{}{
-					"type": "file",
-					"path": "test.txt",
-				},
-			},
-		},
-	})
+	// check that there's at least one content item
+	require.NotEmpty(t, result.Content)
 
-	require.NoError(t, err)
-	assert.Contains(t, result.Content, "Generated response for:")
-	assert.Contains(t, mockProvider.GenerateCalls()[1].Prompt, "test.txt")
+	// since we're using NewToolResultText, the first content should be TextContent
+	textContent, ok := result.Content[0].(mcp.TextContent)
+	require.True(t, ok, "Expected TextContent")
+
+	// check the content of the text
+	assert.Contains(t, textContent.Text, "Generated response for: Test prompt")
+
+	// test with missing prompt parameter
+	request = mcp.CallToolRequest{}
+	request.Params.Arguments = map[string]interface{}{}
+
+	_, err = srv.handleGenerateTool(context.Background(), request)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "missing required 'prompt' parameter")
+
+	// test with wrong prompt type
+	request = mcp.CallToolRequest{}
+	request.Params.Arguments = map[string]interface{}{
+		"prompt": 123, // not a string
+	}
+
+	_, err = srv.handleGenerateTool(context.Background(), request)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "'prompt' parameter must be a string")
 }

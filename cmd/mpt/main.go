@@ -115,12 +115,12 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	// Check if running in MCP server mode
+	// check if running in MCP server mode
 	if opts.MCP.Server {
 		return runMCPServer(ctx, opts)
 	}
 
-	// Standard MPT mode
+	// standard MPT mode
 	// setup logging and process input
 	if err := setupLoggingAndProcessInput(opts); err != nil {
 		return err
@@ -134,21 +134,21 @@ func run(ctx context.Context) error {
 }
 
 // runMCPServer starts MPT in MCP server mode
-func runMCPServer(ctx context.Context, opts *Opts) error {
-	// Setup logging with API keys as secrets
+func runMCPServer(_ context.Context, opts *Opts) error {
+	// setup logging with API keys as secrets
 	secrets := collectSecrets(opts)
 	setupLog(opts.Debug, secrets...)
 
-	// Initialize all providers
+	// initialize all providers
 	providers := initializeProviders(opts)
 	if len(providers) == 0 {
 		return fmt.Errorf("no providers enabled for MCP server mode")
 	}
 
-	// Create runner with all providers
+	// create runner with all providers
 	r := runner.New(providers...)
 
-	// Create MCP server using our runner
+	// create MCP server using our runner
 	mcpServer := mcp.NewServer(r, mcp.ServerOptions{
 		Name:    opts.MCP.ServerName,
 		Version: revision,
@@ -156,13 +156,13 @@ func runMCPServer(ctx context.Context, opts *Opts) error {
 
 	lgr.Printf("[INFO] MCP server initialized with %d providers", len(providers))
 	lgr.Printf("[INFO] server name: %s, version: %s", opts.MCP.ServerName, revision)
-	
-	// Print enabled providers
+
+	// print enabled providers
 	for _, p := range providers {
 		lgr.Printf("[INFO] enabled provider: %s", p.Name())
 	}
 
-		// Start the MCP server
+	// start the MCP server
 	lgr.Printf("[INFO] starting MPT in MCP server mode with stdio transport")
 	return mcpServer.Start()
 }
