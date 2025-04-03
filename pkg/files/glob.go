@@ -296,7 +296,7 @@ func shouldExcludeFile(filePath, cwd string, excludePatterns []string, patternEx
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -311,42 +311,42 @@ func matchesPattern(pattern, filePath, relPath string) bool {
 		}
 		return matched
 	}
-	
+
 	// handle Go-style recursive patterns
 	if strings.Contains(pattern, "/...") {
 		return matchesGoStylePattern(pattern, filePath)
 	}
-	
+
 	// handle standard glob patterns
 	matched, err := filepath.Match(pattern, filepath.Base(filePath))
 	if err != nil {
 		lgr.Printf("[WARN] error matching exclude pattern %s: %v", pattern, err)
 		return false
 	}
-	
+
 	return matched
 }
 
 // matchesGoStylePattern checks if a file matches a Go-style recursive pattern
 func matchesGoStylePattern(pattern, filePath string) bool {
 	basePath, filter := parseRecursivePattern(pattern)
-	
+
 	// check if the file is under the base path
 	if !strings.HasPrefix(filePath, basePath) {
 		return false
 	}
-	
+
 	// if there's no filter, exclude all files under basePath
 	if filter == "" {
 		return true
 	}
-	
+
 	// extension filter
 	if strings.HasPrefix(filter, "*.") {
 		ext := filter[1:] // remove * prefix
 		return strings.HasSuffix(filePath, ext)
 	}
-	
+
 	// standard glob pattern for filename
 	matched, _ := filepath.Match(filter, filepath.Base(filePath))
 	return matched

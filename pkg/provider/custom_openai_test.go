@@ -13,10 +13,10 @@ import (
 
 func TestCustomOpenAI_Name(t *testing.T) {
 	provider := NewCustomOpenAI(CustomOptions{
-		Name:     "TestProvider",
-		BaseURL:  "http://example.com",
-		Model:    "test-model",
-		Enabled:  true,
+		Name:    "TestProvider",
+		BaseURL: "http://example.com",
+		Model:   "test-model",
+		Enabled: true,
 	})
 	assert.Equal(t, "TestProvider", provider.Name())
 }
@@ -30,36 +30,36 @@ func TestCustomOpenAI_Enabled(t *testing.T) {
 		{
 			name: "disabled without base URL",
 			options: CustomOptions{
-				BaseURL:  "",
-				Model:    "test-model",
-				Enabled:  true,
+				BaseURL: "",
+				Model:   "test-model",
+				Enabled: true,
 			},
 			expected: false,
 		},
 		{
 			name: "disabled without model",
 			options: CustomOptions{
-				BaseURL:  "http://example.com",
-				Model:    "",
-				Enabled:  true,
+				BaseURL: "http://example.com",
+				Model:   "",
+				Enabled: true,
 			},
 			expected: false,
 		},
 		{
 			name: "disabled explicitly",
 			options: CustomOptions{
-				BaseURL:  "http://example.com",
-				Model:    "test-model",
-				Enabled:  false,
+				BaseURL: "http://example.com",
+				Model:   "test-model",
+				Enabled: false,
 			},
 			expected: false,
 		},
 		{
 			name: "enabled with base URL and model",
 			options: CustomOptions{
-				BaseURL:  "http://example.com",
-				Model:    "test-model",
-				Enabled:  true,
+				BaseURL: "http://example.com",
+				Model:   "test-model",
+				Enabled: true,
 			},
 			expected: true,
 		},

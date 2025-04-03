@@ -9,7 +9,7 @@ import (
 
 // CustomOpenAI implements Provider interface for OpenAI-compatible providers
 type CustomOpenAI struct {
-	name      string     // custom provider name
+	name      string // custom provider name
 	client    *openai.Client
 	model     string
 	enabled   bool

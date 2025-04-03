@@ -23,7 +23,7 @@ func NewOpenAI(opts Options) *OpenAI {
 	}
 
 	client := openai.NewClient(opts.APIKey)
-	
+
 	// set default max tokens if not specified
 	maxTokens := opts.MaxTokens
 	if maxTokens <= 0 {
