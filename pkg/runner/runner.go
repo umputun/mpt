@@ -61,8 +61,22 @@ func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
 	}()
 
 	// collect results
-	resultParts := make([]string, 0, len(r.providers))
+	results := make([]provider.Result, 0, len(r.providers))
 	for result := range resultCh {
+		results = append(results, result)
+	}
+
+	// for single provider skip the header
+	if len(r.providers) == 1 && len(results) == 1 {
+		if results[0].Error != nil {
+			return fmt.Sprintf("%v", results[0].Error), nil
+		}
+		return results[0].Text, nil
+	}
+
+	// for multiple providers include headers
+	resultParts := make([]string, 0, len(results))
+	for _, result := range results {
 		resultParts = append(resultParts, result.Format())
 	}
 

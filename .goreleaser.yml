@@ -1,8 +1,8 @@
-project_name: unfuck-ai-comments
+project_name: mpt
 dist: .bin
 builds:
-  - id: unfuck-ai-comments
-    binary: "unfuck-ai-comments"
+  - id: mpt
+    binary: "mpt"
     env:
       - CGO_ENABLED=0
     goos:
@@ -46,7 +46,7 @@ archives:
 
 brews:
   -
-    name: unfuck-ai-comments
+    name: mpt
     tap:
       owner: umputun
       name: homebrew-apps
@@ -55,8 +55,8 @@ brews:
       name: umputun
       email: umputun@gmail.com
     commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
-    homepage: "https://unfuck-ai-comments.umputun.dev"
-    description: "unfuck-ai-comments is a tool that converts all comments inside Go functions to lowercase"
+    homepage: "https://github.com/umputun/mpt"
+    description: "MPT is a command-line utility that sends prompts to multiple AI language model providers in parallel and combines the results"
     license: "MIT"
 
 nfpms:
@@ -64,9 +64,9 @@ nfpms:
     package_name: unfuck-ai-comments
     file_name_template: "{{.ProjectName}}_{{.Tag}}_{{.Os}}_{{.Arch}}"
     vendor: Umputun
-    homepage: https://unfuck-ai-comments.umputun.dev
+    homepage: https://github.com/umputun/mpt
     maintainer: Umputun <umputun@gmail.com>
-    description: unfuck-ai-comments is a tool that converts all comments inside Go functions to lowercase
+    description: MPT is a command-line utility that sends prompts to multiple AI language model providers in parallel and combines the results
     license: MIT
     formats:
       - deb
