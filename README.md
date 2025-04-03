@@ -1,4 +1,4 @@
-# MPT - Multi-Provider Tool for AI Language Models
+# MPT - multi-provider tool for LLMs
 
 [![Build Status](https://github.com/umputun/mpt/actions/workflows/ci.yml/badge.svg)](https://github.com/umputun/mpt/actions/workflows/ci.yml)
 [![Coverage Status](https://coveralls.io/repos/github/umputun/mpt/badge.svg?branch=master)](https://coveralls.io/github/umputun/mpt?branch=master)
