@@ -32,9 +32,10 @@ type Opts struct {
 	Timeout int      `short:"t" long:"timeout" description:"timeout in seconds" default:"60"`
 
 	// common options
-	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
-	Version bool `short:"V" long:"version" description:"show version info"`
-	NoColor bool `long:"no-color" env:"NO_COLOR" description:"disable color output"`
+	Debug    bool `long:"dbg" env:"DEBUG" description:"debug mode"`
+	Verbose  bool `short:"v" long:"verbose" description:"verbose output, shows prompt sent to models"`
+	Version  bool `short:"V" long:"version" description:"show version info"`
+	NoColor  bool `long:"no-color" env:"NO_COLOR" description:"disable color output"`
 }
 
 // OpenAIOpts defines options for OpenAI provider
@@ -202,6 +203,11 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(opts.Timeout)*time.Second)
 	defer cancel()
 
+	// show prompt in verbose mode
+	if opts.Verbose {
+		showVerbosePrompt(os.Stdout, opts)
+	}
+	
 	// run the prompt
 	result, err := r.Run(ctx, opts.Prompt)
 	if err != nil {
@@ -444,6 +450,22 @@ func getFileHeader(filePath string) string {
 	default:
 		return fmt.Sprintf("// file: %s\n", filePath)
 	}
+}
+
+// showVerbosePrompt displays the prompt text that will be sent to the models
+func showVerbosePrompt(w io.Writer, opts Opts) {
+	// use colored output if not disabled
+	if opts.NoColor {
+		fmt.Fprintln(w, "=== Prompt sent to models ===")
+		fmt.Fprintln(w, opts.Prompt)
+		fmt.Fprintln(w, "============================")
+	} else {
+		headerColor := color.New(color.FgCyan, color.Bold)
+		fmt.Fprintln(w, headerColor.Sprint("=== Prompt sent to models ==="))
+		fmt.Fprintln(w, opts.Prompt)
+		fmt.Fprintln(w, headerColor.Sprint("============================"))
+	}
+	fmt.Fprintln(w)
 }
 
 func setupLog(dbg bool, secs ...string) {

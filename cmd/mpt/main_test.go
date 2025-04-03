@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -28,9 +29,9 @@ func TestSetupLog(t *testing.T) {
 
 func TestParseRecursivePattern(t *testing.T) {
 	testCases := []struct {
-		pattern    string
-		basePath   string
-		filter     string
+		pattern  string
+		basePath string
+		filter   string
 	}{
 		{"pkg/...", "pkg", ""},
 		{"cmd/.../*.go", "cmd", "*.go"},
@@ -38,7 +39,7 @@ func TestParseRecursivePattern(t *testing.T) {
 		{"./.../cmd/*.go", ".", "cmd/*.go"},
 		{"src/.../*.{go,js}", "src", "*.{go,js}"},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.pattern, func(t *testing.T) {
 			basePath, filter := parseRecursivePattern(tc.pattern)
@@ -104,7 +105,7 @@ func TestLoadFiles(t *testing.T) {
 	assert.Contains(t, result, "package main")
 	assert.Contains(t, result, "def hello():")
 	assert.Contains(t, result, "<h1>Hello world</h1>")
-	
+
 	// verify comment styles for each file type
 	assert.Contains(t, result, "// file:")
 	assert.Contains(t, result, "# file:")
@@ -118,6 +119,33 @@ func TestLoadFiles(t *testing.T) {
 	result, err = loadFiles([]string{})
 	assert.NoError(t, err)
 	assert.Equal(t, "", result)
+}
+
+func TestVerboseOutput(t *testing.T) {
+	// create a buffer to capture output
+	var buf bytes.Buffer
+
+	// create test options with verbose flag
+	opts := Opts{
+		Prompt:  "test prompt",
+		Verbose: true,
+	}
+
+	// test that verbose output prints the prompt
+	showVerbosePrompt(&buf, opts)
+
+	output := buf.String()
+	assert.Contains(t, output, "=== Prompt sent to models ===")
+	assert.Contains(t, output, "test prompt")
+
+	// test with NoColor option
+	buf.Reset()
+	opts.NoColor = true
+	showVerbosePrompt(&buf, opts)
+
+	output = buf.String()
+	assert.Contains(t, output, "=== Prompt sent to models ===")
+	assert.Contains(t, output, "test prompt")
 }
 
 func TestRun_VersionFlag(t *testing.T) {

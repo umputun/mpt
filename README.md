@@ -135,6 +135,7 @@ mpt --custom.name "LocalLLM" --custom.url "http://localhost:1234/v1" \
                       - Directories (traversed recursively)
                       - Go-style recursive patterns like "pkg/..." or "cmd/.../*.go"
 -t, --timeout         Timeout in seconds (default: 60)
+-v, --verbose         Verbose output, shows the complete prompt sent to models
 --dbg                 Enable debug mode
 -V, --version         Show version information
 --no-color            Disable color output
@@ -212,6 +213,9 @@ mpt --anthropic.enabled --prompt "Explain this codebase" --file "**/*.go" --file
 
 # Include all code files from pkg and documentation
 mpt --openai.enabled --prompt "Document this API" --file "pkg/..." --file "*.md"
+
+# Show the prompt that's being sent to the models
+mpt --anthropic.enabled --prompt "Explain this code" --file "*.go" -v
 ```
 
 ### File Content Formatting
