@@ -129,6 +129,11 @@ mpt --custom.name "LocalLLM" --custom.url "http://localhost:1234/v1" \
 
 ```
 -p, --prompt          Prompt text to send to providers (required)
+-f, --file            Files or glob patterns to include in the prompt context (can be used multiple times)
+                      Supports:
+                      - Standard glob patterns like "*.go" or "cmd/*.js"
+                      - Directories (traversed recursively)
+                      - Go-style recursive patterns like "pkg/..." or "cmd/.../*.go"
 -t, --timeout         Timeout in seconds (default: 60)
 --dbg                 Enable debug mode
 -V, --version         Show version information
@@ -150,6 +155,95 @@ mpt --openai.enabled --anthropic.enabled --google.enabled \
 Combining prompt flag with piped input:
 ```
 git diff HEAD~1 | mpt --openai.enabled --prompt "Analyze this git diff and suggest improvements"
+```
+
+Including files in the prompt context:
+```
+mpt --anthropic.enabled --prompt "Explain this code" --file "*.go" --file "*.md"
+```
+
+Including entire directories recursively:
+```
+mpt --openai.enabled --prompt "Explain the architecture of this project" --file "cmd/" --file "pkg/"
+```
+
+Using Go-style recursive patterns:
+```
+mpt --anthropic.enabled --prompt "Find bugs in my Go code" --file "pkg/..." --file "cmd/.../*.go"
+```
+
+### File Pattern Reference
+
+MPT supports several types of file patterns for the `--file` flag:
+
+1. **Specific Files**
+   ```
+   --file "README.md"              # A single file
+   --file "Makefile"               # Another single file
+   ```
+
+2. **Standard Glob Patterns**
+   ```
+   --file "*.go"                   # All Go files in current directory
+   --file "cmd/*.go"               # All Go files in cmd directory
+   --file "pkg/*_test.go"          # All Go test files in pkg directory
+   --file "**/*.js"                # All JavaScript files in any directory (bash expansion)
+   ```
+
+3. **Directories (Recursive)**
+   ```
+   --file "cmd/"                   # All files in cmd/ directory and subdirectories
+   --file "pkg/api/"               # All files in pkg/api/ directory and subdirectories
+   ```
+
+4. **Go-style Recursive Patterns**
+   ```
+   --file "pkg/..."                # All files in pkg/ directory and subdirectories
+   --file "./..."                  # All files in current directory and subdirectories
+   --file "cmd/.../*.go"           # All Go files in cmd/ directory and subdirectories
+   --file "pkg/.../*_test.go"      # All test files in pkg/ directory and subdirectories
+   ```
+
+When multiple patterns are provided, all matching files are included in the prompt context:
+
+```
+# Include all Go files and all markdown files
+mpt --anthropic.enabled --prompt "Explain this codebase" --file "**/*.go" --file "*.md"
+
+# Include all code files from pkg and documentation
+mpt --openai.enabled --prompt "Document this API" --file "pkg/..." --file "*.md"
+```
+
+### File Content Formatting
+
+When files are included in the prompt, they are formatted with appropriate language-specific comment markers to identify each file:
+
+```
+// file: cmd/mpt/main.go
+package main
+
+import (
+    "fmt"
+)
+
+# file: README.md
+# MPT - Multi-Provider Tool
+
+<!-- file: webpage.html -->
+<html>
+<body>
+<h1>Hello World</h1>
+</body>
+</html>
+```
+
+This makes it easier for the LLM to understand where one file ends and another begins, as well as to identify the file types.
+
+Complex example with files and piped input:
+```
+find . -name "*.go" -exec grep -l "TODO" {} \; | mpt --openai.enabled \
+    --prompt "Find TODOs in my codebase and prioritize them" \
+    --file "README.md" --file "CONTRIBUTING.md"
 ```
 
 ### Why Combine Inputs?
