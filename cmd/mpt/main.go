@@ -22,10 +22,10 @@ import (
 
 // Opts with all CLI options
 type Opts struct {
-	OpenAI          OpenAIOpts             `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
-	Anthropic       AnthropicOpts          `group:"anthropic" namespace:"anthropic" env-namespace:"ANTHROPIC"`
-	Google          GoogleOpts             `group:"google" namespace:"google" env-namespace:"GOOGLE"`
-	CustomProviders []CustomOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
+	OpenAI          OpenAIOpts                      `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
+	Anthropic       AnthropicOpts                   `group:"anthropic" namespace:"anthropic" env-namespace:"ANTHROPIC"`
+	Google          GoogleOpts                      `group:"google" namespace:"google" env-namespace:"GOOGLE"`
+	CustomProviders map[string]CustomOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
 
 	Prompt   string   `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
 	Files    []string `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
@@ -95,6 +95,10 @@ func main() {
 // run executes the main program logic and returns an error if it fails
 func run(ctx context.Context) error {
 	var opts Opts
+
+	// initialize the custom providers map
+	opts.CustomProviders = make(map[string]CustomOpenAIProvider)
+
 	parser := flags.NewParser(&opts, flags.Default)
 	if _, err := parser.Parse(); err != nil {
 		var flagsErr *flags.Error
@@ -181,7 +185,7 @@ func run(ctx context.Context) error {
 	providers := []provider.Provider{openaiProvider, anthropicProvider, googleProvider}
 
 	// add custom providers
-	for _, customOpt := range opts.CustomProviders {
+	for providerID, customOpt := range opts.CustomProviders {
 		if customOpt.Enabled {
 			customProvider := provider.NewCustomOpenAI(provider.CustomOptions{
 				Name:      customOpt.Name,
@@ -192,8 +196,8 @@ func run(ctx context.Context) error {
 				MaxTokens: customOpt.MaxTokens,
 			})
 			providers = append(providers, customProvider)
-			lgr.Printf("[INFO] added custom provider: %s, URL: %s, model: %s",
-				customOpt.Name, customOpt.URL, customOpt.Model)
+			lgr.Printf("[INFO] added custom provider: %s (id: %s), URL: %s, model: %s",
+				customOpt.Name, providerID, customOpt.URL, customOpt.Model)
 		}
 	}
 

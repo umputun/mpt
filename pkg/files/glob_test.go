@@ -392,6 +392,63 @@ func TestProcessPatterns(t *testing.T) {
 		assert.Contains(t, result, "This is a text file for testing")
 	})
 
+	// test getFileHeader function with different file extensions
+	t.Run("getFileHeader", func(t *testing.T) {
+		testCases := []struct {
+			filePath       string
+			expectedHeader string
+		}{
+			// hash-style comments (#)
+			{"file.py", "# file: file.py\n"},
+			{"file.yaml", "# file: file.yaml\n"},
+			{"Makefile", "# file: Makefile\n"},
+
+			// Double-slash comments (//)
+			{"file.go", "// file: file.go\n"},
+			{"file.js", "// file: file.js\n"},
+			{"file.cpp", "// file: file.cpp\n"},
+			{"file.ts", "// file: file.ts\n"},
+
+			// HTML/XML style comments
+			{"file.html", "<!-- file: file.html -->\n"},
+			{"file.xml", "<!-- file: file.xml -->\n"},
+			{"file.vue", "<!-- file: file.vue -->\n"},
+
+			// CSS style comments
+			{"file.css", "/* file: file.css */\n"},
+			{"file.scss", "/* file: file.scss */\n"},
+
+			// SQL comments
+			{"file.sql", "-- file: file.sql\n"},
+
+			// lisp/Clojure comments
+			{"file.clj", ";; file: file.clj\n"},
+
+			// haskell/VHDL comments
+			{"file.hs", "-- file: file.hs\n"},
+
+			// PowerShell comments
+			{"file.ps1", "# file: file.ps1\n"},
+
+			// batch file comments
+			{"file.bat", ":: file: file.bat\n"},
+
+			// fortran comments
+			{"file.f90", "! file: file.f90\n"},
+
+			// default case for unknown extension
+			{"file.unknown", "// file: file.unknown\n"},
+			{"file", "// file: file\n"},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.filePath, func(t *testing.T) {
+				header := getFileHeader(tc.filePath)
+				assert.Equal(t, tc.expectedHeader, header)
+			})
+		}
+	})
+
 	// test applyExcludePatterns
 	t.Run("applyExcludePatterns", func(t *testing.T) {
 		// create a map of matched files
@@ -436,86 +493,86 @@ func TestProcessPatterns(t *testing.T) {
 		filtered = applyExcludePatterns(matchedFiles, []string{})
 		assert.Equal(t, len(matchedFiles), len(filtered), "Should have all files when empty exclude patterns")
 	})
-	
+
 	// test helper functions for pattern matching
 	t.Run("pattern_matching_helpers", func(t *testing.T) {
 		// setup test data
 		cwd, err := os.Getwd()
 		require.NoError(t, err)
-		
+
 		// test matchesPattern function
 		t.Run("matchesPattern", func(t *testing.T) {
 			// bash-style pattern
-			assert.True(t, matchesPattern("**/*.txt", 
-				filepath.Join(testDataDir, "test2.txt"), 
+			assert.True(t, matchesPattern("**/*.txt",
+				filepath.Join(testDataDir, "test2.txt"),
 				filepath.Join("pkg", "files", "testdata", "test2.txt")))
-				
-			assert.False(t, matchesPattern("**/*.go", 
-				filepath.Join(testDataDir, "test2.txt"), 
+
+			assert.False(t, matchesPattern("**/*.go",
+				filepath.Join(testDataDir, "test2.txt"),
 				filepath.Join("pkg", "files", "testdata", "test2.txt")))
-				
+
 			// standard glob pattern
-			assert.True(t, matchesPattern("*.txt", 
-				filepath.Join(testDataDir, "test2.txt"), 
+			assert.True(t, matchesPattern("*.txt",
+				filepath.Join(testDataDir, "test2.txt"),
 				filepath.Join("pkg", "files", "testdata", "test2.txt")))
-				
+
 			// go-style pattern requires a real path, test separately
 		})
-		
+
 		// test matchesGoStylePattern function
 		t.Run("matchesGoStylePattern", func(t *testing.T) {
 			// create test pattern - do not use filepath.Join for patterns with /...
 			goPattern := testDataDir + "/.../*.go"
-			
+
 			// should match go files directly in testDataDir
-			assert.True(t, matchesGoStylePattern(goPattern, 
+			assert.True(t, matchesGoStylePattern(goPattern,
 				filepath.Join(testDataDir, "test1.go")))
-			
+
 			// should match go files in subdirectories
-			assert.True(t, matchesGoStylePattern(goPattern, 
+			assert.True(t, matchesGoStylePattern(goPattern,
 				filepath.Join(testDataDir, "nested", "test3.go")))
-				
+
 			// should not match txt files
-			assert.False(t, matchesGoStylePattern(goPattern, 
+			assert.False(t, matchesGoStylePattern(goPattern,
 				filepath.Join(testDataDir, "test2.txt")))
-				
+
 			// should not match files outside testDataDir
-			assert.False(t, matchesGoStylePattern(goPattern, 
+			assert.False(t, matchesGoStylePattern(goPattern,
 				filepath.Join(cwd, "glob.go")))
-				
+
 			// test pattern with no filter (all files in dir)
 			allFilesPattern := testDataDir + "/..."
-			assert.True(t, matchesGoStylePattern(allFilesPattern, 
+			assert.True(t, matchesGoStylePattern(allFilesPattern,
 				filepath.Join(testDataDir, "test2.txt")))
 		})
-		
+
 		// test shouldExcludeFile function
 		t.Run("shouldExcludeFile", func(t *testing.T) {
 			patternExcludeCount := make(map[string]int)
-			
+
 			// should exclude txt files with bash-style pattern
 			excludePatterns := []string{"**/*.txt"}
 			assert.True(t, shouldExcludeFile(
 				filepath.Join(testDataDir, "test2.txt"),
 				cwd, excludePatterns, patternExcludeCount))
-				
+
 			// should not exclude go files with txt pattern
 			assert.False(t, shouldExcludeFile(
 				filepath.Join(testDataDir, "test1.go"),
 				cwd, excludePatterns, patternExcludeCount))
-				
+
 			// check that counts were incremented
 			assert.Equal(t, 1, patternExcludeCount["**/*.txt"])
-			
+
 			// reset counters
 			patternExcludeCount = make(map[string]int)
-			
+
 			// test with multiple patterns
 			excludePatterns = []string{"**/*.txt", "**/deep/**"}
 			assert.True(t, shouldExcludeFile(
 				filepath.Join(testDataDir, "nested", "deep", "test4.go"),
 				cwd, excludePatterns, patternExcludeCount))
-				
+
 			assert.Equal(t, 1, patternExcludeCount["**/deep/**"])
 		})
 	})

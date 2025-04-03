@@ -391,6 +391,11 @@ func getFileHeader(filePath string) string {
 	ext := filepath.Ext(filePath)
 
 	// define comment styles for different file types
+	// special case for Makefile which has no extension
+	if strings.HasSuffix(filePath, "Makefile") || strings.HasSuffix(filePath, "makefile") {
+		return fmt.Sprintf("# file: %s\n", filePath)
+	}
+
 	switch ext {
 	// hash-style comments (#)
 	case ".py", ".rb", ".pl", ".pm", ".sh", ".bash", ".zsh", ".fish", ".tcl", ".r",

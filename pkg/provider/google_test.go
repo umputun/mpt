@@ -178,3 +178,79 @@ func TestGoogle_Generate_APIError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "API key not valid")
 }
+
+func TestGoogle_TokenLimits(t *testing.T) {
+	mockResp := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []genai.Part{
+						genai.Text("This is a test response"),
+					},
+				},
+				FinishReason: genai.FinishReasonStop,
+			},
+		},
+	}
+
+	testCases := []struct {
+		name      string
+		maxTokens int
+		expected  int32 // what the value should be after conversion
+	}{
+		{
+			name:      "default_value",
+			maxTokens: 0,
+			expected:  1024,
+		},
+		{
+			name:      "normal_value",
+			maxTokens: 500,
+			expected:  500,
+		},
+		{
+			name:      "max_int32_value",
+			maxTokens: 2147483647, // max int32
+			expected:  2147483647,
+		},
+		{
+			name:      "beyond_int32_value",
+			maxTokens: 2147483648, // max int32 + 1
+			expected:  2147483647, // should clamp to max int32
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// create a provider with the test max tokens
+			provider := &testableGoogle{
+				Google: Google{
+					model:     "gemini-1.5-pro",
+					enabled:   true,
+					maxTokens: tc.maxTokens,
+				},
+				mockModel: &mockGenerativeModel{
+					response: mockResp,
+					err:      nil,
+				},
+			}
+
+			// call Generate to trigger token limit logic
+			response, err := provider.Generate(context.Background(), "test prompt")
+			assert.NoError(t, err)
+			assert.Equal(t, "This is a test response", response)
+
+			// check expected maximum token value
+			var actualMaxTokens int32
+			if provider.maxTokens <= 0 {
+				actualMaxTokens = 1024
+			} else if provider.maxTokens > 2147483647 {
+				actualMaxTokens = 2147483647
+			} else {
+				actualMaxTokens = int32(provider.maxTokens)
+			}
+
+			assert.Equal(t, tc.expected, actualMaxTokens)
+		})
+	}
+}

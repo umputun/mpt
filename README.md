@@ -110,22 +110,32 @@ You can provide a prompt in the following ways:
 
 #### Custom OpenAI-Compatible Providers
 
-You can add multiple custom providers that implement the OpenAI-compatible API:
+You can add multiple custom providers that implement the OpenAI-compatible API. Use a unique identifier for each provider:
 
 ```
---custom.name         Name for the custom provider (required)
---custom.url          Base URL for the custom provider API (required)
---custom.api-key      API key for the custom provider (if needed)
---custom.model        Model to use (required)
---custom.enabled      Enable this custom provider (default: true)
---custom.max-tokens   Maximum number of tokens to generate (default: 1024)
+--custom.<provider-id>.name         Name for the custom provider (required)
+--custom.<provider-id>.url          Base URL for the custom provider API (required)
+--custom.<provider-id>.api-key      API key for the custom provider (if needed)
+--custom.<provider-id>.model        Model to use (required)
+--custom.<provider-id>.enabled      Enable this custom provider (default: true)
+--custom.<provider-id>.max-tokens   Maximum number of tokens to generate (default: 1024)
 ```
 
-Example for adding a local LLM server:
+Example for adding a single local LLM server:
 
 ```
-mpt --custom.name "LocalLLM" --custom.url "http://localhost:1234/v1" \
-    --custom.model "mixtral-8x7b" --prompt "Explain quantum computing"
+mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234/v1" \
+    --custom.localai.model "mixtral-8x7b" --prompt "Explain quantum computing"
+```
+
+Example with multiple custom providers:
+
+```
+mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234/v1" \
+    --custom.localai.model "mixtral-8x7b" \
+    --custom.together.name "Together" --custom.together.url "https://api.together.xyz/v1" \
+    --custom.together.api-key "your-key" --custom.together.model "llama-3-70b" \
+    --prompt "Compare the approaches to implementing recursion in different programming languages"
 ```
 
 ### General Options
