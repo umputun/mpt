@@ -24,6 +24,3 @@ coverage.out
 # OS specific
 .DS_Store
 Thumbs.db
-
-# Project specific
-vendor/
