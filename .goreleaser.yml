@@ -3,6 +3,7 @@ dist: .bin
 builds:
   - id: mpt
     binary: "mpt"
+    main: ./cmd/mpt
     env:
       - CGO_ENABLED=0
     goos:
