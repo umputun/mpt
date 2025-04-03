@@ -61,10 +61,53 @@ The second command will produce clean output without any provider headers, since
 ## Installation
 
 ```
-go get -u github.com/umputun/mpt/cmd/mpt
+go install github.com/umputun/mpt/cmd/mpt@latest
 ```
 
-Or download binary from [Releases](https://github.com/umputun/mpt/releases).
+<details markdown>
+  <summary>Other install methods</summary>
+
+**Install from binary release**
+
+Download the appropriate binary for your platform from [Releases](https://github.com/umputun/mpt/releases).
+
+**Install from homebrew (macOS)**
+
+```bash
+brew tap umputun/apps
+brew install umputun/apps/mpt
+```
+
+**Install from deb package (Ubuntu/Debian)**
+
+1. Download the latest version of the package by running: `wget https://github.com/umputun/mpt/releases/download/<version>/mpt_<version>_linux_<arch>.deb` (replace `<version>` and `<arch>` with the actual values).
+2. Install the package by running: `sudo dpkg -i mpt_<version>_linux_<arch>.deb`
+
+Example for the latest version and amd64 architecture:
+
+```bash
+# Replace v0.1.0 with the actual version
+wget https://github.com/umputun/mpt/releases/download/v0.1.0/mpt_v0.1.0_linux_x86_64.deb
+sudo dpkg -i mpt_v0.1.0_linux_x86_64.deb
+```
+
+**Install from rpm package (CentOS/RHEL/Fedora/AWS Linux)**
+
+```bash
+# Replace v0.1.0 with the actual version
+wget https://github.com/umputun/mpt/releases/download/v0.1.0/mpt_v0.1.0_linux_x86_64.rpm
+sudo rpm -i mpt_v0.1.0_linux_x86_64.rpm
+```
+
+**Install from apk package (Alpine)**
+
+```bash
+# Replace v0.1.0 with the actual version
+wget https://github.com/umputun/mpt/releases/download/v0.1.0/mpt_v0.1.0_linux_x86_64.apk
+sudo apk add mpt_v0.1.0_linux_x86_64.apk
+```
+
+</details>
 
 ## Usage
 

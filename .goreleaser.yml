@@ -25,7 +25,7 @@ builds:
     ldflags: "-s -w -X main.revision={{.Tag}}-{{.ShortCommit}}-{{.CommitDate}}"
 
 archives:
-  - id: unfuck-ai-comments
+  - id: mpt
     name_template: >-
      {{.ProjectName}}_
      {{- .Tag}}_
@@ -60,8 +60,8 @@ brews:
     license: "MIT"
 
 nfpms:
-  - id: unfuck-ai-comments
-    package_name: unfuck-ai-comments
+  - id: mpt
+    package_name: mpt
     file_name_template: "{{.ProjectName}}_{{.Tag}}_{{.Os}}_{{.Arch}}"
     vendor: Umputun
     homepage: https://github.com/umputun/mpt
