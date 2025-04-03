@@ -28,4 +28,9 @@ version:
 	@echo "branch: $(BRANCH), hash: $(HASH), timestamp: $(TIMESTAMP)"
 	@echo "revision: $(REV)"
 
-.PHONY: build test lint version
+prep_site:
+	cp -fv README.md site/docs/index.md
+	sed -i '' 's|https:\/\/github.com\/umputun\/mpt\/raw\/master\/site\/docs\/logo.png|logo.png|' site/docs/index.md
+	sed -i '' 's|^.*/workflows/ci.yml.*$$||' site/docs/index.md
+
+.PHONY: build test lint version prep_site

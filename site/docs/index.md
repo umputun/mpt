@@ -1,14 +1,10 @@
 # MPT - Multi-Provider Tool for AI Language Models
 
-[![Build Status](https://github.com/umputun/mpt/actions/workflows/ci.yml/badge.svg)](https://github.com/umputun/mpt/actions/workflows/ci.yml)
+
 [![Coverage Status](https://coveralls.io/repos/github/umputun/mpt/badge.svg?branch=master)](https://coveralls.io/github/umputun/mpt?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/umputun/mpt)](https://goreportcard.com/report/github.com/umputun/mpt)
 
 MPT is a command-line utility that sends prompts to multiple AI language model providers (OpenAI, Anthropic, Google, and custom providers) in parallel and combines the results. It enables easy file inclusion for context and supports flexible pattern matching to quickly include relevant code or documentation in your prompts.
-
-<div align="center">
-  <img class="logo" src="https://github.com/umputun/mpt/raw/master/site/docs/logo.png" width="400px" alt="MPT"/>
-</div>
 
 ## What MPT Does
 
