@@ -94,26 +94,57 @@ func main() {
 
 // run executes the main program logic and returns an error if it fails
 func run(ctx context.Context) error {
-	var opts Opts
+	// parse command-line arguments and handle special cases
+	opts, err := parseCommandLine()
+	if err != nil {
+		return err
+	}
 
-	// initialize the custom providers map
-	opts.CustomProviders = make(map[string]CustomOpenAIProvider)
+	// setup logging with API keys as secrets
+	secrets := collectSecrets(opts)
+	setupLog(opts.Debug, secrets...)
 
-	parser := flags.NewParser(&opts, flags.Default)
+	// process the prompt (from CLI args or stdin)
+	if err := processPrompt(opts); err != nil {
+		return err
+	}
+
+	// initialize all providers
+	providers := initializeProviders(opts)
+
+	// execute the prompt against providers
+	return executePrompt(ctx, opts, providers)
+}
+
+// parseCommandLine parses command-line flags and handles special flag cases
+func parseCommandLine() (*Opts, error) {
+	opts := &Opts{
+		CustomProviders: make(map[string]CustomOpenAIProvider),
+	}
+
+	parser := flags.NewParser(opts, flags.Default)
 	if _, err := parser.Parse(); err != nil {
 		var flagsErr *flags.Error
 		if errors.As(err, &flagsErr) && errors.Is(flagsErr.Type, flags.ErrHelp) {
 			osExit(0)
 		}
-		return err
+		return nil, err
 	}
 
+	// handle version flag specially
 	if opts.Version {
 		fmt.Printf("Version: %s\n", revision)
 		osExit(0)
 	}
 
+	return opts, nil
+}
+
+// collectSecrets extracts all API keys for secure logging
+func collectSecrets(opts *Opts) []string {
 	var secrets []string
+
+	// add API keys from built-in providers
 	if opts.OpenAI.APIKey != "" {
 		secrets = append(secrets, opts.OpenAI.APIKey)
 	}
@@ -123,17 +154,21 @@ func run(ctx context.Context) error {
 	if opts.Google.APIKey != "" {
 		secrets = append(secrets, opts.Google.APIKey)
 	}
-	if opts.CustomProviders != nil {
-		for _, customOpt := range opts.CustomProviders {
-			if customOpt.APIKey != "" {
-				secrets = append(secrets, customOpt.APIKey)
-			}
+
+	// add API keys from custom providers
+	for _, customOpt := range opts.CustomProviders {
+		if customOpt.APIKey != "" {
+			secrets = append(secrets, customOpt.APIKey)
 		}
 	}
-	setupLog(opts.Debug, secrets...) // set up logging
 
+	return secrets
+}
+
+// processPrompt gets the prompt from stdin or command line and optionally adds file content
+func processPrompt(opts *Opts) error {
 	// get prompt from stdin (piped data or interactive input) or command line
-	if err := getPrompt(&opts); err != nil {
+	if err := getPrompt(opts); err != nil {
 		return fmt.Errorf("failed to get prompt: %w", err)
 	}
 
@@ -142,24 +177,41 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("no prompt provided")
 	}
 
-	// load files if specified and append to prompt
-	if len(opts.Files) > 0 {
-		lgr.Printf("[DEBUG] loading files from patterns: %v", opts.Files)
-		if len(opts.Excludes) > 0 {
-			lgr.Printf("[DEBUG] excluding patterns: %v", opts.Excludes)
-		}
-		fileContent, err := files.LoadContent(opts.Files, opts.Excludes)
-		if err != nil {
-			return fmt.Errorf("failed to load files: %w", err)
-		}
-
-		if fileContent != "" {
-			lgr.Printf("[DEBUG] loaded %d bytes of content from files", len(fileContent))
-			opts.Prompt += "\n\n" + fileContent
-		}
+	// append file content to prompt if requested
+	if err := appendFileContent(opts); err != nil {
+		return err
 	}
 
-	// initialize providers
+	return nil
+}
+
+// appendFileContent loads content from specified files and appends to the prompt
+func appendFileContent(opts *Opts) error {
+	if len(opts.Files) == 0 {
+		return nil
+	}
+
+	lgr.Printf("[DEBUG] loading files from patterns: %v", opts.Files)
+	if len(opts.Excludes) > 0 {
+		lgr.Printf("[DEBUG] excluding patterns: %v", opts.Excludes)
+	}
+
+	fileContent, err := files.LoadContent(opts.Files, opts.Excludes)
+	if err != nil {
+		return fmt.Errorf("failed to load files: %w", err)
+	}
+
+	if fileContent != "" {
+		lgr.Printf("[DEBUG] loaded %d bytes of content from files", len(fileContent))
+		opts.Prompt += "\n\n" + fileContent
+	}
+
+	return nil
+}
+
+// initializeProviders creates provider instances from the options
+func initializeProviders(opts *Opts) []provider.Provider {
+	// initialize standard providers
 	openaiProvider := provider.NewOpenAI(provider.Options{
 		APIKey:    opts.OpenAI.APIKey,
 		Model:     opts.OpenAI.Model,
@@ -181,26 +233,33 @@ func run(ctx context.Context) error {
 		MaxTokens: opts.Google.MaxTokens,
 	})
 
-	// create a slice to hold all providers
+	// create a slice with standard providers
 	providers := []provider.Provider{openaiProvider, anthropicProvider, googleProvider}
 
-	// add custom providers
+	// add enabled custom providers
 	for providerID, customOpt := range opts.CustomProviders {
-		if customOpt.Enabled {
-			customProvider := provider.NewCustomOpenAI(provider.CustomOptions{
-				Name:      customOpt.Name,
-				BaseURL:   customOpt.URL,
-				APIKey:    customOpt.APIKey,
-				Model:     customOpt.Model,
-				Enabled:   customOpt.Enabled,
-				MaxTokens: customOpt.MaxTokens,
-			})
-			providers = append(providers, customProvider)
-			lgr.Printf("[INFO] added custom provider: %s (id: %s), URL: %s, model: %s",
-				customOpt.Name, providerID, customOpt.URL, customOpt.Model)
+		if !customOpt.Enabled {
+			continue
 		}
+
+		customProvider := provider.NewCustomOpenAI(provider.CustomOptions{
+			Name:      customOpt.Name,
+			BaseURL:   customOpt.URL,
+			APIKey:    customOpt.APIKey,
+			Model:     customOpt.Model,
+			Enabled:   customOpt.Enabled,
+			MaxTokens: customOpt.MaxTokens,
+		})
+		providers = append(providers, customProvider)
+		lgr.Printf("[INFO] added custom provider: %s (id: %s), URL: %s, model: %s",
+			customOpt.Name, providerID, customOpt.URL, customOpt.Model)
 	}
 
+	return providers
+}
+
+// executePrompt runs the prompt against the configured providers
+func executePrompt(ctx context.Context, opts *Opts, providers []provider.Provider) error {
 	// create runner with all providers
 	r := runner.New(providers...)
 
@@ -210,7 +269,7 @@ func run(ctx context.Context) error {
 
 	// show prompt in verbose mode
 	if opts.Verbose {
-		showVerbosePrompt(os.Stdout, opts)
+		showVerbosePrompt(os.Stdout, *opts)
 	}
 
 	// run the prompt

@@ -16,6 +16,7 @@ linters:
     - staticcheck
     - unconvert
     - unused
+    - gocyclo
   settings:
     goconst:
       min-len: 2
