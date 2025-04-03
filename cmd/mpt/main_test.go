@@ -427,7 +427,7 @@ func TestRun_WithFileInput(t *testing.T) {
 	})
 
 	// set command line args
-	tester.SetupArgs([]string{"mpt", "--prompt", "analyze this", "--file", testFilePath, "--timeout", "1"})
+	tester.SetupArgs([]string{"mpt", "--prompt", "analyze this", "--file", testFilePath, "--timeout", "1s"})
 
 	// create a test runner that uses our mock
 	testRun := func(ctx context.Context) error {
@@ -455,7 +455,7 @@ func TestRun_WithFileInput(t *testing.T) {
 		r := runner.New(tester.mockProvider)
 
 		// create timeout context
-		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(opts.Timeout)*time.Second)
+		timeoutCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
 		defer cancel()
 
 		// run the prompt

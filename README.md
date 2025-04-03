@@ -85,27 +85,27 @@ You can provide a prompt in the following ways:
 
 ```
 --openai.api-key      OpenAI API key (or OPENAI_API_KEY env var)
---openai.model        OpenAI model to use (default: gpt-4-turbo-preview)
+--openai.model        OpenAI model to use (default: gpt-4o)
 --openai.enabled      Enable OpenAI provider
---openai.max-tokens   Maximum number of tokens to generate (default: 1024)
+--openai.max-tokens   Maximum number of tokens to generate (default: 16384)
 ```
 
 #### Anthropic (Claude)
 
 ```
 --anthropic.api-key   Anthropic API key (or ANTHROPIC_API_KEY env var)
---anthropic.model     Anthropic model to use (default: claude-3-sonnet-20240229)
+--anthropic.model     Anthropic model to use (default: claude-3-7-sonnet-20250219)
 --anthropic.enabled   Enable Anthropic provider
---anthropic.max-tokens Maximum number of tokens to generate (default: 1024)
+--anthropic.max-tokens Maximum number of tokens to generate (default: 16384)
 ```
 
 #### Google (Gemini)
 
 ```
 --google.api-key      Google API key (or GOOGLE_API_KEY env var)
---google.model        Google model to use (default: gemini-1.5-pro)
+--google.model        Google model to use (default: gemini-2.5-pro-exp-03-25)
 --google.enabled      Enable Google provider
---google.max-tokens   Maximum number of tokens to generate (default: 1024)
+--google.max-tokens   Maximum number of tokens to generate (default: 16384)
 ```
 
 #### Custom OpenAI-Compatible Providers
@@ -118,7 +118,7 @@ You can add multiple custom providers that implement the OpenAI-compatible API. 
 --custom.<provider-id>.api-key      API key for the custom provider (if needed)
 --custom.<provider-id>.model        Model to use (required)
 --custom.<provider-id>.enabled      Enable this custom provider (default: true)
---custom.<provider-id>.max-tokens   Maximum number of tokens to generate (default: 1024)
+--custom.<provider-id>.max-tokens   Maximum number of tokens to generate (default: 16384)
 ```
 
 Example for adding a single local LLM server:
@@ -150,7 +150,7 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
                       - Go-style recursive patterns like "pkg/..." or "cmd/.../*.go"
 -x, --exclude         Patterns to exclude from file matching (can be used multiple times)
                       Uses the same pattern syntax as --file
--t, --timeout         Timeout in seconds (default: 60)
+-t, --timeout         Timeout duration (e.g., 60s, 2m) (default: 60s)
 -v, --verbose         Verbose output, shows the complete prompt sent to models
 --dbg                 Enable debug mode
 -V, --version         Show version information
@@ -345,26 +345,26 @@ You can use environment variables instead of command-line flags:
 
 ```
 OPENAI_API_KEY="your-openai-key"
-OPENAI_MODEL="gpt-4"
+OPENAI_MODEL="gpt-4o"
 OPENAI_ENABLED=true
-OPENAI_MAX_TOKENS=1024
+OPENAI_MAX_TOKENS=16384
 
 ANTHROPIC_API_KEY="your-anthropic-key"
-ANTHROPIC_MODEL="claude-3-opus-20240229"
+ANTHROPIC_MODEL="claude-3-7-sonnet-20250219"
 ANTHROPIC_ENABLED=true
-ANTHROPIC_MAX_TOKENS=1024
+ANTHROPIC_MAX_TOKENS=16384
 
 GOOGLE_API_KEY="your-google-key"
-GOOGLE_MODEL="gemini-1.5-pro"
+GOOGLE_MODEL="gemini-2.5-pro-exp-03-25"
 GOOGLE_ENABLED=true
-GOOGLE_MAX_TOKENS=1024
+GOOGLE_MAX_TOKENS=16384
 
 # Custom OpenAI-compatible provider
 CUSTOM_NAME="LocalLLM"
 CUSTOM_URL="http://localhost:1234/v1"
 CUSTOM_MODEL="mixtral-8x7b"
 CUSTOM_ENABLED=true
-CUSTOM_MAX_TOKENS=1024
+CUSTOM_MAX_TOKENS=16384
 ```
 
 ## Contributing

@@ -27,10 +27,10 @@ type Opts struct {
 	Google          GoogleOpts                      `group:"google" namespace:"google" env-namespace:"GOOGLE"`
 	CustomProviders map[string]CustomOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
 
-	Prompt   string   `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
-	Files    []string `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
-	Excludes []string `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
-	Timeout  int      `short:"t" long:"timeout" description:"timeout in seconds" default:"60"`
+	Prompt   string        `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
+	Files    []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
+	Excludes []string      `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
+	Timeout  time.Duration `short:"t" long:"timeout" description:"timeout duration (e.g., 60s, 2m)" default:"60s"`
 
 	// common options
 	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -264,7 +264,7 @@ func executePrompt(ctx context.Context, opts *Opts, providers []provider.Provide
 	r := runner.New(providers...)
 
 	// create timeout context as a child of the passed ctx (which handles interrupts)
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(opts.Timeout)*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 
 	// show prompt in verbose mode
