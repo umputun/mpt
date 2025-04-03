@@ -4,10 +4,11 @@ go 1.24
 
 require (
 	github.com/anthropics/anthropic-sdk-go v0.2.0-beta.3
+	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/fatih/color v1.16.0
 	github.com/go-pkgz/lgr v0.11.1
 	github.com/google/generative-ai-go v0.10.0
-	github.com/jessevdk/go-flags v1.5.0
+	github.com/jessevdk/go-flags v1.6.1
 	github.com/sashabaranov/go-openai v1.23.0
 	github.com/stretchr/testify v1.9.0
 	google.golang.org/api v0.189.0
@@ -20,7 +21,6 @@ require (
 	cloud.google.com/go/auth/oauth2adapt v0.2.3 // indirect
 	cloud.google.com/go/compute/metadata v0.5.0 // indirect
 	cloud.google.com/go/longrunning v0.5.7 // indirect
-	github.com/bmatcuk/doublestar/v4 v4.8.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
