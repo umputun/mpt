@@ -8,15 +8,17 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// Runner defines the interface for running prompts through providers
-type Runner interface {
-	Run(ctx context.Context, prompt string) (string, error)
-}
+//go:generate moq -out mocks/runner.go -pkg mocks -skip-ensure -fmt goimports . Runner
 
 // Server represents an MCP server that uses MPT's runner to fulfill MCP requests
 type Server struct {
 	mcpServer *server.MCPServer
 	runner    Runner
+}
+
+// Runner defines the interface for running prompts through providers
+type Runner interface {
+	Run(ctx context.Context, prompt string) (string, error)
 }
 
 // NewServer creates a new MCP server using MPT's runner

@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,10 +29,10 @@ func TestSetupLog(t *testing.T) {
 
 func TestVerboseOutput(t *testing.T) {
 	// create a buffer to capture output
-	var buf bytes.Buffer
+	var buf strings.Builder
 
 	// create test options with verbose flag
-	opts := Opts{
+	opts := options{
 		Prompt:  "test prompt",
 		Verbose: true,
 	}
@@ -50,78 +52,6 @@ func TestVerboseOutput(t *testing.T) {
 	output = buf.String()
 	assert.Contains(t, output, "=== Prompt sent to models ===")
 	assert.Contains(t, output, "test prompt")
-}
-
-func TestRun_Flags(t *testing.T) {
-	testCases := []struct {
-		name         string
-		args         []string
-		exitCode     int
-		setupMock    func()
-		validateFunc func(*testing.T)
-	}{
-		{
-			name:         "version_flag",
-			args:         []string{"mpt", "--version"},
-			exitCode:     0,
-			setupMock:    func() {},
-			validateFunc: func(t *testing.T) {},
-		},
-		{
-			name:         "help_flag",
-			args:         []string{"mpt", "--help"},
-			exitCode:     0,
-			setupMock:    func() {},
-			validateFunc: func(t *testing.T) {},
-		},
-		{
-			name:         "invalid_flag",
-			args:         []string{"mpt", "--invalid-flag"},
-			exitCode:     1,
-			setupMock:    func() {},
-			validateFunc: func(t *testing.T) {},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// save original osExit and args, restore after the test
-			oldOsExit := osExit
-			oldArgs := os.Args
-			defer func() {
-				osExit = oldOsExit
-				os.Args = oldArgs
-			}()
-
-			// mock os.Exit
-			var actualExitCode int
-			osExit = func(code int) {
-				actualExitCode = code
-				panic("os.Exit called")
-			}
-
-			// set command line args
-			os.Args = tc.args
-
-			// apply any additional test setup
-			tc.setupMock()
-
-			// catch the panic from our mocked os.Exit
-			defer func() {
-				if r := recover(); r != nil {
-					assert.Equal(t, "os.Exit called", r)
-					assert.Equal(t, tc.exitCode, actualExitCode)
-
-					// run additional validations
-					tc.validateFunc(t)
-				}
-			}()
-
-			// run the function with a context
-			ctx := context.Background()
-			run(ctx)
-		})
-	}
 }
 
 func TestProviderCancellation(t *testing.T) {
@@ -171,8 +101,8 @@ func TestProviderCancellation(t *testing.T) {
 	select {
 	case result := <-resultCh:
 		// should have context.Canceled error
-		assert.Error(t, result.err)
-		assert.ErrorIs(t, result.err, context.Canceled)
+		require.Error(t, result.err)
+		require.ErrorIs(t, result.err, context.Canceled)
 	case <-time.After(1 * time.Second):
 		t.Fatal("Test timed out waiting for provider to handle context cancellation")
 	}
@@ -277,7 +207,7 @@ func TestGetPrompt(t *testing.T) {
 			}()
 
 			// create options with the initial prompt
-			opts := Opts{
+			opts := options{
 				Prompt: tt.initialPrompt,
 			}
 
@@ -314,7 +244,7 @@ func TestGetPrompt(t *testing.T) {
 }
 
 // getPromptForTest is a testable version of getPrompt that takes an explicit isPiped parameter
-func getPromptForTest(opts *Opts, isPiped bool) error {
+func getPromptForTest(opts *options, isPiped bool) error {
 	if isPiped {
 		// read from stdin as if it were piped
 		scanner := bufio.NewScanner(os.Stdin)
@@ -431,7 +361,7 @@ func TestRun_WithFileInput(t *testing.T) {
 
 	// create a test runner that uses our mock
 	testRun := func(ctx context.Context) error {
-		var opts Opts
+		var opts options
 		parser := flags.NewParser(&opts, flags.Default)
 		if _, err := parser.Parse(); err != nil {
 			return err
@@ -471,133 +401,6 @@ func TestRun_WithFileInput(t *testing.T) {
 	require.NotEmpty(t, tester.mockProvider.GenerateCalls())
 }
 
-func TestCustomProviders_MapAssignment(t *testing.T) {
-	// this test verifies that the map-based CustomProviders approach works correctly
-	var opts Opts
-
-	// initialize the map if nil
-	if opts.CustomProviders == nil {
-		opts.CustomProviders = make(map[string]CustomOpenAIProvider)
-	}
-
-	// add a custom provider to the map
-	opts.CustomProviders["localai"] = CustomOpenAIProvider{
-		Name:      "LocalAI",
-		URL:       "http://localhost:8080",
-		APIKey:    "test-key",
-		Model:     "local-model",
-		Enabled:   true,
-		MaxTokens: 4096,
-	}
-
-	// verify the custom provider was added correctly
-	customProvider, exists := opts.CustomProviders["localai"]
-	require.True(t, exists, "localai provider should exist in the map")
-	assert.Equal(t, "LocalAI", customProvider.Name, "Name should match")
-	assert.Equal(t, "http://localhost:8080", customProvider.URL, "URL should match")
-	assert.Equal(t, "test-key", customProvider.APIKey, "API key should match")
-	assert.Equal(t, "local-model", customProvider.Model, "Model should match")
-	assert.True(t, customProvider.Enabled, "Provider should be enabled")
-	assert.Equal(t, 4096, customProvider.MaxTokens, "MaxTokens should match")
-
-	// test iteration over the map
-	count := 0
-	for id, prov := range opts.CustomProviders {
-		count++
-		assert.Equal(t, "localai", id, "Provider ID should match")
-		assert.Equal(t, "LocalAI", prov.Name, "Provider name should match")
-	}
-	assert.Equal(t, 1, count, "Should have iterated over exactly one custom provider")
-}
-
-func TestCustomProviders_DirectMapManipulation(t *testing.T) {
-	// since flags don't seem to populate the map directly, let's test map setting and use
-	// this verifies the map-based approach works for the internal code paths
-
-	var opts Opts
-	// initialize the map
-	opts.CustomProviders = make(map[string]CustomOpenAIProvider)
-
-	// add a custom provider directly
-	opts.CustomProviders["local"] = CustomOpenAIProvider{
-		Name:    "LocalAI",
-		URL:     "http://localhost:8080",
-		Model:   "local-model",
-		Enabled: true,
-	}
-
-	// verify the provider was set correctly
-	require.NotEmpty(t, opts.CustomProviders, "CustomProviders should not be empty")
-
-	// process the provider as the run function would
-	var capturedName, capturedURL, capturedModel string
-	for providerID, customOpt := range opts.CustomProviders {
-		if customOpt.Enabled {
-			capturedName = customOpt.Name
-			capturedURL = customOpt.URL
-			capturedModel = customOpt.Model
-			// simulating logging that would use the provider ID
-			_ = providerID
-		}
-	}
-
-	// verify the provider was processed correctly
-	assert.Equal(t, "LocalAI", capturedName, "Provider name should match")
-	assert.Equal(t, "http://localhost:8080", capturedURL, "Provider URL should match")
-	assert.Equal(t, "local-model", capturedModel, "Provider model should match")
-
-	// test with multiple providers
-	opts = Opts{}
-	opts.CustomProviders = make(map[string]CustomOpenAIProvider)
-
-	// add multiple providers
-	opts.CustomProviders["provider1"] = CustomOpenAIProvider{
-		Name:    "Provider1",
-		URL:     "https://provider1.com",
-		Model:   "model1",
-		Enabled: true,
-	}
-
-	opts.CustomProviders["provider2"] = CustomOpenAIProvider{
-		Name:    "Provider2",
-		URL:     "https://provider2.com",
-		Model:   "model2",
-		APIKey:  "secret-key",
-		Enabled: true,
-	}
-
-	// verify multiple providers
-	require.Equal(t, 2, len(opts.CustomProviders), "Should have 2 custom providers")
-
-	// check specific providers
-	provider1, exists := opts.CustomProviders["provider1"]
-	require.True(t, exists, "provider1 should exist")
-	assert.Equal(t, "Provider1", provider1.Name, "Provider1 name should match")
-
-	provider2, exists := opts.CustomProviders["provider2"]
-	require.True(t, exists, "provider2 should exist")
-	assert.Equal(t, "Provider2", provider2.Name, "Provider2 name should match")
-	assert.Equal(t, "secret-key", provider2.APIKey, "Provider2 API key should match")
-
-	// verify processing of multiple providers
-	var count int
-	for providerID, customOpt := range opts.CustomProviders {
-		if customOpt.Enabled {
-			count++
-			// log the provider ID and name to verify they're correct
-			switch providerID {
-			case "provider1":
-				assert.Equal(t, "Provider1", customOpt.Name, "Provider1 name should match")
-			case "provider2":
-				assert.Equal(t, "Provider2", customOpt.Name, "Provider2 name should match")
-			default:
-				t.Errorf("Unexpected provider ID: %s", providerID)
-			}
-		}
-	}
-	assert.Equal(t, 2, count, "Should have processed 2 enabled providers")
-}
-
 func TestRun_PromptCombination(t *testing.T) {
 	// create test helper
 	tester := NewMockRunnerTester(t)
@@ -633,7 +436,7 @@ func TestRun_PromptCombination(t *testing.T) {
 
 	// create a test runner that uses our mock
 	testRun := func(ctx context.Context) error {
-		var opts Opts
+		var opts options
 		parser := flags.NewParser(&opts, flags.Default)
 		if _, err := parser.Parse(); err != nil {
 			return err
@@ -661,4 +464,222 @@ func TestRun_PromptCombination(t *testing.T) {
 
 	// verify the mock was called properly
 	require.NotEmpty(t, tester.mockProvider.GenerateCalls())
+}
+
+func TestCustomProviderIntegration(t *testing.T) {
+	// create a stub server that simulates an OpenAI-compatible API
+	requestReceived := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Logf("request: %s %s\n", r.Method, r.URL.Path)
+		requestReceived = true
+
+		// only respond to the chat completions endpoint
+		if r.URL.Path == "/chat/completions" {
+			// return an OpenAI-compatible response
+			resp := `{
+				"id": "test-id",
+				"object": "chat.completion",
+				"created": 1677858242,
+				"model": "test-model",
+				"usage": {
+					"prompt_tokens": 10,
+					"completion_tokens": 20,
+					"total_tokens": 30
+				},
+				"choices": [
+					{
+						"message": {
+							"role": "assistant",
+							"content": "This is a response from the custom provider!"
+						},
+						"finish_reason": "stop",
+						"index": 0
+					}
+				]
+			}`
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(resp))
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+
+	// save original args and restore them after the test
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// set up command line arguments with our test server URL
+	os.Args = []string{
+		"test",
+		"--prompt", "test prompt",
+		"--custom.enabled",
+		"--custom.url", ts.URL,
+		"--custom.model", "test-model",
+		"--custom.api-key", "test-key",
+	}
+
+	// override the timeout for testing purposes
+	opts := &options{
+		Timeout: 5 * time.Second,
+	}
+
+	p := flags.NewParser(opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
+	_, err := p.Parse()
+	require.NoError(t, err)
+
+	setupLog(opts.Debug, collectSecrets(opts)...)
+
+	// verify options parsed correctly
+	require.True(t, opts.Custom.Enabled)
+	require.Equal(t, ts.URL, opts.Custom.URL)
+	require.Equal(t, "test-model", opts.Custom.Model)
+
+	// since we'll be making an actual HTTP request to our test server,
+	// we need to redirect stdout to capture the output
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// run the program
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = run(ctx, opts)
+
+	// restore stdout
+	w.Close()
+	os.Stdout = oldStdout
+
+	// read the output
+	var output strings.Builder
+	io.Copy(&output, r)
+
+	// check results
+	require.NoError(t, err)
+	require.True(t, requestReceived, "The test server should have received a request")
+	require.Contains(t, output.String(), "This is a response from the custom provider!",
+		"Output should contain the custom provider response")
+}
+
+func TestCustomProviderWithFileAndVerbose(t *testing.T) {
+	// create a test file
+	tempDir := t.TempDir()
+	testFilePath := filepath.Join(tempDir, "test.txt")
+	testContent := "This is test content for the file parameter"
+	err := os.WriteFile(testFilePath, []byte(testContent), 0o644)
+	require.NoError(t, err, "Failed to create test file")
+
+	// create a stub server that simulates an OpenAI-compatible API
+	requestReceived := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Logf("request: %s %s\n", r.Method, r.URL.Path)
+		requestReceived = true
+
+		// check if the request body contains our test file content
+		body, _ := io.ReadAll(r.Body)
+		bodyStr := string(body)
+
+		// only respond to the chat completions endpoint and verify the content includes our file
+		if r.URL.Path == "/chat/completions" && strings.Contains(bodyStr, testContent) {
+			// return an OpenAI-compatible response
+			resp := `{
+				"id": "test-id",
+				"object": "chat.completion",
+				"created": 1677858242,
+				"model": "test-model",
+				"usage": {
+					"prompt_tokens": 10,
+					"completion_tokens": 20,
+					"total_tokens": 30
+				},
+				"choices": [
+					{
+						"message": {
+							"role": "assistant",
+							"content": "File and verbose mode test successful"
+						},
+						"finish_reason": "stop",
+						"index": 0
+					}
+				]
+			}`
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(resp))
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+
+	// save original args and restore them after the test
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// set up command line arguments with our test server URL
+	// include the file parameter and verbose flag
+	os.Args = []string{
+		"test",
+		"--prompt", "test prompt with file",
+		"-f", testFilePath, // add file parameter
+		"-v", // add verbose flag
+		"--custom.enabled",
+		"--custom.url", ts.URL,
+		"--custom.model", "test-model",
+	}
+
+	// override the timeout for testing purposes
+	opts := &options{
+		Timeout: 5 * time.Second,
+	}
+
+	p := flags.NewParser(opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
+	_, err = p.Parse()
+	require.NoError(t, err)
+
+	// verify options parsed correctly
+	require.True(t, opts.Custom.Enabled)
+	require.Equal(t, ts.URL, opts.Custom.URL)
+	require.Equal(t, "test-model", opts.Custom.Model)
+	require.True(t, opts.Verbose, "Verbose flag should be enabled")
+	require.Contains(t, opts.Files, testFilePath, "Files should contain our test file path")
+
+	// since we'll be making an actual HTTP request to our test server,
+	// we need to redirect stdout to capture the output
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// run the program
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = run(ctx, opts)
+
+	// restore stdout
+	w.Close()
+	os.Stdout = oldStdout
+
+	// read the output
+	var output strings.Builder
+	io.Copy(&output, r)
+	outputStr := output.String()
+
+	// check results
+	require.NoError(t, err)
+	require.True(t, requestReceived, "The test server should have received a request")
+
+	// check for the verbose output
+	require.Contains(t, outputStr, "=== Prompt sent to models ===",
+		"Output should contain the verbose header")
+	require.Contains(t, outputStr, testContent,
+		"Output should contain the test file content in the verbose output")
+
+	// check for the model response
+	require.Contains(t, outputStr, "File and verbose mode test successful",
+		"Output should contain the custom provider response")
 }

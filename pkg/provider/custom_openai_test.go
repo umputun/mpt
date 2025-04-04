@@ -76,7 +76,7 @@ func TestCustomOpenAI_Enabled(t *testing.T) {
 func TestCustomOpenAI_Generate_NotEnabled(t *testing.T) {
 	provider := NewCustomOpenAI(CustomOptions{Enabled: false})
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not enabled")
 }
 
@@ -87,7 +87,7 @@ func mockCustomOpenAIServer(t *testing.T, jsonResponse string) (*openai.Client, 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte(jsonResponse))
-		require.NoError(t, err)
+		_ = err
 	}))
 
 	// create a custom client configuration
@@ -132,7 +132,7 @@ func TestCustomOpenAI_Generate_Success(t *testing.T) {
 
 	// test the Generate method
 	response, err := provider.Generate(context.Background(), "test prompt")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "This is a test response", response)
 }
 
@@ -161,7 +161,7 @@ func TestCustomOpenAI_Generate_EmptyChoices(t *testing.T) {
 
 	// test the Generate method
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "returned no choices")
 }
 
@@ -177,7 +177,7 @@ func TestCustomOpenAI_Generate_APIError(t *testing.T) {
 				"code": "invalid_api_key"
 			}
 		}`))
-		require.NoError(t, err)
+		_ = err
 	}))
 	defer server.Close()
 
@@ -197,6 +197,6 @@ func TestCustomOpenAI_Generate_APIError(t *testing.T) {
 
 	// test the Generate method
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "api error")
 }

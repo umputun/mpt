@@ -21,13 +21,15 @@ import (
 	"github.com/umputun/mpt/pkg/runner"
 )
 
-// Opts with all CLI options
-type Opts struct {
-	OpenAI          OpenAIOpts                      `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
-	Anthropic       AnthropicOpts                   `group:"anthropic" namespace:"anthropic" env-namespace:"ANTHROPIC"`
-	Google          GoogleOpts                      `group:"google" namespace:"google" env-namespace:"GOOGLE"`
-	MCP             MCPOpts                         `group:"mcp" namespace:"mcp" env-namespace:"MCP"`
-	CustomProviders map[string]CustomOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
+// options with all CLI options
+type options struct {
+	OpenAI    openAIOpts    `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
+	Anthropic anthropicOpts `group:"anthropic" namespace:"anthropic" env-namespace:"ANTHROPIC"`
+	Google    googleOpts    `group:"google" namespace:"google" env-namespace:"GOOGLE"`
+
+	Custom customOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
+
+	MCP mcpOpts `group:"mcp" namespace:"mcp" env-namespace:"MCP"`
 
 	Prompt   string        `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
 	Files    []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
@@ -41,100 +43,89 @@ type Opts struct {
 	NoColor bool `long:"no-color" env:"NO_COLOR" description:"disable color output"`
 }
 
-// OpenAIOpts defines options for OpenAI provider
-type OpenAIOpts struct {
+// openAIOpts defines options for OpenAI provider
+type openAIOpts struct {
+	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
 	APIKey    string `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
 	Model     string `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4o"`
-	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
 	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
 }
 
-// AnthropicOpts defines options for Anthropic provider
-type AnthropicOpts struct {
+// anthropicOpts defines options for Anthropic provider
+type anthropicOpts struct {
+	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Anthropic provider"`
 	APIKey    string `long:"api-key" env:"API_KEY" description:"Anthropic API key"`
 	Model     string `long:"model" env:"MODEL" description:"Anthropic model" default:"claude-3-7-sonnet-20250219"`
-	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Anthropic provider"`
 	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
 }
 
-// GoogleOpts defines options for Google provider
-type GoogleOpts struct {
+// googleOpts defines options for Google provider
+type googleOpts struct {
+	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Google provider"`
 	APIKey    string `long:"api-key" env:"API_KEY" description:"Google API key"`
 	Model     string `long:"model" env:"MODEL" description:"Google model" default:"gemini-2.5-pro-exp-03-25"`
-	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Google provider"`
 	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
 }
 
-// MCPOpts defines options for MCP server mode
-type MCPOpts struct {
+// mcpOpts defines options for MCP server mode
+type mcpOpts struct {
 	Server     bool   `long:"server" env:"SERVER" description:"run in MCP server mode"`
 	ServerName string `long:"server-name" env:"SERVER_NAME" description:"MCP server name" default:"MPT MCP Server"`
 }
 
-// CustomOpenAIProvider defines options for custom OpenAI-compatible providers
-type CustomOpenAIProvider struct {
-	Name      string `long:"name" env:"NAME" description:"Name for the custom provider" required:"true"`
-	URL       string `long:"url" env:"URL" description:"Base URL for the custom provider API" required:"true"`
+// customOpenAIProvider defines options for a custom OpenAI-compatible provider
+type customOpenAIProvider struct {
+	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable custom provider"`
+	Name      string `long:"name" env:"NAME" description:"custom provider name" default:"custom"`
+	URL       string `long:"url" env:"URL" description:"Base URL for the custom provider API"`
 	APIKey    string `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
-	Model     string `long:"model" env:"MODEL" description:"Model to use" required:"true"`
-	Enabled   bool   `long:"enabled" env:"ENABLED" description:"Enable this custom provider" default:"true"`
+	Model     string `long:"model" env:"MODEL" description:"Model to use for the custom provider"`
 	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate" default:"16384"`
 }
 
-// Default constants used throughout the application
-const (
-	DefaultTimeout   = 60 * time.Second
-	DefaultMaxTokens = 16384
-	MaxFileSize      = 10 * 1024 * 1024 // 10MB limit for individual files
-)
-
 var revision = "unknown"
 
-// osExit is a variable for testing to mock os.Exit
-var osExit = os.Exit
-
 func main() {
-	// create a context that's canceled when ctrl+c is pressed
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
+	opts := &options{}
+	p := flags.NewParser(opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
+	if _, err := p.Parse(); err != nil {
+		if !errors.Is(err.(*flags.Error).Type, flags.ErrHelp) {
+			fmt.Printf("%v", err)
+		}
+		os.Exit(1)
+	}
+	setupLog(opts.Debug, collectSecrets(opts)...)
 
-	if err := run(ctx); err != nil {
-		// log the error with detailed info for debugging
-		lgr.Printf("[ERROR] %v", err)
-		// print a user-friendly error message to stderr
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		osExit(1)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+
+	if err := run(ctx, opts); err != nil {
+		lgr.Printf("[ERROR] %v", err)              // log the error with detailed info for debugging
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err) // print a user-friendly error message to stderr
+
+		os.Exit(1) //nolint:gocritic
 	}
 }
 
 // run executes the main program logic and returns an error if it fails
-func run(ctx context.Context) error {
-	// parse command-line arguments and handle special cases
-	opts, err := parseCommandLine()
-	if err != nil {
-		return err
-	}
-
+func run(ctx context.Context, opts *options) error {
 	// check if running in MCP server mode
 	if opts.MCP.Server {
 		return runMCPServer(ctx, opts)
 	}
 
 	// standard MPT mode
-	// setup logging and process input
-	if err := setupLoggingAndProcessInput(opts); err != nil {
+
+	// process the prompt (from CLI args or stdin)
+	if err := processPrompt(opts); err != nil {
 		return err
 	}
-
-	// initialize all providers
 	providers := initializeProviders(opts)
-
-	// execute the prompt against providers
 	return executePrompt(ctx, opts, providers)
 }
 
 // runMCPServer starts MPT in MCP server mode
-func runMCPServer(_ context.Context, opts *Opts) error {
+func runMCPServer(_ context.Context, opts *options) error {
 	// setup logging with API keys as secrets
 	secrets := collectSecrets(opts)
 	setupLog(opts.Debug, secrets...)
@@ -167,47 +158,8 @@ func runMCPServer(_ context.Context, opts *Opts) error {
 	return mcpServer.Start()
 }
 
-// setupLoggingAndProcessInput configures logging and processes the user's input
-func setupLoggingAndProcessInput(opts *Opts) error {
-	// setup logging with API keys as secrets
-	secrets := collectSecrets(opts)
-	setupLog(opts.Debug, secrets...)
-
-	// process the prompt (from CLI args or stdin)
-	if err := processPrompt(opts); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// parseCommandLine parses command-line flags and handles special flag cases
-func parseCommandLine() (*Opts, error) {
-	opts := &Opts{
-		CustomProviders: make(map[string]CustomOpenAIProvider),
-		Timeout:         DefaultTimeout,
-	}
-
-	parser := flags.NewParser(opts, flags.Default)
-	if _, err := parser.Parse(); err != nil {
-		var flagsErr *flags.Error
-		if errors.As(err, &flagsErr) && errors.Is(flagsErr.Type, flags.ErrHelp) {
-			osExit(0)
-		}
-		return nil, err
-	}
-
-	// handle version flag specially
-	if opts.Version {
-		fmt.Printf("Version: %s\n", revision)
-		osExit(0)
-	}
-
-	return opts, nil
-}
-
 // collectSecrets extracts all API keys for secure logging
-func collectSecrets(opts *Opts) []string {
+func collectSecrets(opts *options) []string {
 	var secrets []string
 
 	// add API keys from built-in providers
@@ -221,18 +173,16 @@ func collectSecrets(opts *Opts) []string {
 		secrets = append(secrets, opts.Google.APIKey)
 	}
 
-	// add API keys from custom providers
-	for _, customOpt := range opts.CustomProviders {
-		if customOpt.APIKey != "" {
-			secrets = append(secrets, customOpt.APIKey)
-		}
+	// add API key from custom provider
+	if opts.Custom.APIKey != "" {
+		secrets = append(secrets, opts.Custom.APIKey)
 	}
 
 	return secrets
 }
 
 // processPrompt gets the prompt from stdin or command line and optionally adds file content
-func processPrompt(opts *Opts) error {
+func processPrompt(opts *options) error {
 	// get prompt from stdin (piped data or interactive input) or command line
 	if err := getPrompt(opts); err != nil {
 		return fmt.Errorf("failed to get prompt: %w", err)
@@ -252,7 +202,7 @@ func processPrompt(opts *Opts) error {
 }
 
 // appendFileContent loads content from specified files and appends to the prompt
-func appendFileContent(opts *Opts) error {
+func appendFileContent(opts *options) error {
 	if len(opts.Files) == 0 {
 		return nil
 	}
@@ -276,7 +226,7 @@ func appendFileContent(opts *Opts) error {
 }
 
 // initializeProviders creates provider instances from the options
-func initializeProviders(opts *Opts) []provider.Provider {
+func initializeProviders(opts *options) []provider.Provider {
 	// create a slice to hold enabled providers
 	providers := []provider.Provider{}
 
@@ -316,30 +266,25 @@ func initializeProviders(opts *Opts) []provider.Provider {
 		lgr.Printf("[DEBUG] added Google provider, model: %s", opts.Google.Model)
 	}
 
-	// add enabled custom providers
-	for providerID, customOpt := range opts.CustomProviders {
-		if !customOpt.Enabled {
-			continue
-		}
-
+	// add custom provider if enabled
+	if opts.Custom.Enabled && opts.Custom.URL != "" && opts.Custom.Model != "" {
 		customProvider := provider.NewCustomOpenAI(provider.CustomOptions{
-			Name:      customOpt.Name,
-			BaseURL:   customOpt.URL,
-			APIKey:    customOpt.APIKey,
-			Model:     customOpt.Model,
+			Name:      opts.Custom.Name,
+			BaseURL:   opts.Custom.URL,
+			APIKey:    opts.Custom.APIKey,
+			Model:     opts.Custom.Model,
 			Enabled:   true, // if we got here, it's enabled
-			MaxTokens: customOpt.MaxTokens,
+			MaxTokens: opts.Custom.MaxTokens,
 		})
 		providers = append(providers, customProvider)
-		lgr.Printf("[INFO] added custom provider: %s (id: %s), URL: %s, model: %s",
-			customOpt.Name, providerID, customOpt.URL, customOpt.Model)
+		lgr.Printf("[INFO] added custom provider: %s, URL: %s, model: %s", "custom", opts.Custom.URL, opts.Custom.Model)
 	}
 
 	return providers
 }
 
 // executePrompt runs the prompt against the configured providers
-func executePrompt(ctx context.Context, opts *Opts, providers []provider.Provider) error {
+func executePrompt(ctx context.Context, opts *options, providers []provider.Provider) error {
 	// create runner with all providers
 	r := runner.New(providers...)
 
@@ -367,7 +312,7 @@ func executePrompt(ctx context.Context, opts *Opts, providers []provider.Provide
 }
 
 // showVerbosePrompt displays the prompt text that will be sent to the models
-func showVerbosePrompt(w io.Writer, opts Opts) {
+func showVerbosePrompt(w io.Writer, opts options) {
 	// use colored output if not disabled
 	if opts.NoColor {
 		fmt.Fprintln(w, "=== Prompt sent to models ===")
@@ -383,7 +328,7 @@ func showVerbosePrompt(w io.Writer, opts Opts) {
 }
 
 // getPrompt handles reading the prompt from stdin (piped or interactive) or command line
-func getPrompt(opts *Opts) error {
+func getPrompt(opts *options) error {
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		// data is being piped in

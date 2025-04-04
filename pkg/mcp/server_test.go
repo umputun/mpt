@@ -8,23 +8,34 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/umputun/mpt/pkg/mcp/mocks"
 )
 
-// MockRunner mocks the runner.Runner interface for testing
-type MockRunner struct{}
-
-func (mr *MockRunner) Run(ctx context.Context, prompt string) (string, error) {
-	if prompt == "error" {
-		return "", errors.New("test error")
+func TestNewServer(t *testing.T) {
+	runner := &mocks.RunnerMock{
+		RunFunc: func(ctx context.Context, prompt string) (string, error) {
+			return "test response", nil
+		},
 	}
-	return "Generated response for: " + prompt, nil
+	
+	server := NewServer(runner, ServerOptions{
+		Name:    "Test Server",
+		Version: "1.0.0",
+	})
+	
+	assert.NotNil(t, server)
+	assert.NotNil(t, server.mcpServer)
+	assert.Equal(t, runner, server.runner)
 }
 
 func TestServer_handleGenerateTool(t *testing.T) {
-	// create a server with our mock runner
-	srv := &Server{
-		runner: &MockRunner{},
+	runner := &mocks.RunnerMock{
+		RunFunc: func(ctx context.Context, prompt string) (string, error) {
+			return "Generated response for: " + prompt, nil
+		},
 	}
+	srv := &Server{runner: runner}
 
 	// test with valid prompt
 	request := mcp.CallToolRequest{}
@@ -50,7 +61,7 @@ func TestServer_handleGenerateTool(t *testing.T) {
 	request.Params.Arguments = map[string]interface{}{}
 
 	_, err = srv.handleGenerateTool(context.Background(), request)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing required 'prompt' parameter")
 
 	// test with wrong prompt type
@@ -60,6 +71,23 @@ func TestServer_handleGenerateTool(t *testing.T) {
 	}
 
 	_, err = srv.handleGenerateTool(context.Background(), request)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "'prompt' parameter must be a string")
+	
+	// test with runner error
+	runnerWithError := &mocks.RunnerMock{
+		RunFunc: func(ctx context.Context, prompt string) (string, error) {
+			return "", errors.New("runner error")
+		},
+	}
+	srvWithError := &Server{runner: runnerWithError}
+	
+	request = mcp.CallToolRequest{}
+	request.Params.Arguments = map[string]interface{}{
+		"prompt": "Test prompt",
+	}
+	
+	_, err = srvWithError.handleGenerateTool(context.Background(), request)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to run prompt through MPT")
 }
