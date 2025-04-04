@@ -34,7 +34,7 @@ type options struct {
 	Prompt   string        `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
 	Files    []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
 	Excludes []string      `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
-	Timeout  time.Duration `short:"t" long:"timeout" description:"timeout duration (e.g., 60s, 2m)"`
+	Timeout  time.Duration `short:"t" long:"timeout" default:"30s" description:"timeout duration"`
 
 	// common options
 	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`

@@ -38,7 +38,7 @@ func NewServer(r Runner, opts ServerOptions) *Server {
 	}
 
 	// add a tool for generating text through MPT's providers
-	generateTool := mcp.NewTool("generate_text",
+	generateTool := mcp.NewTool("mpt_generate",
 		mcp.WithDescription("Generate text using multiple LLM providers"),
 		mcp.WithString("prompt",
 			mcp.Required(),
