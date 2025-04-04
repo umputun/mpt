@@ -13,81 +13,115 @@ import (
 )
 
 func TestNewServer(t *testing.T) {
-	runner := &mocks.RunnerMock{
-		RunFunc: func(ctx context.Context, prompt string) (string, error) {
-			return "test response", nil
+	tests := []struct {
+		name    string
+		options ServerOptions
+	}{
+		{
+			name: "creates server with options",
+			options: ServerOptions{
+				Name:    "Test Server",
+				Version: "1.0.0",
+			},
+		},
+		{
+			name: "creates server with default values",
+			options: ServerOptions{},
 		},
 	}
 	
-	server := NewServer(runner, ServerOptions{
-		Name:    "Test Server",
-		Version: "1.0.0",
-	})
-	
-	assert.NotNil(t, server)
-	assert.NotNil(t, server.mcpServer)
-	assert.Equal(t, runner, server.runner)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runner := &mocks.RunnerMock{
+				RunFunc: func(ctx context.Context, prompt string) (string, error) {
+					return "test response", nil
+				},
+			}
+			
+			server := NewServer(runner, tc.options)
+			
+			// Verify server was created properly
+			assert.NotNil(t, server)
+			assert.NotNil(t, server.mcpServer)
+			assert.Equal(t, runner, server.runner)
+		})
+	}
 }
 
 func TestServer_handleGenerateTool(t *testing.T) {
-	runner := &mocks.RunnerMock{
+	successRunner := &mocks.RunnerMock{
 		RunFunc: func(ctx context.Context, prompt string) (string, error) {
 			return "Generated response for: " + prompt, nil
 		},
 	}
-	srv := &Server{runner: runner}
-
-	// test with valid prompt
-	request := mcp.CallToolRequest{}
-	request.Params.Arguments = map[string]interface{}{
-		"prompt": "Test prompt",
-	}
-
-	result, err := srv.handleGenerateTool(context.Background(), request)
-	require.NoError(t, err)
-
-	// check that there's at least one content item
-	require.NotEmpty(t, result.Content)
-
-	// since we're using NewToolResultText, the first content should be TextContent
-	textContent, ok := result.Content[0].(mcp.TextContent)
-	require.True(t, ok, "Expected TextContent")
-
-	// check the content of the text
-	assert.Contains(t, textContent.Text, "Generated response for: Test prompt")
-
-	// test with missing prompt parameter
-	request = mcp.CallToolRequest{}
-	request.Params.Arguments = map[string]interface{}{}
-
-	_, err = srv.handleGenerateTool(context.Background(), request)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "missing required 'prompt' parameter")
-
-	// test with wrong prompt type
-	request = mcp.CallToolRequest{}
-	request.Params.Arguments = map[string]interface{}{
-		"prompt": 123, // not a string
-	}
-
-	_, err = srv.handleGenerateTool(context.Background(), request)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "'prompt' parameter must be a string")
 	
-	// test with runner error
-	runnerWithError := &mocks.RunnerMock{
+	errorRunner := &mocks.RunnerMock{
 		RunFunc: func(ctx context.Context, prompt string) (string, error) {
 			return "", errors.New("runner error")
 		},
 	}
-	srvWithError := &Server{runner: runnerWithError}
-	
-	request = mcp.CallToolRequest{}
-	request.Params.Arguments = map[string]interface{}{
-		"prompt": "Test prompt",
+
+	tests := []struct {
+		name        string
+		runner      *mocks.RunnerMock
+		arguments   map[string]interface{}
+		expectError bool
+		errorText   string
+		checkResult func(t *testing.T, result *mcp.CallToolResult)
+	}{
+		{
+			name:        "valid prompt",
+			runner:      successRunner,
+			arguments:   map[string]interface{}{"prompt": "Test prompt"},
+			expectError: false,
+			checkResult: func(t *testing.T, result *mcp.CallToolResult) {
+				require.NotEmpty(t, result.Content)
+				textContent, ok := result.Content[0].(mcp.TextContent)
+				require.True(t, ok, "Expected TextContent")
+				assert.Contains(t, textContent.Text, "Generated response for: Test prompt")
+			},
+		},
+		{
+			name:        "missing prompt parameter",
+			runner:      successRunner,
+			arguments:   map[string]interface{}{},
+			expectError: true,
+			errorText:   "missing required 'prompt' parameter",
+		},
+		{
+			name:        "wrong prompt type",
+			runner:      successRunner,
+			arguments:   map[string]interface{}{"prompt": 123}, // not a string
+			expectError: true,
+			errorText:   "'prompt' parameter must be a string",
+		},
+		{
+			name:        "runner error",
+			runner:      errorRunner,
+			arguments:   map[string]interface{}{"prompt": "Test prompt"},
+			expectError: true,
+			errorText:   "failed to run prompt through MPT",
+		},
 	}
-	
-	_, err = srvWithError.handleGenerateTool(context.Background(), request)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to run prompt through MPT")
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := &Server{runner: tc.runner}
+			
+			request := mcp.CallToolRequest{}
+			request.Params.Arguments = tc.arguments
+			
+			result, err := srv.handleGenerateTool(context.Background(), request)
+			
+			if tc.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.errorText)
+			} else {
+				require.NoError(t, err)
+				if tc.checkResult != nil {
+					tc.checkResult(t, result)
+				}
+			}
+		})
+	}
 }
