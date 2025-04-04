@@ -225,6 +225,29 @@ func appendFileContent(opts *options) error {
 	return nil
 }
 
+// createStandardProvider creates a provider instance for standard providers (OpenAI, Anthropic, Google)
+func createStandardProvider(providerType, apiKey, model string, maxTokens int) provider.Provider {
+	// all standard providers use the same options structure
+	opts := provider.Options{
+		APIKey:    apiKey,
+		Model:     model,
+		Enabled:   true,
+		MaxTokens: maxTokens,
+	}
+
+	switch providerType {
+	case "openai":
+		return provider.NewOpenAI(opts)
+	case "anthropic":
+		return provider.NewAnthropic(opts)
+	case "google":
+		return provider.NewGoogle(opts)
+	default:
+		lgr.Printf("[ERROR] unknown provider type: %s", providerType)
+		return nil
+	}
+}
+
 // initializeProviders creates provider instances from the options
 func initializeProviders(opts *options) []provider.Provider {
 	// create a slice to hold enabled providers
@@ -232,41 +255,26 @@ func initializeProviders(opts *options) []provider.Provider {
 
 	// add OpenAI provider only if enabled
 	if opts.OpenAI.Enabled {
-		openaiProvider := provider.NewOpenAI(provider.Options{
-			APIKey:    opts.OpenAI.APIKey,
-			Model:     opts.OpenAI.Model,
-			Enabled:   true, // if we got here, it's enabled
-			MaxTokens: opts.OpenAI.MaxTokens,
-		})
-		providers = append(providers, openaiProvider)
+		p := createStandardProvider("openai", opts.OpenAI.APIKey, opts.OpenAI.Model, opts.OpenAI.MaxTokens)
+		providers = append(providers, p)
 		lgr.Printf("[DEBUG] added OpenAI provider, model: %s", opts.OpenAI.Model)
 	}
 
 	// add Anthropic provider only if enabled
 	if opts.Anthropic.Enabled {
-		anthropicProvider := provider.NewAnthropic(provider.Options{
-			APIKey:    opts.Anthropic.APIKey,
-			Model:     opts.Anthropic.Model,
-			Enabled:   true, // if we got here, it's enabled
-			MaxTokens: opts.Anthropic.MaxTokens,
-		})
-		providers = append(providers, anthropicProvider)
+		p := createStandardProvider("anthropic", opts.Anthropic.APIKey, opts.Anthropic.Model, opts.Anthropic.MaxTokens)
+		providers = append(providers, p)
 		lgr.Printf("[DEBUG] added Anthropic provider, model: %s", opts.Anthropic.Model)
 	}
 
 	// add Google provider only if enabled
 	if opts.Google.Enabled {
-		googleProvider := provider.NewGoogle(provider.Options{
-			APIKey:    opts.Google.APIKey,
-			Model:     opts.Google.Model,
-			Enabled:   true, // if we got here, it's enabled
-			MaxTokens: opts.Google.MaxTokens,
-		})
-		providers = append(providers, googleProvider)
+		p := createStandardProvider("google", opts.Google.APIKey, opts.Google.Model, opts.Google.MaxTokens)
+		providers = append(providers, p)
 		lgr.Printf("[DEBUG] added Google provider, model: %s", opts.Google.Model)
 	}
 
-	// add custom provider if enabled
+	// add custom provider if enabled (handled separately due to different options structure)
 	if opts.Custom.Enabled && opts.Custom.URL != "" && opts.Custom.Model != "" {
 		customProvider := provider.NewCustomOpenAI(provider.CustomOptions{
 			Name:      opts.Custom.Name,
@@ -300,10 +308,20 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 	// run the prompt
 	result, err := r.Run(timeoutCtx, opts.Prompt)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		// handle different error types with more specific messages
+		switch {
+		case errors.Is(err, context.Canceled):
 			return fmt.Errorf("operation canceled by user")
+		case errors.Is(err, context.DeadlineExceeded):
+			return fmt.Errorf("operation timed out after %s, try increasing the timeout with -t flag", opts.Timeout)
+		default:
+			// check if we have an error from any specific provider
+			if strings.Contains(err.Error(), "api error") || strings.Contains(err.Error(), "API error") {
+				return fmt.Errorf("provider API error: %w", err)
+			}
+			// generic fallback for other errors
+			return fmt.Errorf("failed to run prompt: %w", err)
 		}
-		return fmt.Errorf("failed to run prompt: %w", err)
 	}
 
 	// print the result
