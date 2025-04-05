@@ -155,14 +155,14 @@ func TestLoadContent(t *testing.T) {
 	// test with empty pattern list
 	t.Run("empty_pattern", func(t *testing.T) {
 		result, err := LoadContent([]string{}, nil)
-		assert.NoError(t, err)
-		assert.Equal(t, "", result)
+		require.NoError(t, err)
+		assert.Empty(t, result)
 	})
 
 	// test with non-existent pattern
 	t.Run("non_existent_pattern", func(t *testing.T) {
 		_, err := LoadContent([]string{"non-existent-pattern-*.xyz"}, nil)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no files matched the provided patterns")
 	})
 
@@ -171,7 +171,7 @@ func TestLoadContent(t *testing.T) {
 		// construct the path properly to avoid linter warnings about path separators
 		invalidPath := filepath.Join(testDataDir, "non-existent-dir") + "/..."
 		_, err := LoadContent([]string{invalidPath}, nil)
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 
 	// test combination of different pattern styles
@@ -288,13 +288,13 @@ func TestProcessPatterns(t *testing.T) {
 		// test a non-existent pattern
 		matchedFiles = make(map[string]struct{})
 		err = processBashStylePattern("**/nonexistent*.abc", matchedFiles)
-		assert.NoError(t, err) // matching zero files is not an error
+		require.NoError(t, err) // matching zero files is not an error
 		assert.Empty(t, matchedFiles)
 
 		// test with an invalid pattern
 		matchedFiles = make(map[string]struct{})
 		err = processBashStylePattern("**/*[", matchedFiles) // invalid pattern
-		assert.Error(t, err)
+		require.Error(t, err)
 	})
 
 	// test processGoStylePattern
@@ -323,7 +323,7 @@ func TestProcessPatterns(t *testing.T) {
 		matchedFiles = make(map[string]struct{})
 		pattern = filepath.Join(testDataDir, "nonexistent") + "/..."
 		err = processGoStylePattern(pattern, matchedFiles)
-		assert.NoError(t, err) // non-existent dir is handled gracefully
+		require.NoError(t, err) // non-existent dir is handled gracefully
 		assert.Empty(t, matchedFiles)
 	})
 
@@ -338,7 +338,7 @@ func TestProcessPatterns(t *testing.T) {
 		require.NoError(t, err)
 
 		// we should have matched 1 go file in the top level
-		assert.Equal(t, 1, len(matchedFiles))
+		assert.Len(t, matchedFiles, 1)
 
 		// test with wildcard to match directory
 		matchedFiles = make(map[string]struct{})
@@ -353,7 +353,7 @@ func TestProcessPatterns(t *testing.T) {
 		matchedFiles = make(map[string]struct{})
 		pattern = filepath.Join(testDataDir, "nonexistent*.xyz")
 		err = processStandardGlobPattern(pattern, matchedFiles)
-		assert.NoError(t, err) // non-matching pattern is not an error
+		require.NoError(t, err) // non-matching pattern is not an error
 		assert.Empty(t, matchedFiles)
 	})
 
@@ -362,7 +362,7 @@ func TestProcessPatterns(t *testing.T) {
 		// test with no filter
 		basePath, filter := parseRecursivePattern("pkg/...")
 		assert.Equal(t, "pkg", basePath)
-		assert.Equal(t, "", filter)
+		assert.Empty(t, filter)
 
 		// test with extension filter
 		basePath, filter = parseRecursivePattern("pkg/.../*.go")
@@ -463,7 +463,7 @@ func TestProcessPatterns(t *testing.T) {
 		// test excluding by extension
 		excludePatterns := []string{"**/*.txt"}
 		filtered := applyExcludePatterns(matchedFiles, excludePatterns)
-		assert.Equal(t, 3, len(filtered), "Should have 3 files after excluding *.txt")
+		assert.Len(t, filtered, 3, "Should have 3 files after excluding *.txt")
 		_, hasGo1 := filtered[filepath.Join(testDataDir, "test1.go")]
 		assert.True(t, hasGo1, "Should have test1.go")
 		_, hasTxt := filtered[filepath.Join(testDataDir, "test2.txt")]
@@ -472,14 +472,14 @@ func TestProcessPatterns(t *testing.T) {
 		// test excluding by directory
 		excludePatterns = []string{"**/nested/**"}
 		filtered = applyExcludePatterns(matchedFiles, excludePatterns)
-		assert.Equal(t, 2, len(filtered), "Should have 2 files after excluding nested directory")
+		assert.Len(t, filtered, 2, "Should have 2 files after excluding nested directory")
 		_, hasNested := filtered[filepath.Join(testDataDir, "nested", "test3.go")]
 		assert.False(t, hasNested, "Should not have nested/test3.go")
 
 		// test multiple exclude patterns
 		excludePatterns = []string{"**/*.txt", "**/deep/**"}
 		filtered = applyExcludePatterns(matchedFiles, excludePatterns)
-		assert.Equal(t, 2, len(filtered), "Should have 2 files after excluding *.txt and deep directory")
+		assert.Len(t, filtered, 2, "Should have 2 files after excluding *.txt and deep directory")
 		_, hasDeep := filtered[filepath.Join(testDataDir, "nested", "deep", "test4.go")]
 		assert.False(t, hasDeep, "Should not have nested/deep/test4.go")
 		_, hasNestedGo := filtered[filepath.Join(testDataDir, "nested", "test3.go")]
@@ -487,11 +487,11 @@ func TestProcessPatterns(t *testing.T) {
 
 		// test no exclude patterns
 		filtered = applyExcludePatterns(matchedFiles, nil)
-		assert.Equal(t, len(matchedFiles), len(filtered), "Should have all files when no exclude patterns")
+		assert.Equal(t, matchedFiles, filtered, "Should have all files when no exclude patterns")
 
 		// test empty exclude patterns
 		filtered = applyExcludePatterns(matchedFiles, []string{})
-		assert.Equal(t, len(matchedFiles), len(filtered), "Should have all files when empty exclude patterns")
+		assert.Equal(t, matchedFiles, filtered, "Should have all files when empty exclude patterns")
 	})
 
 	// test helper functions for pattern matching

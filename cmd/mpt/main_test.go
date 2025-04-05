@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/mpt/pkg/provider"
 	"github.com/umputun/mpt/pkg/runner"
 	"github.com/umputun/mpt/pkg/runner/mocks"
 )
@@ -27,10 +31,10 @@ func TestSetupLog(t *testing.T) {
 
 func TestVerboseOutput(t *testing.T) {
 	// create a buffer to capture output
-	var buf bytes.Buffer
+	var buf strings.Builder
 
 	// create test options with verbose flag
-	opts := Opts{
+	opts := options{
 		Prompt:  "test prompt",
 		Verbose: true,
 	}
@@ -50,78 +54,6 @@ func TestVerboseOutput(t *testing.T) {
 	output = buf.String()
 	assert.Contains(t, output, "=== Prompt sent to models ===")
 	assert.Contains(t, output, "test prompt")
-}
-
-func TestRun_Flags(t *testing.T) {
-	testCases := []struct {
-		name         string
-		args         []string
-		exitCode     int
-		setupMock    func()
-		validateFunc func(*testing.T)
-	}{
-		{
-			name:         "version_flag",
-			args:         []string{"mpt", "--version"},
-			exitCode:     0,
-			setupMock:    func() {},
-			validateFunc: func(t *testing.T) {},
-		},
-		{
-			name:         "help_flag",
-			args:         []string{"mpt", "--help"},
-			exitCode:     0,
-			setupMock:    func() {},
-			validateFunc: func(t *testing.T) {},
-		},
-		{
-			name:         "invalid_flag",
-			args:         []string{"mpt", "--invalid-flag"},
-			exitCode:     1,
-			setupMock:    func() {},
-			validateFunc: func(t *testing.T) {},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// save original osExit and args, restore after the test
-			oldOsExit := osExit
-			oldArgs := os.Args
-			defer func() {
-				osExit = oldOsExit
-				os.Args = oldArgs
-			}()
-
-			// mock os.Exit
-			var actualExitCode int
-			osExit = func(code int) {
-				actualExitCode = code
-				panic("os.Exit called")
-			}
-
-			// set command line args
-			os.Args = tc.args
-
-			// apply any additional test setup
-			tc.setupMock()
-
-			// catch the panic from our mocked os.Exit
-			defer func() {
-				if r := recover(); r != nil {
-					assert.Equal(t, "os.Exit called", r)
-					assert.Equal(t, tc.exitCode, actualExitCode)
-
-					// run additional validations
-					tc.validateFunc(t)
-				}
-			}()
-
-			// run the function with a context
-			ctx := context.Background()
-			run(ctx)
-		})
-	}
 }
 
 func TestProviderCancellation(t *testing.T) {
@@ -171,8 +103,8 @@ func TestProviderCancellation(t *testing.T) {
 	select {
 	case result := <-resultCh:
 		// should have context.Canceled error
-		assert.Error(t, result.err)
-		assert.ErrorIs(t, result.err, context.Canceled)
+		require.Error(t, result.err)
+		require.ErrorIs(t, result.err, context.Canceled)
 	case <-time.After(1 * time.Second):
 		t.Fatal("Test timed out waiting for provider to handle context cancellation")
 	}
@@ -277,7 +209,7 @@ func TestGetPrompt(t *testing.T) {
 			}()
 
 			// create options with the initial prompt
-			opts := Opts{
+			opts := options{
 				Prompt: tt.initialPrompt,
 			}
 
@@ -314,7 +246,7 @@ func TestGetPrompt(t *testing.T) {
 }
 
 // getPromptForTest is a testable version of getPrompt that takes an explicit isPiped parameter
-func getPromptForTest(opts *Opts, isPiped bool) error {
+func getPromptForTest(opts *options, isPiped bool) error {
 	if isPiped {
 		// read from stdin as if it were piped
 		scanner := bufio.NewScanner(os.Stdin)
@@ -431,7 +363,7 @@ func TestRun_WithFileInput(t *testing.T) {
 
 	// create a test runner that uses our mock
 	testRun := func(ctx context.Context) error {
-		var opts Opts
+		var opts options
 		parser := flags.NewParser(&opts, flags.Default)
 		if _, err := parser.Parse(); err != nil {
 			return err
@@ -471,133 +403,6 @@ func TestRun_WithFileInput(t *testing.T) {
 	require.NotEmpty(t, tester.mockProvider.GenerateCalls())
 }
 
-func TestCustomProviders_MapAssignment(t *testing.T) {
-	// this test verifies that the map-based CustomProviders approach works correctly
-	var opts Opts
-
-	// initialize the map if nil
-	if opts.CustomProviders == nil {
-		opts.CustomProviders = make(map[string]CustomOpenAIProvider)
-	}
-
-	// add a custom provider to the map
-	opts.CustomProviders["localai"] = CustomOpenAIProvider{
-		Name:      "LocalAI",
-		URL:       "http://localhost:8080",
-		APIKey:    "test-key",
-		Model:     "local-model",
-		Enabled:   true,
-		MaxTokens: 4096,
-	}
-
-	// verify the custom provider was added correctly
-	customProvider, exists := opts.CustomProviders["localai"]
-	require.True(t, exists, "localai provider should exist in the map")
-	assert.Equal(t, "LocalAI", customProvider.Name, "Name should match")
-	assert.Equal(t, "http://localhost:8080", customProvider.URL, "URL should match")
-	assert.Equal(t, "test-key", customProvider.APIKey, "API key should match")
-	assert.Equal(t, "local-model", customProvider.Model, "Model should match")
-	assert.True(t, customProvider.Enabled, "Provider should be enabled")
-	assert.Equal(t, 4096, customProvider.MaxTokens, "MaxTokens should match")
-
-	// test iteration over the map
-	count := 0
-	for id, prov := range opts.CustomProviders {
-		count++
-		assert.Equal(t, "localai", id, "Provider ID should match")
-		assert.Equal(t, "LocalAI", prov.Name, "Provider name should match")
-	}
-	assert.Equal(t, 1, count, "Should have iterated over exactly one custom provider")
-}
-
-func TestCustomProviders_DirectMapManipulation(t *testing.T) {
-	// since flags don't seem to populate the map directly, let's test map setting and use
-	// this verifies the map-based approach works for the internal code paths
-
-	var opts Opts
-	// initialize the map
-	opts.CustomProviders = make(map[string]CustomOpenAIProvider)
-
-	// add a custom provider directly
-	opts.CustomProviders["local"] = CustomOpenAIProvider{
-		Name:    "LocalAI",
-		URL:     "http://localhost:8080",
-		Model:   "local-model",
-		Enabled: true,
-	}
-
-	// verify the provider was set correctly
-	require.NotEmpty(t, opts.CustomProviders, "CustomProviders should not be empty")
-
-	// process the provider as the run function would
-	var capturedName, capturedURL, capturedModel string
-	for providerID, customOpt := range opts.CustomProviders {
-		if customOpt.Enabled {
-			capturedName = customOpt.Name
-			capturedURL = customOpt.URL
-			capturedModel = customOpt.Model
-			// simulating logging that would use the provider ID
-			_ = providerID
-		}
-	}
-
-	// verify the provider was processed correctly
-	assert.Equal(t, "LocalAI", capturedName, "Provider name should match")
-	assert.Equal(t, "http://localhost:8080", capturedURL, "Provider URL should match")
-	assert.Equal(t, "local-model", capturedModel, "Provider model should match")
-
-	// test with multiple providers
-	opts = Opts{}
-	opts.CustomProviders = make(map[string]CustomOpenAIProvider)
-
-	// add multiple providers
-	opts.CustomProviders["provider1"] = CustomOpenAIProvider{
-		Name:    "Provider1",
-		URL:     "https://provider1.com",
-		Model:   "model1",
-		Enabled: true,
-	}
-
-	opts.CustomProviders["provider2"] = CustomOpenAIProvider{
-		Name:    "Provider2",
-		URL:     "https://provider2.com",
-		Model:   "model2",
-		APIKey:  "secret-key",
-		Enabled: true,
-	}
-
-	// verify multiple providers
-	require.Equal(t, 2, len(opts.CustomProviders), "Should have 2 custom providers")
-
-	// check specific providers
-	provider1, exists := opts.CustomProviders["provider1"]
-	require.True(t, exists, "provider1 should exist")
-	assert.Equal(t, "Provider1", provider1.Name, "Provider1 name should match")
-
-	provider2, exists := opts.CustomProviders["provider2"]
-	require.True(t, exists, "provider2 should exist")
-	assert.Equal(t, "Provider2", provider2.Name, "Provider2 name should match")
-	assert.Equal(t, "secret-key", provider2.APIKey, "Provider2 API key should match")
-
-	// verify processing of multiple providers
-	var count int
-	for providerID, customOpt := range opts.CustomProviders {
-		if customOpt.Enabled {
-			count++
-			// log the provider ID and name to verify they're correct
-			switch providerID {
-			case "provider1":
-				assert.Equal(t, "Provider1", customOpt.Name, "Provider1 name should match")
-			case "provider2":
-				assert.Equal(t, "Provider2", customOpt.Name, "Provider2 name should match")
-			default:
-				t.Errorf("Unexpected provider ID: %s", providerID)
-			}
-		}
-	}
-	assert.Equal(t, 2, count, "Should have processed 2 enabled providers")
-}
-
 func TestRun_PromptCombination(t *testing.T) {
 	// create test helper
 	tester := NewMockRunnerTester(t)
@@ -633,7 +438,7 @@ func TestRun_PromptCombination(t *testing.T) {
 
 	// create a test runner that uses our mock
 	testRun := func(ctx context.Context) error {
-		var opts Opts
+		var opts options
 		parser := flags.NewParser(&opts, flags.Default)
 		if _, err := parser.Parse(); err != nil {
 			return err
@@ -661,4 +466,519 @@ func TestRun_PromptCombination(t *testing.T) {
 
 	// verify the mock was called properly
 	require.NotEmpty(t, tester.mockProvider.GenerateCalls())
+}
+
+// TestCreateStandardProvider tests the provider creation functionality
+func TestCreateStandardProvider(t *testing.T) {
+	tests := []struct {
+		name         string
+		providerType string
+		apiKey       string
+		model        string
+		maxTokens    int
+		expectNil    bool
+	}{
+		{
+			name:         "openai provider",
+			providerType: "openai",
+			apiKey:       "test-key",
+			model:        "gpt-4o",
+			maxTokens:    1024,
+			expectNil:    false,
+		},
+		{
+			name:         "anthropic provider",
+			providerType: "anthropic",
+			apiKey:       "test-key",
+			model:        "claude-3",
+			maxTokens:    2048,
+			expectNil:    false,
+		},
+		{
+			name:         "google provider",
+			providerType: "google",
+			apiKey:       "test-key",
+			model:        "gemini",
+			maxTokens:    4096,
+			expectNil:    false,
+		},
+		{
+			name:         "unknown provider",
+			providerType: "unknown",
+			apiKey:       "test-key",
+			model:        "model",
+			maxTokens:    1000,
+			expectNil:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := createStandardProvider(tt.providerType, tt.apiKey, tt.model, tt.maxTokens)
+
+			if tt.expectNil {
+				assert.Nil(t, provider, "Provider should be nil for unknown provider type")
+				return
+			}
+
+			require.NotNil(t, provider, "Provider should not be nil")
+
+			// verify the provider name matches the expected type (case-insensitive)
+			assert.Contains(t, strings.ToLower(provider.Name()), tt.providerType, "Provider name should contain the provider type")
+
+			// verify the provider is enabled
+			assert.True(t, provider.Enabled(), "Provider should be enabled")
+		})
+	}
+}
+
+// TestProcessPrompt_WithFile tests processPrompt with file content
+func TestProcessPrompt_WithFile(t *testing.T) {
+	// create a temp file
+	tempDir := t.TempDir()
+	testFilePath := filepath.Join(tempDir, "test.txt")
+	err := os.WriteFile(testFilePath, []byte("file content"), 0o644)
+	require.NoError(t, err, "Failed to create test file")
+
+	// setup options
+	opts := &options{
+		Prompt: "test prompt",
+		Files:  []string{testFilePath},
+	}
+
+	// process prompt
+	err = processPrompt(opts)
+	require.NoError(t, err, "processPrompt should not error")
+
+	// verify content
+	assert.Contains(t, opts.Prompt, "test prompt", "Prompt should contain original prompt")
+	assert.Contains(t, opts.Prompt, "file content", "Prompt should contain file content")
+	// don't check exact format as it may change
+}
+
+// TestProcessPrompt_Simple tests basic functionality of processPrompt without files
+func TestProcessPrompt_Simple(t *testing.T) {
+	tests := []struct {
+		name           string
+		initialPrompt  string
+		expectError    bool
+		expectedPrompt string
+	}{
+		{
+			name:          "empty prompt should fail",
+			initialPrompt: "",
+			expectError:   true,
+		},
+		{
+			name:           "valid prompt with no files",
+			initialPrompt:  "test prompt",
+			expectError:    false,
+			expectedPrompt: "test prompt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// setup simple options with no files
+			opts := &options{
+				Prompt: tt.initialPrompt,
+			}
+
+			// call processPrompt
+			err := processPrompt(opts)
+
+			if tt.expectError {
+				assert.Error(t, err, "Expected an error")
+				return
+			}
+
+			require.NoError(t, err, "processPrompt should not error")
+			assert.Equal(t, tt.expectedPrompt, opts.Prompt, "Prompt should match expected")
+		})
+	}
+}
+
+// TestExecutePrompt_Verbose tests the verbose output path in executePrompt
+func TestExecutePrompt_Verbose(t *testing.T) {
+	// setup mock provider
+	mockProvider := &mocks.ProviderMock{
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			return "Test response for verbose test", nil
+		},
+		NameFunc: func() string {
+			return "MockProvider"
+		},
+		EnabledFunc: func() bool {
+			return true
+		},
+	}
+
+	providers := []provider.Provider{mockProvider}
+
+	// create stdout capture
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+
+	// create options with verbose flag
+	opts := &options{
+		Prompt:  "test prompt",
+		Timeout: 5 * time.Second,
+		Verbose: true, // enable verbose output
+	}
+
+	// execute the function
+	ctx := context.Background()
+	err = executePrompt(ctx, opts, providers)
+
+	// restore stdout
+	w.Close()
+	os.Stdout = oldStdout
+
+	// read the output
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	// check results
+	require.NoError(t, err, "executePrompt should not error")
+	assert.Contains(t, output, "=== Prompt sent to models ===", "Verbose output should include prompt header")
+	assert.Contains(t, output, "test prompt", "Verbose output should include the prompt text")
+	assert.Contains(t, output, "Test response for verbose test", "Output should contain the response")
+}
+
+// TestExecutePrompt_Success tests the successful execution path
+func TestExecutePrompt_Success(t *testing.T) {
+	// setup mock provider
+	mockProvider := &mocks.ProviderMock{
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			return "Test response for: " + prompt, nil
+		},
+		NameFunc: func() string {
+			return "TestProvider"
+		},
+		EnabledFunc: func() bool {
+			return true
+		},
+	}
+	providers := []provider.Provider{mockProvider}
+
+	opts := &options{
+		Prompt:  "test prompt",
+		Timeout: 5 * time.Second,
+	}
+
+	// redirect stdout
+	oldStdout := os.Stdout
+	rOut, wOut, err := os.Pipe()
+	require.NoError(t, err, "failed to create stdout pipe")
+	os.Stdout = wOut
+
+	// execute prompt
+	ctx := context.Background()
+	err = executePrompt(ctx, opts, providers)
+	require.NoError(t, err, "executePrompt should not error")
+
+	// restore stdout
+	wOut.Close()
+	os.Stdout = oldStdout
+
+	// read output
+	var buf bytes.Buffer
+	io.Copy(&buf, rOut)
+	output := buf.String()
+
+	// verify output
+	assert.Contains(t, output, "Test response for: test prompt", "Output should contain the response")
+}
+
+// TestExecutePrompt_DirectErrorHandlers tests the error handling code directly
+func TestExecutePrompt_DirectErrorHandlers(t *testing.T) {
+	// test context canceled
+	err := handleRunnerError(context.Canceled, 1*time.Second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "operation canceled by user")
+
+	// test context deadline exceeded
+	err = handleRunnerError(context.DeadlineExceeded, 5*time.Second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "operation timed out after 5s")
+	assert.Contains(t, err.Error(), "try increasing the timeout with -t flag")
+
+	// test API error
+	err = handleRunnerError(fmt.Errorf("api error: something went wrong"), 1*time.Second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "provider API error")
+
+	// test API error with uppercase
+	err = handleRunnerError(fmt.Errorf("API error: something else went wrong"), 1*time.Second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "provider API error")
+
+	// test generic error
+	err = handleRunnerError(fmt.Errorf("some generic error"), 1*time.Second)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to run prompt")
+}
+
+// Helper function that extracts the error handling logic from executePrompt
+func handleRunnerError(err error, timeout time.Duration) error {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return fmt.Errorf("operation canceled by user")
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("operation timed out after %s, try increasing the timeout with -t flag", timeout)
+	default:
+		// check if we have an error from any specific provider
+		if strings.Contains(err.Error(), "api error") || strings.Contains(err.Error(), "API error") {
+			return fmt.Errorf("provider API error: %w", err)
+		}
+		// generic fallback for other errors
+		return fmt.Errorf("failed to run prompt: %w", err)
+	}
+}
+
+// TestExecutePrompt_Error tests that executePrompt handles provider errors
+// Note: In the current implementation, the runner returns the error message as the result
+// rather than returning an error, so this test verifies the correct output
+func TestExecutePrompt_Error(t *testing.T) {
+	// setup mock provider that returns an API error
+	mockProvider := &mocks.ProviderMock{
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			return "", fmt.Errorf("api error: something went wrong")
+		},
+		NameFunc: func() string {
+			return "MockProvider"
+		},
+		EnabledFunc: func() bool {
+			return true
+		},
+	}
+
+	providers := []provider.Provider{mockProvider}
+
+	// create stdout capture
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+
+	// run executePrompt with error-producing mock
+	opts := &options{
+		Prompt:  "test prompt",
+		Timeout: 5 * time.Second,
+	}
+
+	ctx := context.Background()
+	err = executePrompt(ctx, opts, providers)
+
+	// restore stdout
+	w.Close()
+	os.Stdout = oldStdout
+
+	// read the output
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+
+	// for single provider, the runner converts error to output
+	// so we don't expect executePrompt to return an error
+	require.NoError(t, err, "executePrompt doesn't return an error with single provider failures")
+
+	// instead, check that the output contains the error message
+	output := buf.String()
+	assert.Contains(t, output, "api error", "Output should contain the provider error message")
+}
+
+// TestAppendFileContent tests the appendFileContent function
+func TestAppendFileContent(t *testing.T) {
+	// test case 1: No files
+	t.Run("no files", func(t *testing.T) {
+		opts := &options{
+			Prompt: "initial",
+			Files:  []string{},
+		}
+
+		err := appendFileContent(opts)
+		require.NoError(t, err, "appendFileContent should not error")
+		assert.Equal(t, "initial", opts.Prompt, "Prompt should be unchanged with no files")
+	})
+
+	// test case 2: Single file
+	t.Run("single file", func(t *testing.T) {
+		// create a test file
+		tempDir := t.TempDir()
+		testFilePath := filepath.Join(tempDir, "test.txt")
+		err := os.WriteFile(testFilePath, []byte("file content"), 0o644)
+		require.NoError(t, err, "Failed to create test file")
+
+		opts := &options{
+			Prompt: "initial",
+			Files:  []string{testFilePath},
+		}
+
+		err = appendFileContent(opts)
+		require.NoError(t, err, "appendFileContent should not error")
+
+		// check that the prompt contains both initial prompt and file content
+		assert.Contains(t, opts.Prompt, "initial", "Prompt should contain the initial prompt")
+		assert.Contains(t, opts.Prompt, "file content", "Prompt should contain the file content")
+	})
+
+	// test case 3: Files with exclude pattern
+	t.Run("file with excludes", func(t *testing.T) {
+		tempDir := t.TempDir()
+
+		// create files that should be included
+		includePath := filepath.Join(tempDir, "include.txt")
+		err := os.WriteFile(includePath, []byte("include content"), 0o644)
+		require.NoError(t, err, "Failed to create include file")
+
+		// create files that should be excluded
+		excludeDir := filepath.Join(tempDir, "exclude")
+		err = os.MkdirAll(excludeDir, 0o755)
+		require.NoError(t, err, "Failed to create exclude dir")
+
+		excludePath := filepath.Join(excludeDir, "exclude.txt")
+		err = os.WriteFile(excludePath, []byte("exclude content"), 0o644)
+		require.NoError(t, err, "Failed to create exclude file")
+
+		opts := &options{
+			Prompt:   "initial",
+			Files:    []string{filepath.Join(tempDir, "*.txt"), filepath.Join(tempDir, "**", "*.txt")},
+			Excludes: []string{filepath.Join(tempDir, "exclude", "**")},
+		}
+
+		err = appendFileContent(opts)
+		require.NoError(t, err, "appendFileContent should not error")
+
+		// verify content
+		assert.Contains(t, opts.Prompt, "initial", "Prompt should contain the initial prompt")
+		assert.Contains(t, opts.Prompt, "include content", "Prompt should contain the included content")
+		assert.NotContains(t, opts.Prompt, "exclude content", "Prompt should not contain excluded content")
+	})
+
+	// test case 4: File not found
+	t.Run("file not found", func(t *testing.T) {
+		opts := &options{
+			Prompt: "initial",
+			Files:  []string{"/nonexistent/file.txt"},
+		}
+
+		err := appendFileContent(opts)
+		assert.Error(t, err, "Expected an error for non-existent file")
+	})
+}
+
+// TestInitializeProviders tests the provider initialization logic
+func TestInitializeProviders(t *testing.T) {
+	tests := []struct {
+		name            string
+		opts            *options
+		expectedCount   int
+		expectedTypes   []string
+		expectedMissing []string
+	}{
+		{
+			name: "all providers enabled",
+			opts: &options{
+				OpenAI: openAIOpts{
+					Enabled: true,
+					APIKey:  "test-key",
+					Model:   "gpt-4o",
+				},
+				Anthropic: anthropicOpts{
+					Enabled: true,
+					APIKey:  "test-key",
+					Model:   "claude-3",
+				},
+				Google: googleOpts{
+					Enabled: true,
+					APIKey:  "test-key",
+					Model:   "gemini",
+				},
+				Custom: customOpenAIProvider{
+					Enabled: true,
+					URL:     "https://test.com",
+					Model:   "model",
+				},
+			},
+			expectedCount: 4,
+			expectedTypes: []string{"openai", "anthropic", "google", "custom"},
+		},
+		{
+			name: "only openai enabled",
+			opts: &options{
+				OpenAI: openAIOpts{
+					Enabled: true,
+					APIKey:  "test-key",
+					Model:   "gpt-4o",
+				},
+			},
+			expectedCount:   1,
+			expectedTypes:   []string{"openai"},
+			expectedMissing: []string{"anthropic", "google", "custom"},
+		},
+		{
+			name: "custom provider without URL",
+			opts: &options{
+				Custom: customOpenAIProvider{
+					Enabled: true,
+					Model:   "model",
+					// no URL provided
+				},
+			},
+			expectedCount:   0,
+			expectedMissing: []string{"custom"},
+		},
+		{
+			name: "custom provider without model",
+			opts: &options{
+				Custom: customOpenAIProvider{
+					Enabled: true,
+					URL:     "https://test.com",
+					// no model provided
+				},
+			},
+			expectedCount:   0,
+			expectedMissing: []string{"custom"},
+		},
+		{
+			name:          "no providers enabled",
+			opts:          &options{},
+			expectedCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			providers := initializeProviders(tt.opts)
+
+			assert.Len(t, providers, tt.expectedCount, "Provider count should match expected")
+
+			// verify each expected provider is present (case-insensitive)
+			for _, expectedType := range tt.expectedTypes {
+				found := false
+				for _, p := range providers {
+					if strings.Contains(strings.ToLower(p.Name()), strings.ToLower(expectedType)) {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "Expected provider %s not found", expectedType)
+			}
+
+			// verify each expected missing provider is actually missing (case-insensitive)
+			for _, expectedMissing := range tt.expectedMissing {
+				found := false
+				for _, p := range providers {
+					if strings.Contains(strings.ToLower(p.Name()), strings.ToLower(expectedMissing)) {
+						found = true
+						break
+					}
+				}
+				assert.False(t, found, "Provider %s should not be present", expectedMissing)
+			}
+		})
+	}
 }

@@ -9,6 +9,7 @@ require (
 	github.com/go-pkgz/lgr v0.12.0
 	github.com/google/generative-ai-go v0.19.0
 	github.com/jessevdk/go-flags v1.6.1
+	github.com/mark3labs/mcp-go v0.18.0
 	github.com/sashabaranov/go-openai v1.38.1
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/api v0.228.0
@@ -36,6 +37,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0 // indirect

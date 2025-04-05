@@ -5,19 +5,14 @@ package mocks
 
 import (
 	"context"
-	"github.com/umputun/mpt/pkg/provider"
 	"sync"
 )
 
-// Ensure, that ProviderMock does implement provider.Provider.
-// If this is not the case, regenerate this file with moq.
-var _ provider.Provider = &ProviderMock{}
-
-// ProviderMock is a mock implementation of provider.Provider.
+// ProviderMock is a mock implementation of runner.Provider.
 //
 //	func TestSomethingThatUsesProvider(t *testing.T) {
 //
-//		// make and configure a mocked provider.Provider
+//		// make and configure a mocked runner.Provider
 //		mockedProvider := &ProviderMock{
 //			EnabledFunc: func() bool {
 //				panic("mock out the Enabled method")
@@ -30,7 +25,7 @@ var _ provider.Provider = &ProviderMock{}
 //			},
 //		}
 //
-//		// use mockedProvider in code that requires provider.Provider
+//		// use mockedProvider in code that requires runner.Provider
 //		// and then make assertions.
 //
 //	}

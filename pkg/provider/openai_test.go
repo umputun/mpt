@@ -59,7 +59,7 @@ func TestOpenAI_Enabled(t *testing.T) {
 func TestOpenAI_Generate_NotEnabled(t *testing.T) {
 	provider := NewOpenAI(Options{Enabled: false})
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not enabled")
 }
 
@@ -70,7 +70,7 @@ func mockOpenAIClient(t *testing.T, jsonResponse string) (*openai.Client, *httpt
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte(jsonResponse))
-		require.NoError(t, err)
+		_ = err
 	}))
 
 	// create a custom client configuration
@@ -113,7 +113,7 @@ func TestOpenAI_Generate_Success(t *testing.T) {
 
 	// test the Generate method
 	response, err := provider.Generate(context.Background(), "test prompt")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "This is a test response", response)
 }
 
@@ -140,7 +140,7 @@ func TestOpenAI_Generate_EmptyChoices(t *testing.T) {
 
 	// test the Generate method
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no choices")
 }
 
@@ -150,7 +150,7 @@ func TestOpenAI_Generate_MalformedJSON(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte(`{malformed json`))
-		require.NoError(t, err)
+		_ = err
 	}))
 	defer server.Close()
 
@@ -168,7 +168,7 @@ func TestOpenAI_Generate_MalformedJSON(t *testing.T) {
 
 	// test the Generate method
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "openai api error")
 }
 
@@ -184,7 +184,7 @@ func TestOpenAI_Generate_APIError(t *testing.T) {
 				"code": "invalid_api_key"
 			}
 		}`))
-		require.NoError(t, err)
+		_ = err
 	}))
 	defer server.Close()
 
@@ -202,6 +202,6 @@ func TestOpenAI_Generate_APIError(t *testing.T) {
 
 	// test the Generate method
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "openai api error")
 }

@@ -9,17 +9,20 @@ import (
 	"github.com/umputun/mpt/pkg/provider"
 )
 
-//go:generate moq -out mocks/provider_mock.go -pkg mocks ../provider Provider
+//go:generate moq -out mocks/provider.go -pkg mocks -skip-ensure -fmt goimports . Provider
 
 // Runner executes prompts across multiple providers in parallel
 type Runner struct {
-	providers []provider.Provider
+	providers []Provider
 }
 
+// Provider defines the interface for LLM providers
+type Provider = provider.Provider
+
 // New creates a new Runner with the given providers
-func New(providers ...provider.Provider) *Runner {
+func New(providers ...Provider) *Runner {
 	// filter only enabled providers
-	var enabledProviders []provider.Provider
+	var enabledProviders []Provider
 	for _, p := range providers {
 		if p.Enabled() {
 			enabledProviders = append(enabledProviders, p)
@@ -42,7 +45,7 @@ func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
 
 	for _, p := range r.providers {
 		wg.Add(1)
-		go func(p provider.Provider) {
+		go func(p Provider) {
 			defer wg.Done()
 
 			text, err := p.Generate(ctx, prompt)

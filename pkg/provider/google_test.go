@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/generative-ai-go/genai"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // MockGenerativeModel allows us to inject custom behavior for testing
@@ -68,7 +69,7 @@ func TestGoogle_Enabled(t *testing.T) {
 func TestGoogle_Generate_NotEnabled(t *testing.T) {
 	provider := NewGoogle(Options{Enabled: false})
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not enabled")
 }
 
@@ -132,7 +133,7 @@ func TestGoogle_Generate_Success(t *testing.T) {
 
 	// test the Generate method
 	response, err := provider.Generate(context.Background(), "test prompt")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "This is a test response", response)
 }
 
@@ -156,7 +157,7 @@ func TestGoogle_Generate_EmptyResponse(t *testing.T) {
 
 	// test the Generate method - should return an error for empty response
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty response")
 }
 
@@ -175,7 +176,7 @@ func TestGoogle_Generate_APIError(t *testing.T) {
 
 	// test the Generate method - should return an error for API error
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "API key not valid")
 }
 
@@ -237,7 +238,7 @@ func TestGoogle_TokenLimits(t *testing.T) {
 
 			// call Generate to trigger token limit logic
 			response, err := provider.Generate(context.Background(), "test prompt")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, "This is a test response", response)
 
 			// check expected maximum token value

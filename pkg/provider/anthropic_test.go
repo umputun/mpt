@@ -60,7 +60,7 @@ func TestAnthropic_Enabled(t *testing.T) {
 func TestAnthropic_Generate_NotEnabled(t *testing.T) {
 	provider := NewAnthropic(Options{Enabled: false})
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not enabled")
 }
 
@@ -94,7 +94,7 @@ func TestAnthropic_Generate_Success(t *testing.T) {
 			}
 		}`
 		_, err := w.Write([]byte(response))
-		require.NoError(t, err)
+		_ = err
 	}))
 	defer server.Close()
 
@@ -115,7 +115,7 @@ func TestAnthropic_Generate_Success(t *testing.T) {
 
 	// test the Generate method
 	response, err := provider.Generate(context.Background(), "test prompt")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "This is a test response", response)
 }
 
@@ -137,7 +137,7 @@ func TestAnthropic_Generate_EmptyResponse(t *testing.T) {
 			}
 		}`
 		_, err := w.Write([]byte(response))
-		require.NoError(t, err)
+		_ = err
 	}))
 	defer server.Close()
 
@@ -158,7 +158,7 @@ func TestAnthropic_Generate_EmptyResponse(t *testing.T) {
 
 	// test the Generate method - should return an error for empty response
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty response")
 }
 
@@ -174,7 +174,7 @@ func TestAnthropic_Generate_APIError(t *testing.T) {
 			}
 		}`
 		_, err := w.Write([]byte(response))
-		require.NoError(t, err)
+		_ = err
 	}))
 	defer server.Close()
 
@@ -195,6 +195,6 @@ func TestAnthropic_Generate_APIError(t *testing.T) {
 
 	// test the Generate method - should return an error for API error
 	_, err := provider.Generate(context.Background(), "test prompt")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "anthropic api error")
 }
