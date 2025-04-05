@@ -205,7 +205,6 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
 -v, --verbose         Verbose output, shows the complete prompt sent to models
 --dbg                 Enable debug mode
 -V, --version         Show version information
---no-color            Disable color output
 ```
 
 ### Examples
