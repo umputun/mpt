@@ -28,6 +28,8 @@ MPT makes working with AI language models simpler and more powerful by:
 
 5. **Providing cleaner single-provider output**: When using just one AI provider, MPT automatically removes headers for cleaner results.
 
+6. **Acting as an MCP server**: For advanced usage, MPT can run as a Model Context Protocol server, making multiple providers available through a single unified interface to MCP-compatible clients.
+
 For example, when reviewing code changes:
 ```
 git diff HEAD~1 | mpt --openai.enabled --anthropic.enabled --google.enabled \
@@ -59,6 +61,7 @@ The second command will produce clean output without any provider headers, since
 - **Customizable Execution**: Configure timeouts, token limits, and models per provider
 - **Clean Output Formatting**: Provider-specific headers (or none when using a single provider)
 - **Environment Variable Support**: Store API keys and settings in environment variables instead of flags
+- **MCP Server Mode**: Run as a Model Context Protocol server to make your providers accessible to MCP-compatible clients
 
 ## Installation
 
@@ -113,12 +116,7 @@ sudo apk add mpt_v0.1.0_linux_x86_64.apk
 
 ## Usage
 
-MPT can be used in two modes:
-
-1. **Standard Mode**: Query multiple providers and get responses
-2. **MCP Server Mode**: Run as a Model Context Protocol server
-
-### Standard Mode
+MPT is primarily used to query multiple providers and get responses:
 
 ```
 mpt [options]
@@ -130,14 +128,6 @@ You can provide a prompt in the following ways:
 3. Combining flag and piped content: `echo "Additional context" | mpt --prompt "Main question"`
    - This combines both inputs with a newline separator
 4. Interactive mode: If no prompt is provided via command line or pipe, you'll be prompted to enter one
-
-### MCP Server Mode
-
-```
-mpt --mcp.server [other options]
-```
-
-In MCP server mode, MPT acts as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that makes your configured providers accessible via the MCP protocol. This allows any MCP-compatible client to interact with multiple LLM providers through a single unified interface.
 
 ### Provider Configuration
 
@@ -198,12 +188,6 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
     --prompt "Compare the approaches to implementing recursion in different programming languages"
 ```
 
-### MCP Server Options
-
-```
---mcp.server          Run in MCP server mode
---mcp.server-name     MCP server name (default: "MPT MCP Server")
-```
 
 ### General Options
 
@@ -406,17 +390,40 @@ Recursion is a technique in programming where a function solves a problem by...
 Recursion in programming is when a function calls itself during its execution...
 ```
 
+## Advanced Usage: MCP Server Mode
+
+In addition to the standard prompt-based usage, MPT can also run as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server:
+
+```
+mpt --mcp.server [other options]
+```
+
+### What is MCP Server Mode?
+
+MCP server mode allows MPT to act as a bridge between MCP-compatible clients and multiple LLM providers. This enables:
+
+- Using MPT as a tool within MCP-compatible applications
+- Accessing multiple LLM providers through a single unified interface
+- Abstracting provider-specific details behind the MCP protocol
+
+### MCP Server Mode Options
+
+```
+--mcp.server          Run in MCP server mode
+--mcp.server-name     MCP server name (default: "MPT MCP Server")
+```
+
 ### Using MPT as an MCP Tool
 
-MPT can be used as an MCP tool that MCP-compatible clients can invoke. When used this way, MPT acts as a bridge between the MCP client and multiple LLM providers:
+MPT can be used as an MCP tool that MCP-compatible clients can invoke:
 
 ```bash
-# The MCP client app invokes MPT with the required providers
+# Set up provider API keys
 export OPENAI_API_KEY="your-openai-key"
 export ANTHROPIC_API_KEY="your-anthropic-key"
 export GOOGLE_API_KEY="your-google-key"
 
-# MCP client runs MPT with the providers you want to use
+# Start MPT in MCP server mode with your chosen providers
 mpt --mcp.server --openai.enabled --anthropic.enabled --google.enabled
 ```
 
