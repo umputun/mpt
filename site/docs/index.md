@@ -1,5 +1,7 @@
 # MPT - multi-provider tool for LLMs
 
+
+
 MPT is a command-line utility that sends prompts to multiple AI language model providers (OpenAI, Anthropic, Google, and custom providers) in parallel and combines the results. It enables easy file inclusion for context and supports flexible pattern matching to quickly include relevant code or documentation in your prompts.
 
 <div align="center">
@@ -25,6 +27,8 @@ MPT makes working with AI language models simpler and more powerful by:
 4. **Getting multiple perspectives**: Different AI models have different strengths—MPT lets you leverage them all at once to get more comprehensive insights.
 
 5. **Providing cleaner single-provider output**: When using just one AI provider, MPT automatically removes headers for cleaner results.
+
+6. **Acting as an MCP server**: For advanced usage, MPT can run as a Model Context Protocol server, making multiple providers available through a single unified interface to MCP-compatible clients.
 
 For example, when reviewing code changes:
 ```
@@ -57,6 +61,7 @@ The second command will produce clean output without any provider headers, since
 - **Customizable Execution**: Configure timeouts, token limits, and models per provider
 - **Clean Output Formatting**: Provider-specific headers (or none when using a single provider)
 - **Environment Variable Support**: Store API keys and settings in environment variables instead of flags
+- **MCP Server Mode**: Run as a Model Context Protocol server to make your providers accessible to MCP-compatible clients
 
 ## Installation
 
@@ -110,6 +115,8 @@ sudo apk add mpt_v0.1.0_linux_x86_64.apk
 </details>
 
 ## Usage
+
+MPT is primarily used to query multiple providers and get responses:
 
 ```
 mpt [options]
@@ -180,6 +187,7 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
     --custom.together.api-key "your-key" --custom.together.model "llama-3-70b" \
     --prompt "Compare the approaches to implementing recursion in different programming languages"
 ```
+
 
 ### General Options
 
@@ -382,6 +390,45 @@ Recursion is a technique in programming where a function solves a problem by...
 Recursion in programming is when a function calls itself during its execution...
 ```
 
+## Advanced Usage: MCP Server Mode
+
+In addition to the standard prompt-based usage, MPT can also run as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server:
+
+```
+mpt --mcp.server [other options]
+```
+
+### What is MCP Server Mode?
+
+MCP server mode allows MPT to act as a bridge between MCP-compatible clients and multiple LLM providers. This enables:
+
+- Using MPT as a tool within MCP-compatible applications
+- Accessing multiple LLM providers through a single unified interface
+- Abstracting provider-specific details behind the MCP protocol
+
+### MCP Server Mode Options
+
+```
+--mcp.server          Run in MCP server mode
+--mcp.server-name     MCP server name (default: "MPT MCP Server")
+```
+
+### Using MPT as an MCP Tool
+
+MPT can be used as an MCP tool that MCP-compatible clients can invoke:
+
+```bash
+# Set up provider API keys
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
+export GOOGLE_API_KEY="your-google-key"
+
+# Start MPT in MCP server mode with your chosen providers
+mpt --mcp.server --openai.enabled --anthropic.enabled --google.enabled
+```
+
+When run in MCP server mode, MPT communicates with the MCP client using the Model Context Protocol over standard input/output. The client can then use MPT's multiple providers as if they were a single provider, with MPT handling all the provider-specific details.
+
 ## Using Environment Variables
 
 You can use environment variables instead of command-line flags:
@@ -401,6 +448,10 @@ GOOGLE_API_KEY="your-google-key"
 GOOGLE_MODEL="gemini-2.5-pro-exp-03-25"
 GOOGLE_ENABLED=true
 GOOGLE_MAX_TOKENS=16384
+
+# MCP Server Mode
+MCP_SERVER=true
+MCP_SERVER_NAME="My MPT MCP Server"
 
 # Custom OpenAI-compatible provider
 CUSTOM_NAME="LocalLLM"
