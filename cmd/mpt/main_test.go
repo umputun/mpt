@@ -48,7 +48,6 @@ func TestVerboseOutput(t *testing.T) {
 
 	// test with NoColor option
 	buf.Reset()
-	opts.NoColor = true
 	showVerbosePrompt(&buf, opts)
 
 	output = buf.String()

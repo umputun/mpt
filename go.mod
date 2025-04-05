@@ -5,7 +5,6 @@ go 1.24
 require (
 	github.com/anthropics/anthropic-sdk-go v0.2.0-beta.3
 	github.com/bmatcuk/doublestar/v4 v4.8.1
-	github.com/fatih/color v1.18.0
 	github.com/go-pkgz/lgr v0.12.0
 	github.com/google/generative-ai-go v0.19.0
 	github.com/jessevdk/go-flags v1.6.1
@@ -30,8 +29,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
-	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect

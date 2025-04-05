@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/go-pkgz/lgr"
 	"github.com/jessevdk/go-flags"
 
@@ -40,7 +39,6 @@ type options struct {
 	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
 	Verbose bool `short:"v" long:"verbose" description:"verbose output, shows prompt sent to models"`
 	Version bool `short:"V" long:"version" description:"show version info"`
-	NoColor bool `long:"no-color" env:"NO_COLOR" description:"disable color output"`
 }
 
 // openAIOpts defines options for OpenAI provider
@@ -337,17 +335,9 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 
 // showVerbosePrompt displays the prompt text that will be sent to the models
 func showVerbosePrompt(w io.Writer, opts options) {
-	// use colored output if not disabled
-	if opts.NoColor {
-		fmt.Fprintln(w, "=== Prompt sent to models ===")
-		fmt.Fprintln(w, opts.Prompt)
-		fmt.Fprintln(w, "============================")
-	} else {
-		headerColor := color.New(color.FgCyan, color.Bold)
-		fmt.Fprintln(w, headerColor.Sprint("=== Prompt sent to models ==="))
-		fmt.Fprintln(w, opts.Prompt)
-		fmt.Fprintln(w, headerColor.Sprint("============================"))
-	}
+	fmt.Fprintln(w, "=== Prompt sent to models ===")
+	fmt.Fprintln(w, opts.Prompt)
+	fmt.Fprintln(w, "============================")
 	fmt.Fprintln(w)
 }
 
@@ -391,16 +381,7 @@ func setupLog(dbg bool, secs ...string) {
 	if dbg {
 		logOpts = []lgr.Option{lgr.Debug, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
 	}
-
-	colorizer := lgr.Mapper{
-		ErrorFunc:  func(s string) string { return color.New(color.FgHiRed).Sprint(s) },
-		WarnFunc:   func(s string) string { return color.New(color.FgRed).Sprint(s) },
-		InfoFunc:   func(s string) string { return color.New(color.FgYellow).Sprint(s) },
-		DebugFunc:  func(s string) string { return color.New(color.FgWhite).Sprint(s) },
-		CallerFunc: func(s string) string { return color.New(color.FgBlue).Sprint(s) },
-		TimeFunc:   func(s string) string { return color.New(color.FgCyan).Sprint(s) },
-	}
-	logOpts = append(logOpts, lgr.Map(colorizer))
+	logOpts = append(logOpts)
 	if len(secs) > 0 {
 		logOpts = append(logOpts, lgr.Secret(secs...))
 	}

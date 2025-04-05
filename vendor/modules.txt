@@ -61,9 +61,6 @@ github.com/bmatcuk/doublestar/v4
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
-# github.com/fatih/color v1.18.0
-## explicit; go 1.17
-github.com/fatih/color
 # github.com/felixge/httpsnoop v1.0.4
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
@@ -131,12 +128,6 @@ github.com/jessevdk/go-flags
 ## explicit; go 1.23
 github.com/mark3labs/mcp-go/mcp
 github.com/mark3labs/mcp-go/server
-# github.com/mattn/go-colorable v0.1.14
-## explicit; go 1.18
-github.com/mattn/go-colorable
-# github.com/mattn/go-isatty v0.0.20
-## explicit; go 1.15
-github.com/mattn/go-isatty
 # github.com/pmezard/go-difflib v1.0.0
 ## explicit
 github.com/pmezard/go-difflib/difflib
