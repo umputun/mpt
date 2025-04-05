@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -852,8 +853,20 @@ func TestIntegrationCustomProvider(t *testing.T) {
 // TestIntegrationMCPServerModeIntegration is an integration test for MCP server mode.
 // It simulates running the application in MCP server mode by providing a stubbed custom provider and a simulated MCP call via STDIN.
 func TestIntegrationMCPServerModeIntegration(t *testing.T) {
+	// track server request data for verification
+	var requestBody []byte
+	var requestHeaders http.Header
+	requestReceived := false
+	testPrompt := "Integration test prompt"
+
 	// create a stub HTTP server that simulates the custom provider API
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// capture request data for verification
+		requestReceived = true
+		requestHeaders = r.Header.Clone()
+		requestBody, _ = io.ReadAll(r.Body)
+		defer r.Body.Close()
+
 		if r.URL.Path == "/chat/completions" {
 			resp := `{
 				"id": "test-id",
@@ -895,7 +908,7 @@ func TestIntegrationMCPServerModeIntegration(t *testing.T) {
 	}
 
 	// we'll simulate MCP protocol input via STDIN. Prepare a JSON message that represents a tool call request.
-	mcpRequest := "{\"jsonrpc\": \"2.0\", \"id\": \"test-id\", \"method\": \"tools/call\", \"params\": {\"name\": \"mpt_generate\", \"arguments\": {\"prompt\": \"Integration test prompt\"}}}\n"
+	mcpRequest := fmt.Sprintf(`{"jsonrpc": "2.0", "id": "test-id", "method": "tools/call", "params": {"name": "mpt_generate", "arguments": {"prompt": %q}}}`, testPrompt) + "\n"
 
 	// redirect STDIN: Create a pipe and write the simulated MCP request, then close the writer to signal EOF
 	oldStdin := os.Stdin
@@ -931,6 +944,150 @@ func TestIntegrationMCPServerModeIntegration(t *testing.T) {
 	io.Copy(&buf, rOut)
 	output := buf.String()
 
-	// verify that the output contains the expected custom provider response
-	require.Contains(t, output, "This is a custom provider response!", "Output should contain custom provider response")
+	// verify the HTTP request was made to the mock server
+	require.True(t, requestReceived, "The custom provider HTTP endpoint should have been called")
+
+	// verify the request headers
+	require.NotEmpty(t, requestHeaders.Get("Content-Type"), "Content-Type header should be set")
+	require.Equal(t, "application/json", requestHeaders.Get("Content-Type"), "Content-Type should be application/json")
+	require.Equal(t, "Bearer test-key", requestHeaders.Get("Authorization"), "API key should be in Authorization header")
+
+	// verify request body contains the prompt from the MCP request
+	require.NotEmpty(t, requestBody, "Request body should not be empty")
+	require.Contains(t, string(requestBody), testPrompt, "Request to provider should contain the prompt from MCP request")
+
+	// verify MCP response format
+	require.Contains(t, output, "jsonrpc", "Response should follow JSON-RPC format")
+	require.Contains(t, output, "\"result\"", "Response should contain a result field")
+	require.Contains(t, output, "\"id\":\"test-id\"", "Response should echo back the request ID")
+
+	// verify the content
+	require.Contains(t, output, "This is a custom provider response!", "Output should contain the custom provider response")
+}
+
+// TestIntegrationMCPServerModeErrorScenarios tests error scenarios in MCP server mode
+func TestIntegrationMCPServerModeErrorScenarios(t *testing.T) {
+	t.Run("invalid MCP request", func(t *testing.T) {
+		// prepare options for MCP server mode with a mocked provider
+		opts := &options{
+			MCP: mcpOpts{
+				Server:     true,
+				ServerName: "Test MCP Server",
+			},
+			// need at least one provider enabled
+			Custom: customOpenAIProvider{
+				Enabled:   true,
+				URL:       "http://localhost:12345", // intentionally unreachable
+				Model:     "test-model",
+				APIKey:    "test-key",
+				MaxTokens: 16384,
+			},
+			Timeout: 2 * time.Second, // shorter timeout for errors
+		}
+
+		// simulate an invalid MCP request (missing required fields)
+		invalidRequest := `{"jsonrpc": "2.0", "id": "test-id", "method": "tools/call", "params": {"name": "mpt_generate", "arguments": {}}}`
+
+		// redirect STDIN
+		oldStdin := os.Stdin
+		rIn, wIn, err := os.Pipe()
+		require.NoError(t, err, "failed to create stdin pipe")
+		os.Stdin = rIn
+
+		// write the invalid request
+		go func() {
+			wIn.WriteString(invalidRequest + "\n")
+			wIn.Close()
+		}()
+
+		// redirect STDOUT
+		oldStdout := os.Stdout
+		rOut, wOut, err := os.Pipe()
+		require.NoError(t, err, "failed to create stdout pipe")
+		os.Stdout = wOut
+
+		// call run(), which should handle the invalid request
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		err = run(ctx, opts)
+		// should not return an error even for bad requests, as the MCP server handles them internally
+		require.NoError(t, err, "run() should not return an error for invalid MCP requests")
+
+		// restore STDOUT and STDIN
+		wOut.Close()
+		os.Stdout = oldStdout
+		os.Stdin = oldStdin
+
+		// read the captured output
+		var buf bytes.Buffer
+		io.Copy(&buf, rOut)
+		output := buf.String()
+
+		// verify error response format follows JSON-RPC
+		require.Contains(t, output, "jsonrpc", "Error response should follow JSON-RPC format")
+		require.Contains(t, output, "\"error\"", "Response should contain an error field")
+		require.Contains(t, output, "\"id\":\"test-id\"", "Response should echo back the request ID")
+	})
+
+	t.Run("unknown tool name", func(t *testing.T) {
+		// prepare options for MCP server mode
+		opts := &options{
+			MCP: mcpOpts{
+				Server:     true,
+				ServerName: "Test MCP Server",
+			},
+			// need at least one provider enabled
+			Custom: customOpenAIProvider{
+				Enabled:   true,
+				URL:       "http://localhost:12345", // intentionally unreachable
+				Model:     "test-model",
+				APIKey:    "test-key",
+				MaxTokens: 16384,
+			},
+			Timeout: 2 * time.Second,
+		}
+
+		// simulate a request with an unknown tool name
+		unknownToolRequest := `{"jsonrpc": "2.0", "id": "test-id", "method": "tools/call", "params": {"name": "unknown_tool", "arguments": {"prompt": "test"}}}`
+
+		// redirect STDIN
+		oldStdin := os.Stdin
+		rIn, wIn, err := os.Pipe()
+		require.NoError(t, err, "failed to create stdin pipe")
+		os.Stdin = rIn
+
+		// write the request with unknown tool
+		go func() {
+			wIn.WriteString(unknownToolRequest + "\n")
+			wIn.Close()
+		}()
+
+		// redirect STDOUT
+		oldStdout := os.Stdout
+		rOut, wOut, err := os.Pipe()
+		require.NoError(t, err, "failed to create stdout pipe")
+		os.Stdout = wOut
+
+		// call run()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		err = run(ctx, opts)
+		// should not return an error even for bad requests
+		require.NoError(t, err, "run() should not return an error for unknown tool requests")
+
+		// restore STDOUT and STDIN
+		wOut.Close()
+		os.Stdout = oldStdout
+		os.Stdin = oldStdin
+
+		// read the captured output
+		var buf bytes.Buffer
+		io.Copy(&buf, rOut)
+		output := buf.String()
+
+		// verify error response
+		require.Contains(t, output, "jsonrpc", "Error response should follow JSON-RPC format")
+		require.Contains(t, output, "\"error\"", "Response should contain an error field")
+		require.Contains(t, output, "unknown_tool", "Error should mention the unknown tool")
+	})
 }
