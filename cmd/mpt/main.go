@@ -96,6 +96,12 @@ func main() {
 	}
 	setupLog(opts.Debug, collectSecrets(opts)...)
 
+	// If version flag is set, print version and exit
+	if opts.Version {
+		fmt.Printf("MPT version %s\n", revision)
+		os.Exit(0)
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
