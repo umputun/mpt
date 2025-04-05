@@ -381,7 +381,6 @@ func setupLog(dbg bool, secs ...string) {
 	if dbg {
 		logOpts = []lgr.Option{lgr.Debug, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
 	}
-	logOpts = append(logOpts)
 	if len(secs) > 0 {
 		logOpts = append(logOpts, lgr.Secret(secs...))
 	}
