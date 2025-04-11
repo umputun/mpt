@@ -10,10 +10,11 @@ import (
 
 // OpenAI implements Provider interface for OpenAI
 type OpenAI struct {
-	client    *openai.Client
-	model     string
-	enabled   bool
-	maxTokens int
+	client     *openai.Client
+	model      string
+	enabled    bool
+	maxTokens  int
+	temperature float32
 }
 
 // NewOpenAI creates a new OpenAI provider
@@ -30,11 +31,18 @@ func NewOpenAI(opts Options) *OpenAI {
 		maxTokens = 1024 // default value
 	}
 
+	// set default temperature if not specified
+	temperature := opts.Temperature
+	if temperature <= 0 {
+		temperature = 0.7 // default OpenAI temperature
+	}
+
 	return &OpenAI{
-		client:    client,
-		model:     opts.Model,
-		enabled:   true,
-		maxTokens: maxTokens,
+		client:     client,
+		model:      opts.Model,
+		enabled:    true,
+		maxTokens:  maxTokens,
+		temperature: temperature,
 	}
 }
 
@@ -60,6 +68,7 @@ func (o *OpenAI) Generate(ctx context.Context, prompt string) (string, error) {
 				},
 			},
 			MaxTokens: o.maxTokens,
+			Temperature: o.temperature,
 		},
 	)
 

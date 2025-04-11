@@ -123,11 +123,12 @@ func TestCustomOpenAI_Generate_Success(t *testing.T) {
 
 	// create a provider with the mock client
 	provider := &CustomOpenAI{
-		name:      "LocalLLM",
-		client:    client,
-		model:     "local-model",
-		enabled:   true,
-		maxTokens: 1024,
+		name:        "LocalLLM",
+		client:      client,
+		model:       "local-model",
+		enabled:     true,
+		maxTokens:   1024,
+		temperature: 0.7,
 	}
 
 	// test the Generate method
@@ -152,11 +153,12 @@ func TestCustomOpenAI_Generate_EmptyChoices(t *testing.T) {
 
 	// create a provider with the mock client
 	provider := &CustomOpenAI{
-		name:      "LocalLLM",
-		client:    client,
-		model:     "local-model",
-		enabled:   true,
-		maxTokens: 1024,
+		name:        "LocalLLM",
+		client:      client,
+		model:       "local-model",
+		enabled:     true,
+		maxTokens:   1024,
+		temperature: 0.7,
 	}
 
 	// test the Generate method

@@ -475,6 +475,7 @@ func TestCreateStandardProvider(t *testing.T) {
 		apiKey       string
 		model        string
 		maxTokens    int
+		temperature  float32
 		expectNil    bool
 	}{
 		{
@@ -483,6 +484,7 @@ func TestCreateStandardProvider(t *testing.T) {
 			apiKey:       "test-key",
 			model:        "gpt-4o",
 			maxTokens:    1024,
+			temperature:  0.7,
 			expectNil:    false,
 		},
 		{
@@ -491,6 +493,7 @@ func TestCreateStandardProvider(t *testing.T) {
 			apiKey:       "test-key",
 			model:        "claude-3",
 			maxTokens:    2048,
+			temperature:  0.7,
 			expectNil:    false,
 		},
 		{
@@ -499,6 +502,7 @@ func TestCreateStandardProvider(t *testing.T) {
 			apiKey:       "test-key",
 			model:        "gemini",
 			maxTokens:    4096,
+			temperature:  0.7,
 			expectNil:    false,
 		},
 		{
@@ -507,13 +511,14 @@ func TestCreateStandardProvider(t *testing.T) {
 			apiKey:       "test-key",
 			model:        "model",
 			maxTokens:    1000,
+			temperature:  0.7,
 			expectNil:    true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider := createStandardProvider(tt.providerType, tt.apiKey, tt.model, tt.maxTokens)
+			provider := createStandardProvider(tt.providerType, tt.apiKey, tt.model, tt.maxTokens, tt.temperature)
 
 			if tt.expectNil {
 				assert.Nil(t, provider, "Provider should be nil for unknown provider type")

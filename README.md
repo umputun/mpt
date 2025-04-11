@@ -14,12 +14,12 @@ MPT makes working with AI language models simpler and more powerful by:
 
 1. **Querying multiple AI providers simultaneously**: Get responses from OpenAI, Claude, Gemini, and custom models all at once, with clear provider labeling.
 
-2. **Including files as context using smart pattern matching**: 
+2. **Including files as context using smart pattern matching**:
    - Easily add code files to your prompt with flexible patterns: `--file "**/*.go"` or `--file "pkg/..."`
    - Filter out unwanted files with exclusion patterns: `--exclude "**/tests/**"`
    - Provide comprehensive context from your codebase without manual copying
 
-3. **Streamlining your AI workflow**: 
+3. **Streamlining your AI workflow**:
    - Pipe content from other commands directly to MPT: `git diff | mpt --prompt "Review this code"`
    - Combine stdin with files: `cat error.log | mpt --file "app/server.go" --prompt "Why am I seeing this error?"`
    - Use environment variables to manage API keys
@@ -138,6 +138,7 @@ You can provide a prompt in the following ways:
 --openai.model        OpenAI model to use (default: gpt-4o)
 --openai.enabled      Enable OpenAI provider
 --openai.max-tokens   Maximum number of tokens to generate (default: 16384)
+--openai.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
 ```
 
 #### Anthropic (Claude)
@@ -169,6 +170,7 @@ You can add multiple custom providers that implement the OpenAI-compatible API. 
 --custom.<provider-id>.model        Model to use (required)
 --custom.<provider-id>.enabled      Enable this custom provider (default: true)
 --custom.<provider-id>.max-tokens   Maximum number of tokens to generate (default: 16384)
+--custom.<provider-id>.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
 ```
 
 Example for adding a single local LLM server:
@@ -437,6 +439,7 @@ OPENAI_API_KEY="your-openai-key"
 OPENAI_MODEL="gpt-4o"
 OPENAI_ENABLED=true
 OPENAI_MAX_TOKENS=16384
+OPENAI_TEMPERATURE=0.7
 
 ANTHROPIC_API_KEY="your-anthropic-key"
 ANTHROPIC_MODEL="claude-3-7-sonnet-20250219"
@@ -458,6 +461,7 @@ CUSTOM_URL="http://localhost:1234/v1"
 CUSTOM_MODEL="mixtral-8x7b"
 CUSTOM_ENABLED=true
 CUSTOM_MAX_TOKENS=16384
+CUSTOM_TEMPERATURE=0.7
 ```
 
 ## Contributing

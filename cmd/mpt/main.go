@@ -43,10 +43,11 @@ type options struct {
 
 // openAIOpts defines options for OpenAI provider
 type openAIOpts struct {
-	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
-	APIKey    string `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
-	Model     string `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4o"`
-	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
+	Enabled     bool    `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
+	APIKey      string  `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
+	Model       string  `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4o"`
+	MaxTokens   int     `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
+	Temperature float32 `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
 }
 
 // anthropicOpts defines options for Anthropic provider
@@ -73,12 +74,13 @@ type mcpOpts struct {
 
 // customOpenAIProvider defines options for a custom OpenAI-compatible provider
 type customOpenAIProvider struct {
-	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable custom provider"`
-	Name      string `long:"name" env:"NAME" description:"custom provider name" default:"custom"`
-	URL       string `long:"url" env:"URL" description:"Base URL for the custom provider API"`
-	APIKey    string `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
-	Model     string `long:"model" env:"MODEL" description:"Model to use for the custom provider"`
-	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate" default:"16384"`
+	Enabled     bool    `long:"enabled" env:"ENABLED" description:"enable custom provider"`
+	Name        string  `long:"name" env:"NAME" description:"custom provider name" default:"custom"`
+	URL         string  `long:"url" env:"URL" description:"Base URL for the custom provider API"`
+	APIKey      string  `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
+	Model       string  `long:"model" env:"MODEL" description:"Model to use for the custom provider"`
+	MaxTokens   int     `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate" default:"16384"`
+	Temperature float32 `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
 }
 
 var revision = "unknown"
@@ -94,7 +96,7 @@ func main() {
 	}
 	setupLog(opts.Debug, collectSecrets(opts)...)
 
-	// If version flag is set, print version and exit
+	// if version flag is set, print version and exit
 	if opts.Version {
 		fmt.Printf("MPT version %s\n", revision)
 		os.Exit(0)
@@ -230,13 +232,14 @@ func appendFileContent(opts *options) error {
 }
 
 // createStandardProvider creates a provider instance for standard providers (OpenAI, Anthropic, Google)
-func createStandardProvider(providerType, apiKey, model string, maxTokens int) provider.Provider {
+func createStandardProvider(providerType, apiKey, model string, maxTokens int, temperature float32) provider.Provider {
 	// all standard providers use the same options structure
 	opts := provider.Options{
-		APIKey:    apiKey,
-		Model:     model,
-		Enabled:   true,
-		MaxTokens: maxTokens,
+		APIKey:      apiKey,
+		Model:       model,
+		Enabled:     true,
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
 	}
 
 	switch providerType {
@@ -259,21 +262,21 @@ func initializeProviders(opts *options) []provider.Provider {
 
 	// add OpenAI provider only if enabled
 	if opts.OpenAI.Enabled {
-		p := createStandardProvider("openai", opts.OpenAI.APIKey, opts.OpenAI.Model, opts.OpenAI.MaxTokens)
+		p := createStandardProvider("openai", opts.OpenAI.APIKey, opts.OpenAI.Model, opts.OpenAI.MaxTokens, opts.OpenAI.Temperature)
 		providers = append(providers, p)
-		lgr.Printf("[DEBUG] added OpenAI provider, model: %s", opts.OpenAI.Model)
+		lgr.Printf("[DEBUG] added OpenAI provider, model: %s, temperature: %.2f", opts.OpenAI.Model, opts.OpenAI.Temperature)
 	}
 
 	// add Anthropic provider only if enabled
 	if opts.Anthropic.Enabled {
-		p := createStandardProvider("anthropic", opts.Anthropic.APIKey, opts.Anthropic.Model, opts.Anthropic.MaxTokens)
+		p := createStandardProvider("anthropic", opts.Anthropic.APIKey, opts.Anthropic.Model, opts.Anthropic.MaxTokens, 0.7) // default temperature
 		providers = append(providers, p)
 		lgr.Printf("[DEBUG] added Anthropic provider, model: %s", opts.Anthropic.Model)
 	}
 
 	// add Google provider only if enabled
 	if opts.Google.Enabled {
-		p := createStandardProvider("google", opts.Google.APIKey, opts.Google.Model, opts.Google.MaxTokens)
+		p := createStandardProvider("google", opts.Google.APIKey, opts.Google.Model, opts.Google.MaxTokens, 0.7) // default temperature
 		providers = append(providers, p)
 		lgr.Printf("[DEBUG] added Google provider, model: %s", opts.Google.Model)
 	}
@@ -281,15 +284,17 @@ func initializeProviders(opts *options) []provider.Provider {
 	// add custom provider if enabled (handled separately due to different options structure)
 	if opts.Custom.Enabled && opts.Custom.URL != "" && opts.Custom.Model != "" {
 		customProvider := provider.NewCustomOpenAI(provider.CustomOptions{
-			Name:      opts.Custom.Name,
-			BaseURL:   opts.Custom.URL,
-			APIKey:    opts.Custom.APIKey,
-			Model:     opts.Custom.Model,
-			Enabled:   true, // if we got here, it's enabled
-			MaxTokens: opts.Custom.MaxTokens,
+			Name:        opts.Custom.Name,
+			BaseURL:     opts.Custom.URL,
+			APIKey:      opts.Custom.APIKey,
+			Model:       opts.Custom.Model,
+			Enabled:     true, // if we got here, it's enabled
+			MaxTokens:   opts.Custom.MaxTokens,
+			Temperature: opts.Custom.Temperature,
 		})
 		providers = append(providers, customProvider)
-		lgr.Printf("[INFO] added custom provider: %s, URL: %s, model: %s", "custom", opts.Custom.URL, opts.Custom.Model)
+		lgr.Printf("[INFO] added custom provider: %s, URL: %s, model: %s, temperature: %.2f",
+			opts.Custom.Name, opts.Custom.URL, opts.Custom.Model, opts.Custom.Temperature)
 	}
 
 	return providers

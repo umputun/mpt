@@ -9,21 +9,23 @@ import (
 
 // CustomOpenAI implements Provider interface for OpenAI-compatible providers
 type CustomOpenAI struct {
-	name      string // custom provider name
-	client    *openai.Client
-	model     string
-	enabled   bool
-	maxTokens int
+	name        string // custom provider name
+	client      *openai.Client
+	model       string
+	enabled     bool
+	maxTokens   int
+	temperature float32
 }
 
 // CustomOptions defines options for custom OpenAI-compatible providers
 type CustomOptions struct {
-	Name      string // custom provider name
-	BaseURL   string // base URL for the API
-	APIKey    string
-	Model     string
-	Enabled   bool
-	MaxTokens int
+	Name        string  // custom provider name
+	BaseURL     string  // base URL for the API
+	APIKey      string
+	Model       string
+	Enabled     bool
+	MaxTokens   int
+	Temperature float32 // controls randomness (0-1, default: 0.7)
 }
 
 // NewCustomOpenAI creates a new custom OpenAI-compatible provider
@@ -45,6 +47,12 @@ func NewCustomOpenAI(opts CustomOptions) *CustomOpenAI {
 		maxTokens = 1024 // default value
 	}
 
+	// set default temperature if not specified
+	temperature := opts.Temperature
+	if temperature <= 0 {
+		temperature = 0.7 // default OpenAI temperature
+	}
+
 	// set default name if not specified
 	name := opts.Name
 	if name == "" {
@@ -52,11 +60,12 @@ func NewCustomOpenAI(opts CustomOptions) *CustomOpenAI {
 	}
 
 	return &CustomOpenAI{
-		name:      name,
-		client:    client,
-		model:     opts.Model,
-		enabled:   true,
-		maxTokens: maxTokens,
+		name:        name,
+		client:      client,
+		model:       opts.Model,
+		enabled:     true,
+		maxTokens:   maxTokens,
+		temperature: temperature,
 	}
 }
 
@@ -81,7 +90,8 @@ func (c *CustomOpenAI) Generate(ctx context.Context, prompt string) (string, err
 					Content: prompt,
 				},
 			},
-			MaxTokens: c.maxTokens,
+			MaxTokens:   c.maxTokens,
+			Temperature: c.temperature,
 		},
 	)
 
