@@ -348,26 +348,20 @@ func showVerbosePrompt(w io.Writer, opts options) {
 
 // getPrompt handles reading the prompt from stdin (piped or interactive) or command line
 func getPrompt(opts *options) error {
+	// check if input is coming from a pipe
 	stat, _ := os.Stdin.Stat()
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		// data is being piped in
-		scanner := bufio.NewScanner(os.Stdin)
-		var sb strings.Builder
-		for scanner.Scan() {
-			sb.WriteString(scanner.Text())
-			sb.WriteString("\n")
-		}
-		if err := scanner.Err(); err != nil {
-			return fmt.Errorf("error reading from stdin: %w", err)
-		}
-		stdinContent := strings.TrimSpace(sb.String())
+	isPiped := (stat.Mode() & os.ModeCharDevice) == 0
 
-		// append stdin to existing prompt if present, or use stdin as prompt
-		if opts.Prompt != "" {
-			opts.Prompt = opts.Prompt + "\n" + stdinContent
-		} else {
-			opts.Prompt = stdinContent
+	if isPiped {
+		// handle piped input
+		stdinContent, err := readFromStdin()
+		if err != nil {
+			return err
 		}
+
+		// combine with existing prompt or use as prompt
+		opts.Prompt = combinePromptWithInput(opts.Prompt, stdinContent)
+
 	} else if opts.Prompt == "" {
 		// no data piped, no prompt provided, interactive mode
 		fmt.Print("Enter prompt: ")
@@ -391,4 +385,26 @@ func setupLog(dbg bool, secs ...string) {
 	}
 	lgr.SetupStdLogger(logOpts...)
 	lgr.Setup(logOpts...)
+}
+
+// readFromStdin reads content from stdin and returns it as a trimmed string
+func readFromStdin() (string, error) {
+	scanner := bufio.NewScanner(os.Stdin)
+	var sb strings.Builder
+	for scanner.Scan() {
+		sb.WriteString(scanner.Text())
+		sb.WriteString("\n")
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("error reading from stdin: %w", err)
+	}
+	return strings.TrimSpace(sb.String()), nil
+}
+
+// combinePromptWithInput combines an existing prompt with input from stdin
+func combinePromptWithInput(prompt, input string) string {
+	if prompt == "" {
+		return input
+	}
+	return prompt + "\n" + input
 }

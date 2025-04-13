@@ -518,20 +518,20 @@ func TestCreateStandardProvider(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider := createStandardProvider(tt.providerType, tt.apiKey, tt.model, tt.maxTokens, tt.temperature)
+			providerInstance := createStandardProvider(tt.providerType, tt.apiKey, tt.model, tt.maxTokens, tt.temperature)
 
 			if tt.expectNil {
-				assert.Nil(t, provider, "Provider should be nil for unknown provider type")
+				assert.Nil(t, providerInstance, "Provider should be nil for unknown provider type")
 				return
 			}
 
-			require.NotNil(t, provider, "Provider should not be nil")
+			require.NotNil(t, providerInstance, "Provider should not be nil")
 
 			// verify the provider name matches the expected type (case-insensitive)
-			assert.Contains(t, strings.ToLower(provider.Name()), tt.providerType, "Provider name should contain the provider type")
+			assert.Contains(t, strings.ToLower(providerInstance.Name()), tt.providerType, "Provider name should contain the provider type")
 
 			// verify the provider is enabled
-			assert.True(t, provider.Enabled(), "Provider should be enabled")
+			assert.True(t, providerInstance.Enabled(), "Provider should be enabled")
 		})
 	}
 }

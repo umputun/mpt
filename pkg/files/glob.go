@@ -28,17 +28,18 @@ func LoadContent(patterns, excludePatterns []string) (string, error) {
 	// expand all patterns and collect unique file paths
 	for _, pattern := range patterns {
 		// process different types of patterns
-		if strings.Contains(pattern, "**") {
+		switch {
+		case strings.Contains(pattern, "**"):
 			// bash-style patterns with **
 			if err := processBashStylePattern(pattern, matchedFiles); err != nil {
 				return "", err
 			}
-		} else if strings.Contains(pattern, "/...") {
+		case strings.Contains(pattern, "/..."):
 			// go-style recursive pattern: dir/...
 			if err := processGoStylePattern(pattern, matchedFiles); err != nil {
 				return "", err
 			}
-		} else {
+		default:
 			// standard glob pattern
 			if err := processStandardGlobPattern(pattern, matchedFiles); err != nil {
 				return "", err
@@ -125,31 +126,22 @@ func processGoStylePattern(pattern string, matchedFiles map[string]struct{}) err
 			return nil // skip files that can't be accessed
 		}
 
-		// check file size if it's not a directory
-		if !info.IsDir() {
-			// skip files that exceed the size limit
+		if info.IsDir() || info.Size() > MaxFileSize {
 			if info.Size() > MaxFileSize {
 				lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", path, info.Size())
-				return nil
 			}
+			return nil
+		}
 
-			// if filter is specified, check if file matches
-			if filter == "" {
-				// no filter, include all files
-				matchedFiles[path] = struct{}{}
-				matchCount++
-			} else if strings.HasPrefix(filter, "*.") {
-				// extension filter (*.go, *.js, etc.)
-				ext := filter[1:] // remove *
-				if strings.HasSuffix(path, ext) {
-					matchedFiles[path] = struct{}{}
-					matchCount++
-				}
-			} else if matched, _ := filepath.Match(filter, filepath.Base(path)); matched {
-				// standard glob pattern
-				matchedFiles[path] = struct{}{}
-				matchCount++
-			}
+		if filter == "" || (strings.HasPrefix(filter, "*.") && strings.HasSuffix(path, filter[1:])) {
+			matchedFiles[path] = struct{}{}
+			matchCount++
+			return nil
+		}
+
+		if matched, _ := filepath.Match(filter, filepath.Base(path)); matched {
+			matchedFiles[path] = struct{}{}
+			matchCount++
 		}
 		return nil
 	})
@@ -181,48 +173,41 @@ func processStandardGlobPattern(pattern string, matchedFiles map[string]struct{}
 
 	matchCount := 0
 	for _, match := range matches {
-		// check if it's a file
 		info, err := os.Stat(match)
 		if err != nil {
 			return fmt.Errorf("failed to stat file %s: %w", match, err)
 		}
 
-		if !info.IsDir() {
-			// skip files that exceed the size limit
-			if info.Size() > MaxFileSize {
-				lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", match, info.Size())
-				continue
-			}
-
-			matchedFiles[match] = struct{}{}
-			matchCount++
-		} else {
-			// if it's a directory, walk it recursively
+		if info.IsDir() {
+			// handle directories by walking them recursively
 			dirMatchCount := 0
 			err := filepath.Walk(match, func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					return nil // skip files that can't be accessed
-				}
-
-				if !info.IsDir() {
-					// skip files that exceed the size limit
-					if info.Size() > MaxFileSize {
+				if err != nil || info.IsDir() || info.Size() > MaxFileSize {
+					if err == nil && info.Size() > MaxFileSize {
 						lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", path, info.Size())
-						return nil
 					}
-
-					matchedFiles[path] = struct{}{}
-					dirMatchCount++
+					return nil
 				}
+				matchedFiles[path] = struct{}{}
+				dirMatchCount++
 				return nil
 			})
 
 			if err != nil {
 				lgr.Printf("[WARN] failed to walk directory %s: %v", match, err)
 			}
-
 			matchCount += dirMatchCount
+			continue
 		}
+
+		// skip files that exceed the size limit
+		if info.Size() > MaxFileSize {
+			lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", match, info.Size())
+			continue
+		}
+
+		matchedFiles[match] = struct{}{}
+		matchCount++
 	}
 
 	if matchCount == 0 {

@@ -56,7 +56,7 @@ func (g *Google) Generate(ctx context.Context, prompt string) (string, error) {
 	}
 
 	model := g.client.GenerativeModel(g.model)
-	
+
 	// only set max output tokens if not zero (0 means use model's maximum)
 	if g.maxTokens != 0 {
 		// set max output tokens with safe conversion to int32

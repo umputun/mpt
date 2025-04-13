@@ -17,6 +17,7 @@ linters:
     - unconvert
     - unused
     - gocyclo
+    - nestif
     - testifylint
   settings:
     goconst:
