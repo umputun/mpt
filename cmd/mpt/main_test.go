@@ -112,7 +112,7 @@ func TestProviderCancellation(t *testing.T) {
 // TestRunnerCancellation tests that the runner properly propagates context cancellation
 // to the providers.
 func TestRunnerCancellation(t *testing.T) {
-	// Test single provider cancellation
+	// test single provider cancellation
 	t.Run("single provider cancellation", func(t *testing.T) {
 		doneCh := make(chan struct{})
 
@@ -173,9 +173,9 @@ func TestRunnerCancellation(t *testing.T) {
 		}
 	})
 
-	// Test multiple provider cancellation where all fail
+	// test multiple provider cancellation where all fail
 	t.Run("multi provider cancellation - all fail", func(t *testing.T) {
-		doneCh := make(chan struct{}, 2) // Buffer for both providers
+		doneCh := make(chan struct{}, 2) // buffer for both providers
 
 		// create two mock providers that will be canceled
 		mockProvider1 := &mocks.ProviderMock{
@@ -244,13 +244,13 @@ func TestRunnerCancellation(t *testing.T) {
 			}
 		}
 
-		// Both providers have started, now cancel the context
+		// both providers have started, now cancel the context
 		cancel()
 
 		// wait for result
 		select {
 		case result := <-resultCh:
-			// When all providers fail, we expect an error
+			// when all providers fail, we expect an error
 			require.Error(t, result.err, "Runner.Run should return an error when all providers are canceled")
 			assert.Contains(t, result.err.Error(), "all providers failed", "Error should indicate all providers failed")
 			assert.Contains(t, result.err.Error(), "context canceled", "Error should mention context cancellation")
@@ -839,7 +839,7 @@ func handleRunnerError(err error, timeout time.Duration) error {
 
 // TestExecutePrompt_Error tests that executePrompt handles provider errors
 func TestExecutePrompt_Error(t *testing.T) {
-	// Test a single provider failure
+	// test a single provider failure
 	t.Run("single provider failure", func(t *testing.T) {
 		// setup mock provider that returns an API error
 		mockProvider := &mocks.ProviderMock{
@@ -885,9 +885,9 @@ func TestExecutePrompt_Error(t *testing.T) {
 		assert.Contains(t, err.Error(), "api error", "Error should contain the provider error message")
 	})
 
-	// Test a scenario with multiple providers where some fail but not all
+	// test a scenario with multiple providers where some fail but not all
 	t.Run("some providers fail", func(t *testing.T) {
-		// One provider fails, one succeeds
+		// one provider fails, one succeeds
 		failingProvider := &mocks.ProviderMock{
 			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
 				return "", fmt.Errorf("api error: something went wrong")
@@ -938,10 +938,10 @@ func TestExecutePrompt_Error(t *testing.T) {
 		io.Copy(&buf, r)
 		output := buf.String()
 
-		// No error should be returned since at least one provider succeeded
+		// no error should be returned since at least one provider succeeded
 		require.NoError(t, err, "executePrompt should not return an error when some providers succeed")
 
-		// Output should show both the error and success results
+		// output should show both the error and success results
 		assert.Contains(t, output, "api error", "Output should contain the failing provider's error message")
 		assert.Contains(t, output, "Success response", "Output should contain the successful provider's response")
 	})

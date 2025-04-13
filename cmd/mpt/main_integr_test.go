@@ -652,10 +652,10 @@ func TestIntegrationMCPServerModeErrorScenarios(t *testing.T) {
 				Server:     true,
 				ServerName: "Test MCP Server",
 			},
-			// Configure a custom provider that will fail (e.g., bad URL)
+			// configure a custom provider that will fail (e.g., bad URL)
 			Custom: customOpenAIProvider{
 				Enabled:   true,
-				URL:       "http://localhost:1", // Use a port guaranteed to be unreachable
+				URL:       "http://localhost:1", // use a port guaranteed to be unreachable
 				Model:     "test-model",
 				APIKey:    "test-key",
 				MaxTokens: 16384,
@@ -685,7 +685,7 @@ func TestIntegrationMCPServerModeErrorScenarios(t *testing.T) {
 		os.Stdout = wOut
 
 		// call run()
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second) // Allow slightly longer for network error
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second) // allow slightly longer for network error
 		defer cancel()
 		err = run(ctx, opts)
 		require.NoError(t, err, "run() should handle runner errors internally and respond via MCP")
@@ -704,7 +704,7 @@ func TestIntegrationMCPServerModeErrorScenarios(t *testing.T) {
 		require.Contains(t, output, "jsonrpc", "Error response should follow JSON-RPC format")
 		require.Contains(t, output, "\"error\"", "Response should contain an error field")
 		require.Contains(t, output, "\"id\":\"test-runner-fail\"", "Response should echo back the request ID")
-		// Check for content indicating failure (the exact message might depend on mcp-go's error formatting)
+		// check for content indicating failure (the exact message might depend on mcp-go's error formatting)
 		require.Contains(t, output, "failed to run prompt through MPT", "Error message should indicate MPT runner failure")
 	})
 }
