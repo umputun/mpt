@@ -110,61 +110,155 @@ func TestProviderCancellation(t *testing.T) {
 }
 
 // TestRunnerCancellation tests that the runner properly propagates context cancellation
-// to the providers. Note: the runner doesn't return an error, but includes the error in
-// the result text.
+// to the providers.
 func TestRunnerCancellation(t *testing.T) {
-	doneCh := make(chan struct{})
+	// Test single provider cancellation
+	t.Run("single provider cancellation", func(t *testing.T) {
+		doneCh := make(chan struct{})
 
-	// create a mock provider with a Generate function that checks for context cancellation
-	mockProvider := &mocks.ProviderMock{
-		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
-			// signal that we've started
+		// create a mock provider with a Generate function that checks for context cancellation
+		mockProvider := &mocks.ProviderMock{
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				// signal that we've started
+				select {
+				case doneCh <- struct{}{}:
+				default:
+				}
+
+				// block until context is canceled
+				<-ctx.Done()
+				return "", ctx.Err()
+			},
+			NameFunc: func() string {
+				return "TestProvider"
+			},
+			EnabledFunc: func() bool {
+				return true
+			},
+		}
+
+		r := runner.New(mockProvider)
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// run in a goroutine and collect the result and error
+		type result struct {
+			text string
+			err  error
+		}
+		resultCh := make(chan result, 1)
+		go func() {
+			text, err := r.Run(ctx, "test prompt")
+			resultCh <- result{text: text, err: err}
+		}()
+
+		// wait for generate to start
+		select {
+		case <-doneCh:
+			// generate function has started, now cancel the context
+			cancel()
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("Timed out waiting for Generate to start")
+		}
+
+		// wait for result
+		select {
+		case result := <-resultCh:
+			// for a single provider, we expect an error for cancellation
+			require.Error(t, result.err, "Runner.Run should return an error for context cancellation with single provider")
+			assert.Contains(t, result.err.Error(), "context canceled", "Error should include context cancellation message")
+			assert.Empty(t, result.text, "Result text should be empty")
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("Timed out waiting for Run to return after cancellation")
+		}
+	})
+
+	// Test multiple provider cancellation where all fail
+	t.Run("multi provider cancellation - all fail", func(t *testing.T) {
+		doneCh := make(chan struct{}, 2) // Buffer for both providers
+
+		// create two mock providers that will be canceled
+		mockProvider1 := &mocks.ProviderMock{
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				// signal that we've started
+				select {
+				case doneCh <- struct{}{}:
+				default:
+				}
+
+				// block until context is canceled
+				<-ctx.Done()
+				return "", ctx.Err()
+			},
+			NameFunc: func() string {
+				return "TestProvider1"
+			},
+			EnabledFunc: func() bool {
+				return true
+			},
+		}
+
+		mockProvider2 := &mocks.ProviderMock{
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				// signal that we've started
+				select {
+				case doneCh <- struct{}{}:
+				default:
+				}
+
+				// block until context is canceled
+				<-ctx.Done()
+				return "", ctx.Err()
+			},
+			NameFunc: func() string {
+				return "TestProvider2"
+			},
+			EnabledFunc: func() bool {
+				return true
+			},
+		}
+
+		r := runner.New(mockProvider1, mockProvider2)
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// run in a goroutine and collect the result and error
+		type result struct {
+			text string
+			err  error
+		}
+		resultCh := make(chan result, 1)
+		go func() {
+			text, err := r.Run(ctx, "test prompt")
+			resultCh <- result{text: text, err: err}
+		}()
+
+		// wait for both providers to start
+		providersStarted := 0
+		for providersStarted < 2 {
 			select {
-			case doneCh <- struct{}{}:
-			default:
+			case <-doneCh:
+				providersStarted++
+			case <-time.After(500 * time.Millisecond):
+				t.Fatal("Timed out waiting for providers to start")
 			}
+		}
 
-			// block until context is canceled
-			<-ctx.Done()
-			return "", ctx.Err()
-		},
-		NameFunc: func() string {
-			return "TestProvider"
-		},
-		EnabledFunc: func() bool {
-			return true
-		},
-	}
-
-	r := runner.New(mockProvider)
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// run in a goroutine and collect the result
-	resultCh := make(chan string, 1)
-	go func() {
-		result, err := r.Run(ctx, "test prompt")
-		assert.NoError(t, err, "Runner.Run should not return an error")
-		resultCh <- result
-	}()
-
-	// wait for generate to start
-	select {
-	case <-doneCh:
-		// generate function has started, now cancel the context
+		// Both providers have started, now cancel the context
 		cancel()
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("Timed out waiting for Generate to start")
-	}
 
-	// wait for result
-	select {
-	case result := <-resultCh:
-		// for a single provider, Runner returns the error as the result text
-		assert.Contains(t, result, "context canceled")
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("Timed out waiting for Run to return after cancellation")
-	}
+		// wait for result
+		select {
+		case result := <-resultCh:
+			// When all providers fail, we expect an error
+			require.Error(t, result.err, "Runner.Run should return an error when all providers are canceled")
+			assert.Contains(t, result.err.Error(), "all providers failed", "Error should indicate all providers failed")
+			assert.Contains(t, result.err.Error(), "context canceled", "Error should mention context cancellation")
+			assert.Empty(t, result.text, "Result text should be empty")
+		case <-time.After(500 * time.Millisecond):
+			t.Fatal("Timed out waiting for Run to return after cancellation")
+		}
+	})
 }
 
 func TestGetPrompt(t *testing.T) {
@@ -744,54 +838,113 @@ func handleRunnerError(err error, timeout time.Duration) error {
 }
 
 // TestExecutePrompt_Error tests that executePrompt handles provider errors
-// Note: In the current implementation, the runner returns the error message as the result
-// rather than returning an error, so this test verifies the correct output
 func TestExecutePrompt_Error(t *testing.T) {
-	// setup mock provider that returns an API error
-	mockProvider := &mocks.ProviderMock{
-		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
-			return "", fmt.Errorf("api error: something went wrong")
-		},
-		NameFunc: func() string {
-			return "MockProvider"
-		},
-		EnabledFunc: func() bool {
-			return true
-		},
-	}
+	// Test a single provider failure
+	t.Run("single provider failure", func(t *testing.T) {
+		// setup mock provider that returns an API error
+		mockProvider := &mocks.ProviderMock{
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				return "", fmt.Errorf("api error: something went wrong")
+			},
+			NameFunc: func() string {
+				return "MockProvider"
+			},
+			EnabledFunc: func() bool {
+				return true
+			},
+		}
 
-	providers := []provider.Provider{mockProvider}
+		providers := []provider.Provider{mockProvider}
 
-	// create stdout capture
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
+		// create stdout capture
+		oldStdout := os.Stdout
+		r, w, err := os.Pipe()
+		require.NoError(t, err)
+		os.Stdout = w
 
-	// run executePrompt with error-producing mock
-	opts := &options{
-		Prompt:  "test prompt",
-		Timeout: 5 * time.Second,
-	}
+		// run executePrompt with error-producing mock
+		opts := &options{
+			Prompt:  "test prompt",
+			Timeout: 5 * time.Second,
+		}
 
-	ctx := context.Background()
-	err = executePrompt(ctx, opts, providers)
+		ctx := context.Background()
+		err = executePrompt(ctx, opts, providers)
 
-	// restore stdout
-	w.Close()
-	os.Stdout = oldStdout
+		// restore stdout
+		w.Close()
+		os.Stdout = oldStdout
 
-	// read the output
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
+		// read the output
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
 
-	// for single provider, the runner converts error to output
-	// so we don't expect executePrompt to return an error
-	require.NoError(t, err, "executePrompt doesn't return an error with single provider failures")
+		// with the updated runner behavior, executePrompt should return an error
+		// when a single provider fails
+		require.Error(t, err, "executePrompt should return an error with single provider failures")
+		assert.Contains(t, err.Error(), "api error", "Error should contain the provider error message")
+	})
 
-	// instead, check that the output contains the error message
-	output := buf.String()
-	assert.Contains(t, output, "api error", "Output should contain the provider error message")
+	// Test a scenario with multiple providers where some fail but not all
+	t.Run("some providers fail", func(t *testing.T) {
+		// One provider fails, one succeeds
+		failingProvider := &mocks.ProviderMock{
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				return "", fmt.Errorf("api error: something went wrong")
+			},
+			NameFunc: func() string {
+				return "FailingProvider"
+			},
+			EnabledFunc: func() bool {
+				return true
+			},
+		}
+
+		successProvider := &mocks.ProviderMock{
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				return "Success response", nil
+			},
+			NameFunc: func() string {
+				return "SuccessProvider"
+			},
+			EnabledFunc: func() bool {
+				return true
+			},
+		}
+
+		providers := []provider.Provider{failingProvider, successProvider}
+
+		// create stdout capture
+		oldStdout := os.Stdout
+		r, w, err := os.Pipe()
+		require.NoError(t, err)
+		os.Stdout = w
+
+		// run executePrompt with both mocks
+		opts := &options{
+			Prompt:  "test prompt",
+			Timeout: 5 * time.Second,
+		}
+
+		ctx := context.Background()
+		err = executePrompt(ctx, opts, providers)
+
+		// restore stdout
+		w.Close()
+		os.Stdout = oldStdout
+
+		// read the output
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+		output := buf.String()
+
+		// No error should be returned since at least one provider succeeded
+		require.NoError(t, err, "executePrompt should not return an error when some providers succeed")
+
+		// Output should show both the error and success results
+		assert.Contains(t, output, "api error", "Output should contain the failing provider's error message")
+		assert.Contains(t, output, "Success response", "Output should contain the successful provider's response")
+	})
 }
 
 // TestAppendFileContent tests the appendFileContent function

@@ -263,22 +263,34 @@ func initializeProviders(opts *options) []provider.Provider {
 	// add OpenAI provider only if enabled
 	if opts.OpenAI.Enabled {
 		p := createStandardProvider("openai", opts.OpenAI.APIKey, opts.OpenAI.Model, opts.OpenAI.MaxTokens, opts.OpenAI.Temperature)
-		providers = append(providers, p)
-		lgr.Printf("[DEBUG] added OpenAI provider, model: %s, temperature: %.2f", opts.OpenAI.Model, opts.OpenAI.Temperature)
+		if p.Enabled() {
+			providers = append(providers, p)
+			lgr.Printf("[DEBUG] added OpenAI provider, model: %s, temperature: %.2f", opts.OpenAI.Model, opts.OpenAI.Temperature)
+		} else {
+			lgr.Printf("[WARN] OpenAI provider failed to initialize (check API key)")
+		}
 	}
 
 	// add Anthropic provider only if enabled
 	if opts.Anthropic.Enabled {
 		p := createStandardProvider("anthropic", opts.Anthropic.APIKey, opts.Anthropic.Model, opts.Anthropic.MaxTokens, 0.7) // default temperature
-		providers = append(providers, p)
-		lgr.Printf("[DEBUG] added Anthropic provider, model: %s", opts.Anthropic.Model)
+		if p.Enabled() {
+			providers = append(providers, p)
+			lgr.Printf("[DEBUG] added Anthropic provider, model: %s", opts.Anthropic.Model)
+		} else {
+			lgr.Printf("[WARN] Anthropic provider failed to initialize (check API key)")
+		}
 	}
 
 	// add Google provider only if enabled
 	if opts.Google.Enabled {
 		p := createStandardProvider("google", opts.Google.APIKey, opts.Google.Model, opts.Google.MaxTokens, 0.7) // default temperature
-		providers = append(providers, p)
-		lgr.Printf("[DEBUG] added Google provider, model: %s", opts.Google.Model)
+		if p.Enabled() {
+			providers = append(providers, p)
+			lgr.Printf("[DEBUG] added Google provider, model: %s", opts.Google.Model)
+		} else {
+			lgr.Printf("[WARN] Google provider failed to initialize (check API key)")
+		}
 	}
 
 	// add custom provider if enabled (handled separately due to different options structure)
@@ -292,9 +304,13 @@ func initializeProviders(opts *options) []provider.Provider {
 			MaxTokens:   opts.Custom.MaxTokens,
 			Temperature: opts.Custom.Temperature,
 		})
-		providers = append(providers, customProvider)
-		lgr.Printf("[INFO] added custom provider: %s, URL: %s, model: %s, temperature: %.2f",
-			opts.Custom.Name, opts.Custom.URL, opts.Custom.Model, opts.Custom.Temperature)
+		if customProvider.Enabled() {
+			providers = append(providers, customProvider)
+			lgr.Printf("[INFO] added custom provider: %s, URL: %s, model: %s, temperature: %.2f",
+				opts.Custom.Name, opts.Custom.URL, opts.Custom.Model, opts.Custom.Temperature)
+		} else {
+			lgr.Printf("[WARN] custom provider %s failed to initialize", opts.Custom.Name)
+		}
 	}
 
 	return providers

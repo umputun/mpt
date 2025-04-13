@@ -644,4 +644,67 @@ func TestIntegrationMCPServerModeErrorScenarios(t *testing.T) {
 		require.Contains(t, output, "\"error\"", "Response should contain an error field")
 		require.Contains(t, output, "unknown_tool", "Error should mention the unknown tool")
 	})
+
+	t.Run("runner failure", func(t *testing.T) {
+		// prepare options for MCP server mode with a provider configured to fail
+		opts := &options{
+			MCP: mcpOpts{
+				Server:     true,
+				ServerName: "Test MCP Server",
+			},
+			// Configure a custom provider that will fail (e.g., bad URL)
+			Custom: customOpenAIProvider{
+				Enabled:   true,
+				URL:       "http://localhost:1", // Use a port guaranteed to be unreachable
+				Model:     "test-model",
+				APIKey:    "test-key",
+				MaxTokens: 16384,
+			},
+			Timeout: 2 * time.Second,
+		}
+
+		// simulate a valid MCP request
+		validRequest := `{"jsonrpc": "2.0", "id": "test-runner-fail", "method": "tools/call", "params": {"name": "mpt_generate", "arguments": {"prompt": "this will fail"}}}`
+
+		// redirect STDIN
+		oldStdin := os.Stdin
+		rIn, wIn, err := os.Pipe()
+		require.NoError(t, err, "failed to create stdin pipe")
+		os.Stdin = rIn
+
+		// write the request
+		go func() {
+			wIn.WriteString(validRequest + "\n")
+			wIn.Close()
+		}()
+
+		// redirect STDOUT
+		oldStdout := os.Stdout
+		rOut, wOut, err := os.Pipe()
+		require.NoError(t, err, "failed to create stdout pipe")
+		os.Stdout = wOut
+
+		// call run()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second) // Allow slightly longer for network error
+		defer cancel()
+		err = run(ctx, opts)
+		require.NoError(t, err, "run() should handle runner errors internally and respond via MCP")
+
+		// restore STDOUT and STDIN
+		wOut.Close()
+		os.Stdout = oldStdout
+		os.Stdin = oldStdin
+
+		// read the captured output
+		var buf bytes.Buffer
+		io.Copy(&buf, rOut)
+		output := buf.String()
+
+		// verify error response format follows JSON-RPC
+		require.Contains(t, output, "jsonrpc", "Error response should follow JSON-RPC format")
+		require.Contains(t, output, "\"error\"", "Response should contain an error field")
+		require.Contains(t, output, "\"id\":\"test-runner-fail\"", "Response should echo back the request ID")
+		// Check for content indicating failure (the exact message might depend on mcp-go's error formatting)
+		require.Contains(t, output, "failed to run prompt through MPT", "Error message should indicate MPT runner failure")
+	})
 }
