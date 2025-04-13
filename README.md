@@ -355,6 +355,28 @@ find . -name "*.go" -exec grep -l "TODO" {} \; | mpt --openai.enabled \
     --file "README.md" --file "CONTRIBUTING.md"
 ```
 
+### Using MPT for Code Reviews
+
+MPT is particularly effective for code reviews. For best results, save git diff output to a file and then use the file as input:
+
+```bash
+# Save changes to a file
+git diff > changes.diff
+
+# Run review with file input
+mpt -f changes.diff --openai.enabled --google.enabled --anthropic.enabled --timeout=5m \
+    -p "Perform a comprehensive code review of these changes. Analyze the design patterns and architecture. Identify any security vulnerabilities or risks. Evaluate code readability, maintainability, and idiomatic usage. Suggest specific improvements where needed."
+```
+
+See [CODE-REVIEW-GUIDE.md](CODE-REVIEW-GUIDE.md) for a detailed guide on using MPT for code reviews, including:
+
+- Step-by-step process for reviewing code changes
+- Special prompts optimized for different types of reviews
+- A template for organizing review results
+- Examples of specific improvement recommendations
+
+This approach gives you insights from multiple AI models, helping you catch issues that any single model might miss.
+
 ### Why Combine Inputs?
 
 The ability to combine the prompt flag with piped stdin content is particularly powerful for workflows where you want to:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-pkgz/lgr"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -54,23 +55,30 @@ func NewServer(r Runner, opts ServerOptions) *Server {
 
 // handleGenerateTool processes text generation requests by routing them through MPT's runner
 func (s *Server) handleGenerateTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	lgr.Printf("[DEBUG] MCP tool 'mpt_generate' called")
+
 	// extract the prompt from the request
 	promptArg, ok := request.Params.Arguments["prompt"]
 	if !ok {
+		lgr.Printf("[WARN] MCP tool 'mpt_generate' missing required 'prompt' parameter")
 		return nil, fmt.Errorf("missing required 'prompt' parameter")
 	}
 
 	prompt, ok := promptArg.(string)
 	if !ok {
+		lgr.Printf("[WARN] MCP tool 'mpt_generate' 'prompt' parameter must be a string")
 		return nil, fmt.Errorf("'prompt' parameter must be a string")
 	}
 
 	// run the prompt through MPT's runner
+	lgr.Printf("[DEBUG] MCP tool 'mpt_generate' running prompt through MPT")
 	result, err := s.runner.Run(ctx, prompt)
 	if err != nil {
+		lgr.Printf("[WARN] MCP tool 'mpt_generate' failed: %v", err)
 		return nil, fmt.Errorf("failed to run prompt through MPT: %w", err)
 	}
 
+	lgr.Printf("[DEBUG] MCP tool 'mpt_generate' completed successfully")
 	// return the result as text
 	return mcp.NewToolResultText(result), nil
 }

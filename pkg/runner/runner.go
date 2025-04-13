@@ -69,10 +69,24 @@ func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
 		results = append(results, result)
 	}
 
+	// Check if all providers failed
+	allFailed := true
+	for _, result := range results {
+		if result.Error == nil {
+			allFailed = false
+			break
+		}
+	}
+
+	// If all providers failed, return the first error
+	if allFailed {
+		return "", fmt.Errorf("all providers failed: %v", results[0].Error)
+	}
+
 	// for single provider skip the header
 	if len(r.providers) == 1 && len(results) == 1 {
 		if results[0].Error != nil {
-			return fmt.Sprintf("%v", results[0].Error), nil
+			return "", results[0].Error // Return the actual error
 		}
 		return results[0].Text, nil
 	}
