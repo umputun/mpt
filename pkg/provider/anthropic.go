@@ -29,9 +29,10 @@ func NewAnthropic(opts Options) *Anthropic {
 
 	// set default max tokens if not specified
 	maxTokens := opts.MaxTokens
-	if maxTokens <= 0 {
+	if maxTokens < 0 {
 		maxTokens = 1024 // default value
 	}
+	// if maxTokens is 0, we'll use the model's maximum (API will determine the limit)
 
 	return &Anthropic{
 		client:    client,

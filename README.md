@@ -137,7 +137,7 @@ You can provide a prompt in the following ways:
 --openai.api-key      OpenAI API key (or OPENAI_API_KEY env var)
 --openai.model        OpenAI model to use (default: gpt-4o)
 --openai.enabled      Enable OpenAI provider
---openai.max-tokens   Maximum number of tokens to generate (default: 16384)
+--openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 --openai.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
 ```
 
@@ -147,7 +147,7 @@ You can provide a prompt in the following ways:
 --anthropic.api-key   Anthropic API key (or ANTHROPIC_API_KEY env var)
 --anthropic.model     Anthropic model to use (default: claude-3-7-sonnet-20250219)
 --anthropic.enabled   Enable Anthropic provider
---anthropic.max-tokens Maximum number of tokens to generate (default: 16384)
+--anthropic.max-tokens Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 ```
 
 #### Google (Gemini)
@@ -156,7 +156,7 @@ You can provide a prompt in the following ways:
 --google.api-key      Google API key (or GOOGLE_API_KEY env var)
 --google.model        Google model to use (default: gemini-2.5-pro-exp-03-25)
 --google.enabled      Enable Google provider
---google.max-tokens   Maximum number of tokens to generate (default: 16384)
+--google.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 ```
 
 #### Custom OpenAI-Compatible Providers
@@ -169,7 +169,7 @@ You can add multiple custom providers that implement the OpenAI-compatible API. 
 --custom.<provider-id>.api-key      API key for the custom provider (if needed)
 --custom.<provider-id>.model        Model to use (required)
 --custom.<provider-id>.enabled      Enable this custom provider (default: true)
---custom.<provider-id>.max-tokens   Maximum number of tokens to generate (default: 16384)
+--custom.<provider-id>.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 --custom.<provider-id>.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
 ```
 

@@ -200,9 +200,14 @@ func TestGoogle_TokenLimits(t *testing.T) {
 		expected  int32 // what the value should be after conversion
 	}{
 		{
-			name:      "default_value",
+			name:      "use_model_maximum",
 			maxTokens: 0,
-			expected:  1024,
+			expected:  0, // 0 means use model maximum, shouldn't set value
+		},
+		{
+			name:      "negative_value",
+			maxTokens: -5,
+			expected:  1024, // negative values default to 1024
 		},
 		{
 			name:      "normal_value",
@@ -241,14 +246,17 @@ func TestGoogle_TokenLimits(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, "This is a test response", response)
 
-			// check expected maximum token value
+			// verify expected token behavior
 			var actualMaxTokens int32
-			if provider.maxTokens <= 0 {
+			if tc.maxTokens == 0 {
+				// special case: 0 means use model maximum, don't set a specific value
+				actualMaxTokens = 0
+			} else if tc.maxTokens < 0 {
 				actualMaxTokens = 1024
-			} else if provider.maxTokens > 2147483647 {
+			} else if tc.maxTokens > 2147483647 {
 				actualMaxTokens = 2147483647
 			} else {
-				actualMaxTokens = int32(provider.maxTokens)
+				actualMaxTokens = int32(tc.maxTokens)
 			}
 
 			assert.Equal(t, tc.expected, actualMaxTokens)

@@ -19,8 +19,8 @@ type CustomOpenAI struct {
 
 // CustomOptions defines options for custom OpenAI-compatible providers
 type CustomOptions struct {
-	Name        string  // custom provider name
-	BaseURL     string  // base URL for the API
+	Name        string // custom provider name
+	BaseURL     string // base URL for the API
 	APIKey      string
 	Model       string
 	Enabled     bool
@@ -43,9 +43,10 @@ func NewCustomOpenAI(opts CustomOptions) *CustomOpenAI {
 
 	// set default max tokens if not specified
 	maxTokens := opts.MaxTokens
-	if maxTokens <= 0 {
+	if maxTokens < 0 {
 		maxTokens = 1024 // default value
 	}
+	// if maxTokens is 0, we'll use the model's maximum (API will determine the limit)
 
 	// set default temperature if not specified
 	temperature := opts.Temperature

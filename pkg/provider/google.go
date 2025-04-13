@@ -31,9 +31,10 @@ func NewGoogle(opts Options) *Google {
 
 	// set default max tokens if not specified
 	maxTokens := opts.MaxTokens
-	if maxTokens <= 0 {
+	if maxTokens < 0 {
 		maxTokens = 1024 // default value
 	}
+	// if maxTokens is 0, we'll use the model's maximum (API will determine the limit)
 
 	return &Google{
 		client:    client,
@@ -55,16 +56,19 @@ func (g *Google) Generate(ctx context.Context, prompt string) (string, error) {
 	}
 
 	model := g.client.GenerativeModel(g.model)
-	// set max output tokens with safe conversion to int32
-	var maxTokensInt32 int32
-	if g.maxTokens <= 0 {
-		maxTokensInt32 = 1024 // default
-	} else if g.maxTokens > 2147483647 { // max int32 value
-		maxTokensInt32 = 2147483647
-	} else {
-		maxTokensInt32 = int32(g.maxTokens)
+	
+	// only set max output tokens if not zero (0 means use model's maximum)
+	if g.maxTokens != 0 {
+		// set max output tokens with safe conversion to int32
+		switch {
+		case g.maxTokens < 0:
+			model.SetMaxOutputTokens(1024) // default value
+		case g.maxTokens > 2147483647: // max int32 value
+			model.SetMaxOutputTokens(2147483647)
+		default:
+			model.SetMaxOutputTokens(int32(g.maxTokens))
+		}
 	}
-	model.SetMaxOutputTokens(maxTokensInt32)
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		return "", fmt.Errorf("google api error: %w", err)

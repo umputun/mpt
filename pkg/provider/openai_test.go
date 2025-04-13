@@ -106,9 +106,9 @@ func TestOpenAI_Generate_Success(t *testing.T) {
 
 	// create a provider with the mock client
 	provider := &OpenAI{
-		client:     client,
-		model:      "gpt-4",
-		enabled:    true,
+		client:      client,
+		model:       "gpt-4",
+		enabled:     true,
 		temperature: 0.7,
 	}
 
@@ -134,9 +134,9 @@ func TestOpenAI_Generate_EmptyChoices(t *testing.T) {
 
 	// create a provider with the mock client
 	provider := &OpenAI{
-		client:     client,
-		model:      "gpt-4",
-		enabled:    true,
+		client:      client,
+		model:       "gpt-4",
+		enabled:     true,
 		temperature: 0.7,
 	}
 
