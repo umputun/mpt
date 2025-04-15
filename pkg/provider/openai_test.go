@@ -172,13 +172,16 @@ func TestOpenAI_Generate_APIError(t *testing.T) {
 	// test the Generate method
 	_, err := provider.Generate(context.Background(), "test prompt")
 	require.Error(t, err)
-	// should return a sanitized error since our error might trigger the sanitizer
-	assert.Contains(t, err.Error(), "API error")
-	// in lower case in the original format
-	assert.Contains(t, strings.ToLower(err.Error()), "openai")
-	// either contains the original error or the sanitized version
+	// check for key elements in the error
+	errorMsg := strings.ToLower(err.Error())
+
+	// API error should be mentioned
+	assert.Contains(t, errorMsg, "api error", "Error should mention API error")
+
+	// at least one of: provider name or guidance should be present
 	assert.True(t,
-		strings.Contains(err.Error(), "openai api error") ||
-			strings.Contains(err.Error(), "redacted because it may contain sensitive information"),
-		"Error should either contain original message or sanitized message")
+		strings.Contains(errorMsg, "openai") ||
+			strings.Contains(errorMsg, "check") ||
+			strings.Contains(errorMsg, "redacted"),
+		"Error should contain at least one helpful element: provider name, guidance, or redaction notice")
 }

@@ -106,16 +106,37 @@ func SanitizeError(err error) error {
 		}
 	}
 
-	// if sensitive info is found, replace it with a generic message
+	// if sensitive info is found, replace it with a more informative generic message
 	if containsSensitiveInfo {
 		// get the provider name if present at the start of the error message
 		// common format: "provider api error: ..."
 		providerPrefix := ""
+		errorType := "authentication"
+		
+		// try to extract provider name and determine error type for better context
 		if parts := strings.SplitN(errStr, " api error:", 2); len(parts) > 1 {
 			providerPrefix = parts[0]
-			return fmt.Errorf("%s API error: the original error was redacted because it may contain sensitive information", providerPrefix)
+			
+			// check for common error patterns to provide better guidance
+			errorPart := strings.ToLower(parts[1])
+			switch {
+			case strings.Contains(errorPart, "authenticat") || strings.Contains(errorPart, "auth") || 
+				 strings.Contains(errorPart, "key") || strings.Contains(errorPart, "token"):
+				errorType = "authentication"
+			case strings.Contains(errorPart, "model"):
+				errorType = "model selection"
+			case strings.Contains(errorPart, "rate") || strings.Contains(errorPart, "limit"):
+				errorType = "rate limit"
+			case strings.Contains(errorPart, "timeout") || strings.Contains(errorPart, "timed out"):
+				errorType = "timeout"
+			}
+			
+			return fmt.Errorf("%s API error: possible %s issue - the original error was redacted to protect sensitive information. Check your API key and configuration", 
+				providerPrefix, errorType)
 		}
-		return fmt.Errorf("API error: the original error was redacted because it may contain sensitive information")
+		
+		return fmt.Errorf("API error: possible %s issue - the original error was redacted to protect sensitive information. Check your provider configuration", 
+			errorType)
 	}
 
 	// if no sensitive information is detected, return the original error
@@ -126,19 +147,32 @@ func SanitizeError(err error) error {
 // based on the provider type and options. It validates required fields
 // and returns appropriate errors if validation fails.
 func CreateProvider(providerType enum.ProviderType, opts Options) (Provider, error) {
-	// validate options
+	// validate options - adds detailed error context for each validation failure
 	if err := opts.Validate(providerType); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("provider validation failed: %w", err)
 	}
 
 	switch providerType {
 	case enum.ProviderTypeOpenAI:
-		return NewOpenAI(opts), nil
+		// detailed context for each provider type
+		p := NewOpenAI(opts)
+		if !p.Enabled() {
+			return nil, fmt.Errorf("openai provider failed to initialize with model %q - check API key and model name", opts.Model)
+		}
+		return p, nil
 	case enum.ProviderTypeAnthropic:
-		return NewAnthropic(opts), nil
+		p := NewAnthropic(opts)
+		if !p.Enabled() {
+			return nil, fmt.Errorf("anthropic provider failed to initialize with model %q - check API key and model name", opts.Model)
+		}
+		return p, nil
 	case enum.ProviderTypeGoogle:
-		return NewGoogle(opts), nil
+		p := NewGoogle(opts)
+		if !p.Enabled() {
+			return nil, fmt.Errorf("google provider failed to initialize with model %q - check API key and model name", opts.Model)
+		}
+		return p, nil
 	default:
-		return nil, fmt.Errorf("unsupported provider type: %s", providerType)
+		return nil, fmt.Errorf("unsupported provider type %q - valid types are 'openai', 'anthropic', or 'google'", providerType)
 	}
 }
