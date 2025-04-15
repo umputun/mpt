@@ -32,10 +32,11 @@ type options struct {
 
 	MCP mcpOpts `group:"mcp" namespace:"mcp" env-namespace:"MCP"`
 
-	Prompt   string        `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
-	Files    []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
-	Excludes []string      `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
-	Timeout  time.Duration `short:"t" long:"timeout" default:"60s" description:"timeout duration"`
+	Prompt      string        `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
+	Files       []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
+	Excludes    []string      `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
+	Timeout     time.Duration `short:"t" long:"timeout" default:"60s" description:"timeout duration"`
+	MaxFileSize int64         `long:"max-file-size" env:"MAX_FILE_SIZE" default:"65536" description:"maximum size of individual files to process in bytes (default: 64KB)"`
 
 	// common options
 	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -221,7 +222,8 @@ func buildFullPrompt(opts *options) error {
 	// use the prompt builder to handle file loading and prompt construction
 	builder := prompt.New(opts.Prompt).
 		WithFiles(opts.Files).
-		WithExcludes(opts.Excludes)
+		WithExcludes(opts.Excludes).
+		WithMaxFileSize(opts.MaxFileSize)
 
 	fullPrompt, err := builder.Build()
 	if err != nil {

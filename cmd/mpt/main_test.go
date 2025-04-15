@@ -639,8 +639,9 @@ func TestProcessPrompt_WithFile(t *testing.T) {
 
 	// setup options
 	opts := &options{
-		Prompt: "test prompt",
-		Files:  []string{testFilePath},
+		Prompt:      "test prompt",
+		Files:       []string{testFilePath},
+		MaxFileSize: 1024 * 1024, // use 1MB max file size for tests
 	}
 
 	// process prompt
@@ -963,8 +964,9 @@ func TestBuildFullPrompt(t *testing.T) {
 		require.NoError(t, err, "Failed to create test file")
 
 		opts := &options{
-			Prompt: "initial",
-			Files:  []string{testFilePath},
+			Prompt:      "initial",
+			MaxFileSize: 1024 * 1024, // use 1MB max file size for tests
+			Files:       []string{testFilePath},
 		}
 
 		err = buildFullPrompt(opts)
@@ -993,9 +995,10 @@ func TestBuildFullPrompt(t *testing.T) {
 		require.NoError(t, err, "Failed to create exclude file")
 
 		opts := &options{
-			Prompt:   "initial",
-			Files:    []string{filepath.Join(tempDir, "*.txt"), filepath.Join(tempDir, "**", "*.txt")},
-			Excludes: []string{filepath.Join(tempDir, "exclude", "**")},
+			Prompt:      "initial",
+			Files:       []string{filepath.Join(tempDir, "*.txt"), filepath.Join(tempDir, "**", "*.txt")},
+			Excludes:    []string{filepath.Join(tempDir, "exclude", "**")},
+			MaxFileSize: 1024 * 1024,
 		}
 
 		err = buildFullPrompt(opts)
