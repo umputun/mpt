@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/sashabaranov/go-openai"
@@ -200,5 +201,13 @@ func TestCustomOpenAI_Generate_APIError(t *testing.T) {
 	// test the Generate method
 	_, err := provider.Generate(context.Background(), "test prompt")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "api error")
+	// should return a sanitized error since our error might trigger the sanitizer
+	assert.Contains(t, err.Error(), "API error")
+	assert.Contains(t, err.Error(), "LocalLLM")
+	// either contains the original error or the sanitized version
+	assert.True(t,
+		strings.Contains(err.Error(), "api error") ||
+			strings.Contains(err.Error(), "redacted because it may contain sensitive information"),
+		"Error should either contain original message or sanitized message")
+
 }

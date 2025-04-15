@@ -611,12 +611,13 @@ func TestCreateStandardProvider(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			providerInstance := createStandardProvider(tt.providerType, tt.apiKey, tt.model, tt.maxTokens, tt.temperature)
 
-			if tt.expectNil {
+			switch tt.name {
+			case "unknown provider":
 				assert.Nil(t, providerInstance, "Provider should be nil for unknown provider type")
 				return
+			default:
+				require.NotNil(t, providerInstance, "Provider should not be nil")
 			}
-
-			require.NotNil(t, providerInstance, "Provider should not be nil")
 
 			// verify the provider name matches the expected type (case-insensitive)
 			assert.Contains(t, strings.ToLower(providerInstance.Name()), tt.providerType, "Provider name should contain the provider type")
@@ -824,12 +825,9 @@ func handleRunnerError(err error, timeout time.Duration) error {
 		return fmt.Errorf("operation canceled by user")
 	case errors.Is(err, context.DeadlineExceeded):
 		return fmt.Errorf("operation timed out after %s, try increasing the timeout with -t flag", timeout)
+	case strings.Contains(strings.ToLower(err.Error()), "api error"):
+		return fmt.Errorf("provider API error: %w", err)
 	default:
-		// check if we have an error from any specific provider
-		if strings.Contains(err.Error(), "api error") || strings.Contains(err.Error(), "API error") {
-			return fmt.Errorf("provider API error: %w", err)
-		}
-		// generic fallback for other errors
 		return fmt.Errorf("failed to run prompt: %w", err)
 	}
 }
@@ -1101,7 +1099,24 @@ func TestInitializeProviders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			providers := initializeProviders(tt.opts)
+			providers, err := initializeProviders(tt.opts)
+
+			switch tt.name {
+			case "no providers enabled":
+				require.Error(t, err, "Should return error when no providers enabled")
+				assert.Contains(t, err.Error(), "no providers enabled")
+				return
+			case "custom provider without URL":
+				require.Error(t, err, "Should return error when custom provider URL is missing")
+				assert.Contains(t, err.Error(), "URL is required")
+				return
+			case "custom provider without model":
+				require.Error(t, err, "Should return error when custom provider model is missing")
+				assert.Contains(t, err.Error(), "Model is required")
+				return
+			default:
+				require.NoError(t, err, "Should initialize providers without error")
+			}
 
 			assert.Len(t, providers, tt.expectedCount, "Provider count should match expected")
 

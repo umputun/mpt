@@ -19,7 +19,8 @@ type Google struct {
 
 // NewGoogle creates a new Google provider
 func NewGoogle(opts Options) *Google {
-	if opts.APIKey == "" || !opts.Enabled {
+	// quick validation for direct constructor usage (without CreateProvider)
+	if opts.APIKey == "" || !opts.Enabled || opts.Model == "" {
 		return &Google{enabled: false}
 	}
 
@@ -32,7 +33,7 @@ func NewGoogle(opts Options) *Google {
 	// set default max tokens if not specified
 	maxTokens := opts.MaxTokens
 	if maxTokens < 0 {
-		maxTokens = 1024 // default value
+		maxTokens = DefaultMaxTokens
 	}
 	// if maxTokens is 0, we'll use the model's maximum (API will determine the limit)
 
@@ -71,7 +72,8 @@ func (g *Google) Generate(ctx context.Context, prompt string) (string, error) {
 	}
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
-		return "", fmt.Errorf("google api error: %w", err)
+		// sanitize any potential sensitive information in error
+		return "", SanitizeError(fmt.Errorf("google api error: %w", err))
 	}
 
 	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {

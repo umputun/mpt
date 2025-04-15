@@ -17,9 +17,16 @@ type OpenAI struct {
 	temperature float32
 }
 
+// DefaultMaxTokens defines the default value for max tokens if not specified or negative
+const DefaultMaxTokens = 1024
+
+// DefaultTemperature defines the default temperature if not specified or negative
+const DefaultTemperature = 0.7
+
 // NewOpenAI creates a new OpenAI provider
 func NewOpenAI(opts Options) *OpenAI {
-	if opts.APIKey == "" || !opts.Enabled {
+	// quick validation for direct constructor usage (without CreateProvider)
+	if opts.APIKey == "" || !opts.Enabled || opts.Model == "" {
 		return &OpenAI{enabled: false}
 	}
 
@@ -28,14 +35,14 @@ func NewOpenAI(opts Options) *OpenAI {
 	// set default max tokens if not specified
 	maxTokens := opts.MaxTokens
 	if maxTokens < 0 {
-		maxTokens = 1024 // default value
+		maxTokens = DefaultMaxTokens
 	}
 	// if maxTokens is 0, we'll use the model's maximum (API will determine the limit)
 
 	// set default temperature if not specified
 	temperature := opts.Temperature
 	if temperature <= 0 {
-		temperature = 0.7 // default OpenAI temperature
+		temperature = DefaultTemperature
 	}
 
 	return &OpenAI{
@@ -74,7 +81,8 @@ func (o *OpenAI) Generate(ctx context.Context, prompt string) (string, error) {
 	)
 
 	if err != nil {
-		return "", fmt.Errorf("openai api error: %w", err)
+		// sanitize any potential sensitive information in error
+		return "", SanitizeError(fmt.Errorf("openai api error: %w", err))
 	}
 
 	if len(resp.Choices) == 0 {
