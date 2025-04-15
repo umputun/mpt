@@ -1,16 +1,7 @@
 version: 2
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
-    groups:
-      "Go modules updates":
-        dependency-type: "production"
-        applies-to: "security-updates"
+    open-pull-requests-limit: 0
