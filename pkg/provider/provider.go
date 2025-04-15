@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // Provider defines the interface for LLM providers
@@ -34,4 +35,30 @@ type Options struct {
 	Model       string
 	MaxTokens   int     // maximum number of tokens to generate
 	Temperature float32 // controls randomness (0-1, default: 0.7)
+}
+
+// CreateProvider creates a standard provider (OpenAI, Anthropic, Google)
+// based on the provider type and options. It validates required fields
+// and returns appropriate errors if validation fails.
+func CreateProvider(providerType string, opts Options) (Provider, error) {
+	if !opts.Enabled {
+		return nil, fmt.Errorf("provider %s is not enabled (use --%s.enabled flag to enable)", 
+			providerType, providerType)
+	}
+
+	if opts.APIKey == "" {
+		return nil, fmt.Errorf("api key for %s provider is required (set with --%s.api-key flag or %s_API_KEY env var)", 
+			providerType, providerType, strings.ToUpper(providerType))
+	}
+
+	switch providerType {
+	case "openai":
+		return NewOpenAI(opts), nil
+	case "anthropic":
+		return NewAnthropic(opts), nil
+	case "google":
+		return NewGoogle(opts), nil
+	default:
+		return nil, fmt.Errorf("unknown provider type: %s (supported: openai, anthropic, google)", providerType)
+	}
 }

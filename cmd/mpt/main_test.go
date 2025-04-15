@@ -166,7 +166,7 @@ func TestRunnerCancellation(t *testing.T) {
 		case result := <-resultCh:
 			// for a single provider, we expect an error for cancellation
 			require.Error(t, result.err, "Runner.Run should return an error for context cancellation with single provider")
-			assert.Contains(t, result.err.Error(), "context canceled", "Error should include context cancellation message")
+			assert.Contains(t, result.err.Error(), "canceled by user", "Error should include user cancellation message")
 			assert.Empty(t, result.text, "Result text should be empty")
 		case <-time.After(500 * time.Millisecond):
 			t.Fatal("Timed out waiting for Run to return after cancellation")
@@ -252,8 +252,7 @@ func TestRunnerCancellation(t *testing.T) {
 		case result := <-resultCh:
 			// when all providers fail, we expect an error
 			require.Error(t, result.err, "Runner.Run should return an error when all providers are canceled")
-			assert.Contains(t, result.err.Error(), "all providers failed", "Error should indicate all providers failed")
-			assert.Contains(t, result.err.Error(), "context canceled", "Error should mention context cancellation")
+			assert.Contains(t, result.err.Error(), "canceled by user", "Error should mention user cancellation")
 			assert.Empty(t, result.text, "Result text should be empty")
 		case <-time.After(500 * time.Millisecond):
 			t.Fatal("Timed out waiting for Run to return after cancellation")
@@ -262,7 +261,6 @@ func TestRunnerCancellation(t *testing.T) {
 }
 
 func TestGetPrompt(t *testing.T) {
-	// test cases for getPrompt function
 	tests := []struct {
 		name           string
 		initialPrompt  string
@@ -323,7 +321,6 @@ func TestGetPrompt(t *testing.T) {
 				// mock the Stat function result to simulate piped input
 				// this is needed because we can't actually modify the mode bits of our pipe
 				// to match the real case where (stat.Mode() & os.ModeCharDevice) == 0
-				// instead, we'll modify the function to directly handle the test case
 				err = getPromptForTest(&opts, true)
 				require.NoError(t, err)
 			} else {
@@ -941,27 +938,24 @@ func TestExecutePrompt_Error(t *testing.T) {
 		// no error should be returned since at least one provider succeeded
 		require.NoError(t, err, "executePrompt should not return an error when some providers succeed")
 
-		// output should show both the error and success results
-		assert.Contains(t, output, "api error", "Output should contain the failing provider's error message")
+		// output should only show the successful result, not the error
+		assert.NotContains(t, output, "api error", "Output should not contain the failing provider's error message")
 		assert.Contains(t, output, "Success response", "Output should contain the successful provider's response")
 	})
 }
 
-// TestAppendFileContent tests the appendFileContent function
-func TestAppendFileContent(t *testing.T) {
-	// test case 1: No files
+func TestBuildFullPrompt(t *testing.T) {
 	t.Run("no files", func(t *testing.T) {
 		opts := &options{
 			Prompt: "initial",
 			Files:  []string{},
 		}
 
-		err := appendFileContent(opts)
-		require.NoError(t, err, "appendFileContent should not error")
+		err := buildFullPrompt(opts)
+		require.NoError(t, err, "buildFullPrompt should not error")
 		assert.Equal(t, "initial", opts.Prompt, "Prompt should be unchanged with no files")
 	})
 
-	// test case 2: Single file
 	t.Run("single file", func(t *testing.T) {
 		// create a test file
 		tempDir := t.TempDir()
@@ -974,15 +968,14 @@ func TestAppendFileContent(t *testing.T) {
 			Files:  []string{testFilePath},
 		}
 
-		err = appendFileContent(opts)
-		require.NoError(t, err, "appendFileContent should not error")
+		err = buildFullPrompt(opts)
+		require.NoError(t, err, "buildFullPrompt should not error")
 
 		// check that the prompt contains both initial prompt and file content
 		assert.Contains(t, opts.Prompt, "initial", "Prompt should contain the initial prompt")
 		assert.Contains(t, opts.Prompt, "file content", "Prompt should contain the file content")
 	})
 
-	// test case 3: Files with exclude pattern
 	t.Run("file with excludes", func(t *testing.T) {
 		tempDir := t.TempDir()
 
@@ -1006,8 +999,8 @@ func TestAppendFileContent(t *testing.T) {
 			Excludes: []string{filepath.Join(tempDir, "exclude", "**")},
 		}
 
-		err = appendFileContent(opts)
-		require.NoError(t, err, "appendFileContent should not error")
+		err = buildFullPrompt(opts)
+		require.NoError(t, err, "buildFullPrompt should not error")
 
 		// verify content
 		assert.Contains(t, opts.Prompt, "initial", "Prompt should contain the initial prompt")
@@ -1015,14 +1008,13 @@ func TestAppendFileContent(t *testing.T) {
 		assert.NotContains(t, opts.Prompt, "exclude content", "Prompt should not contain excluded content")
 	})
 
-	// test case 4: File not found
 	t.Run("file not found", func(t *testing.T) {
 		opts := &options{
 			Prompt: "initial",
 			Files:  []string{"/nonexistent/file.txt"},
 		}
 
-		err := appendFileContent(opts)
+		err := buildFullPrompt(opts)
 		assert.Error(t, err, "Expected an error for non-existent file")
 	})
 }
