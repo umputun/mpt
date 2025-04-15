@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -69,24 +70,35 @@ func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
 		results = append(results, result)
 	}
 
-	// check if all providers failed
+	// check if all providers failed and collect all errors
 	allFailed := true
+	var errorMessages []string
 	for _, result := range results {
 		if result.Error == nil {
 			allFailed = false
-			break
+		} else {
+			errorMessages = append(errorMessages, fmt.Sprintf("%s: %v", result.Provider, result.Error))
 		}
 	}
 
-	// if all providers failed, return the first error
+	// if all providers failed, return a detailed error message with all provider errors
 	if allFailed {
-		return "", fmt.Errorf("all providers failed: %v", results[0].Error)
+		// with context already canceled or deadline exceeded, return a more user-friendly error
+		if ctx.Err() != nil {
+			switch {
+			case errors.Is(ctx.Err(), context.Canceled):
+				return "", fmt.Errorf("operation canceled by user")
+			case errors.Is(ctx.Err(), context.DeadlineExceeded):
+				return "", fmt.Errorf("operation timed out, try increasing the timeout")
+			}
+		}
+		return "", fmt.Errorf("all providers failed: %s", strings.Join(errorMessages, "; "))
 	}
 
 	// for single provider skip the header
 	if len(r.providers) == 1 && len(results) == 1 {
 		if results[0].Error != nil {
-			return "", results[0].Error // return the actual error
+			return "", fmt.Errorf("provider %s failed: %w", results[0].Provider, results[0].Error)
 		}
 		return results[0].Text, nil
 	}

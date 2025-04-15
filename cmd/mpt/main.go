@@ -14,8 +14,8 @@ import (
 	"github.com/go-pkgz/lgr"
 	"github.com/jessevdk/go-flags"
 
-	"github.com/umputun/mpt/pkg/files"
 	"github.com/umputun/mpt/pkg/mcp"
+	"github.com/umputun/mpt/pkg/prompt"
 	"github.com/umputun/mpt/pkg/provider"
 	"github.com/umputun/mpt/pkg/runner"
 )
@@ -200,34 +200,26 @@ func processPrompt(opts *options) error {
 	}
 
 	// append file content to prompt if requested
-	if err := appendFileContent(opts); err != nil {
+	if err := buildFullPrompt(opts); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// appendFileContent loads content from specified files and appends to the prompt
-func appendFileContent(opts *options) error {
-	if len(opts.Files) == 0 {
-		return nil
-	}
+// buildFullPrompt loads content from specified files and builds the complete prompt
+func buildFullPrompt(opts *options) error {
+	// use the prompt builder to handle file loading and prompt construction
+	builder := prompt.New(opts.Prompt).
+		WithFiles(opts.Files).
+		WithExcludes(opts.Excludes)
 
-	lgr.Printf("[DEBUG] loading files from patterns: %v", opts.Files)
-	if len(opts.Excludes) > 0 {
-		lgr.Printf("[DEBUG] excluding patterns: %v", opts.Excludes)
-	}
-
-	fileContent, err := files.LoadContent(opts.Files, opts.Excludes)
+	fullPrompt, err := builder.Build()
 	if err != nil {
-		return fmt.Errorf("failed to load files: %w", err)
+		return fmt.Errorf("failed to build prompt: %w", err)
 	}
 
-	if fileContent != "" {
-		lgr.Printf("[DEBUG] loaded %d bytes of content from files", len(fileContent))
-		opts.Prompt += "\n\n" + fileContent
-	}
-
+	opts.Prompt = fullPrompt
 	return nil
 }
 
@@ -242,17 +234,12 @@ func createStandardProvider(providerType, apiKey, model string, maxTokens int, t
 		Temperature: temperature,
 	}
 
-	switch providerType {
-	case "openai":
-		return provider.NewOpenAI(opts)
-	case "anthropic":
-		return provider.NewAnthropic(opts)
-	case "google":
-		return provider.NewGoogle(opts)
-	default:
-		lgr.Printf("[ERROR] unknown provider type: %s", providerType)
+	p, err := provider.CreateProvider(providerType, opts)
+	if err != nil {
+		lgr.Printf("[ERROR] failed to create %s provider: %v", providerType, err)
 		return nil
 	}
+	return p
 }
 
 // initializeProviders creates provider instances from the options
@@ -333,20 +320,11 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 	// run the prompt
 	result, err := r.Run(timeoutCtx, opts.Prompt)
 	if err != nil {
-		// handle different error types with more specific messages
-		switch {
-		case errors.Is(err, context.Canceled):
-			return fmt.Errorf("operation canceled by user")
-		case errors.Is(err, context.DeadlineExceeded):
+		if errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("operation timed out after %s, try increasing the timeout with -t flag", opts.Timeout)
-		default:
-			// check if we have an error from any specific provider
-			if strings.Contains(err.Error(), "api error") || strings.Contains(err.Error(), "API error") {
-				return fmt.Errorf("provider API error: %w", err)
-			}
-			// generic fallback for other errors
-			return fmt.Errorf("failed to run prompt: %w", err)
 		}
+
+		return err
 	}
 
 	// print the result
@@ -376,17 +354,17 @@ func getPrompt(opts *options) error {
 		}
 
 		// combine with existing prompt or use as prompt
-		opts.Prompt = combinePromptWithInput(opts.Prompt, stdinContent)
+		opts.Prompt = prompt.CombineWithInput(opts.Prompt, stdinContent)
 
 	} else if opts.Prompt == "" {
 		// no data piped, no prompt provided, interactive mode
 		fmt.Print("Enter prompt: ")
 		reader := bufio.NewReader(os.Stdin)
-		prompt, err := reader.ReadString('\n')
+		promptText, err := reader.ReadString('\n')
 		if err != nil {
 			return fmt.Errorf("error reading prompt: %w", err)
 		}
-		opts.Prompt = strings.TrimSpace(prompt)
+		opts.Prompt = strings.TrimSpace(promptText)
 	}
 	return nil
 }
@@ -415,12 +393,4 @@ func readFromStdin() (string, error) {
 		return "", fmt.Errorf("error reading from stdin: %w", err)
 	}
 	return strings.TrimSpace(sb.String()), nil
-}
-
-// combinePromptWithInput combines an existing prompt with input from stdin
-func combinePromptWithInput(prompt, input string) string {
-	if prompt == "" {
-		return input
-	}
-	return prompt + "\n" + input
 }
