@@ -245,6 +245,8 @@ mpt --anthropic.enabled --prompt "Find bugs in my Go code" --file "pkg/..." --fi
 
 MPT provides powerful file inclusion and exclusion capabilities to provide contextual information to AI models. You can easily include all the necessary files for your prompt while filtering out unwanted content.
 
+> **Security Warning**: File glob patterns in MPT have access to the entire file system. Be careful when using patterns like `**/*` or `/...` as they can potentially include sensitive files from anywhere on your system. Always review the matched files when using broad patterns, especially in environments with sensitive data. Consider using more specific patterns and using exclusion filters for sensitive directories.
+
 #### Including Files with `--file`
 
 Add relevant files to your prompt context using various pattern types:
