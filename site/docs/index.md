@@ -126,7 +126,9 @@ You can provide a prompt in the following ways:
 1. Using the `--prompt` flag: `mpt --prompt "Your question here"`
 2. Piping content: `echo "Your question" | mpt`
 3. Combining flag and piped content: `echo "Additional context" | mpt --prompt "Main question"`
-   - This combines both inputs with a newline separator
+   - When both are provided, MPT automatically combines them with a newline separator
+   - The CLI prompt (`--prompt` flag) appears first, followed by the piped stdin content
+   - This is especially useful for adding instructions to process piped data (see [Why Combine Inputs?](#why-combine-inputs) section)
 4. Interactive mode: If no prompt is provided via command line or pipe, you'll be prompted to enter one
 
 ### Provider Configuration
@@ -137,7 +139,7 @@ You can provide a prompt in the following ways:
 --openai.api-key      OpenAI API key (or OPENAI_API_KEY env var)
 --openai.model        OpenAI model to use (default: gpt-4o)
 --openai.enabled      Enable OpenAI provider
---openai.max-tokens   Maximum number of tokens to generate (default: 16384)
+--openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 --openai.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
 ```
 
@@ -147,7 +149,7 @@ You can provide a prompt in the following ways:
 --anthropic.api-key   Anthropic API key (or ANTHROPIC_API_KEY env var)
 --anthropic.model     Anthropic model to use (default: claude-3-7-sonnet-20250219)
 --anthropic.enabled   Enable Anthropic provider
---anthropic.max-tokens Maximum number of tokens to generate (default: 16384)
+--anthropic.max-tokens Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 ```
 
 #### Google (Gemini)
@@ -156,7 +158,7 @@ You can provide a prompt in the following ways:
 --google.api-key      Google API key (or GOOGLE_API_KEY env var)
 --google.model        Google model to use (default: gemini-2.5-pro-exp-03-25)
 --google.enabled      Enable Google provider
---google.max-tokens   Maximum number of tokens to generate (default: 16384)
+--google.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 ```
 
 #### Custom OpenAI-Compatible Providers
@@ -169,7 +171,7 @@ You can add multiple custom providers that implement the OpenAI-compatible API. 
 --custom.<provider-id>.api-key      API key for the custom provider (if needed)
 --custom.<provider-id>.model        Model to use (required)
 --custom.<provider-id>.enabled      Enable this custom provider (default: true)
---custom.<provider-id>.max-tokens   Maximum number of tokens to generate (default: 16384)
+--custom.<provider-id>.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 --custom.<provider-id>.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
 ```
 
@@ -204,7 +206,9 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
 -x, --exclude         Patterns to exclude from file matching (can be used multiple times)
                       Uses the same pattern syntax as --file
 -t, --timeout         Timeout duration (e.g., 60s, 2m) (default: 60s)
+--max-file-size       Maximum size of individual files to process in bytes (default: 64KB)
 -v, --verbose         Verbose output, shows the complete prompt sent to models
+--json                Output results in JSON format for scripting and automation
 --dbg                 Enable debug mode
 -V, --version         Show version information
 ```
@@ -244,6 +248,8 @@ mpt --anthropic.enabled --prompt "Find bugs in my Go code" --file "pkg/..." --fi
 ### File Pattern and Filtering Reference
 
 MPT provides powerful file inclusion and exclusion capabilities to provide contextual information to AI models. You can easily include all the necessary files for your prompt while filtering out unwanted content.
+
+> **Security Warning**: File glob patterns in MPT have access to the entire file system. Be careful when using patterns like `**/*` or `/...` as they can potentially include sensitive files from anywhere on your system. Always review the matched files when using broad patterns, especially in environments with sensitive data. Consider using more specific patterns and using exclusion filters for sensitive directories.
 
 #### Including Files with `--file`
 
@@ -355,9 +361,38 @@ find . -name "*.go" -exec grep -l "TODO" {} \; | mpt --openai.enabled \
     --file "README.md" --file "CONTRIBUTING.md"
 ```
 
+### Using MPT for Code Reviews
+
+MPT is particularly effective for code reviews. For best results, save git diff output to a file and then use the file as input:
+
+```bash
+# Save changes to a file
+git diff > changes.diff
+
+# Run review with file input
+mpt -f changes.diff --openai.enabled --google.enabled --anthropic.enabled --timeout=5m \
+    -p "Perform a comprehensive code review of these changes. Analyze the design patterns and architecture. Identify any security vulnerabilities or risks. Evaluate code readability, maintainability, and idiomatic usage. Suggest specific improvements where needed."
+```
+
+See [CODE-REVIEW-GUIDE.md](CODE-REVIEW-GUIDE.md) for a detailed guide on using MPT for code reviews, including:
+
+- Step-by-step process for reviewing code changes
+- Special prompts optimized for different types of reviews
+- A template for organizing review results
+- Examples of specific improvement recommendations
+
+This approach gives you insights from multiple AI models, helping you catch issues that any single model might miss.
+
 ### Why Combine Inputs?
 
-The ability to combine the prompt flag with piped stdin content is particularly powerful for workflows where you want to:
+When you provide both a CLI prompt (using the `--prompt` flag) and piped stdin content, MPT combines them as follows:
+
+```
+[CLI Prompt from --prompt flag]
+[Piped content from stdin]
+```
+
+The two are always combined in this order with a newline separator. This automatic combination behavior is particularly powerful for workflows where you want to:
 
 1. **Analyze code or text with specific instructions**: Pipe in code, logs, or data while specifying exactly what you want the AI to do with it.
 
@@ -378,7 +413,67 @@ The ability to combine the prompt flag with piped stdin content is particularly 
 
 This approach gives you much more flexibility than either using just stdin or just the prompt flag alone.
 
-Output:
+#### Example of Combined Input
+
+If you run:
+```bash
+echo "function calculateTotal(items) {
+  return items.reduce((sum, item) => sum + item.price, 0);
+}" | mpt --openai.enabled --prompt "Review this JavaScript function for potential bugs and edge cases"
+```
+
+MPT will send the following combined prompt to the AI model:
+```
+Review this JavaScript function for potential bugs and edge cases
+function calculateTotal(items) {
+  return items.reduce((sum, item) => sum + item.price, 0);
+}
+```
+
+The model can then analyze the code while following your specific instructions.
+
+### JSON Output Format
+
+When using the `--json` flag, MPT outputs results in a structured JSON format that's easy to parse in scripts or other programs:
+
+```bash
+mpt --openai.enabled --anthropic.enabled --prompt "Explain quantum computing" --json
+```
+
+This produces JSON output like:
+
+```json
+{
+  "responses": [
+    {
+      "provider": "OpenAI (gpt-4o)",
+      "text": "Quantum computing is a type of computing that..."
+    },
+    {
+      "provider": "Anthropic (claude-3-7-sonnet)",
+      "text": "Quantum computing leverages the principles of quantum mechanics..."
+    }
+  ],
+  "timestamp": "2025-04-15T12:34:56Z"
+}
+```
+
+The JSON output includes:
+- `responses`: An array of individual provider responses, including:
+  - `provider`: The name of the provider
+  - `text`: The response text
+  - `error`: Error message if the provider failed (field only present for failed providers)
+- `timestamp`: ISO-8601 timestamp when the response was generated
+
+This format is particularly useful for:
+- Processing MPT results in scripts
+- Storing responses in a database
+- Programmatic comparison of responses from different providers
+- Integration with other tools in automation pipelines
+
+### Standard Text Output Format
+
+By default, MPT outputs results in a human-readable text format:
 
 ```
 == generated by OpenAI ==
@@ -390,6 +485,8 @@ Recursion is a technique in programming where a function solves a problem by...
 == generated by Google ==
 Recursion in programming is when a function calls itself during its execution...
 ```
+
+When only one provider is enabled, the header is omitted for cleaner output.
 
 ## Advanced Usage: MCP Server Mode
 
