@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -43,6 +44,7 @@ func TestAnthropic_Enabled(t *testing.T) {
 			name: "enabled with API key",
 			options: Options{
 				APIKey:  "test-key",
+				Model:   "claude-test",
 				Enabled: true,
 			},
 			expected: true,
@@ -196,5 +198,14 @@ func TestAnthropic_Generate_APIError(t *testing.T) {
 	// test the Generate method - should return an error for API error
 	_, err := provider.Generate(context.Background(), "test prompt")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "anthropic api error")
+	// should return a sanitized error since our error might trigger the sanitizer
+	assert.Contains(t, err.Error(), "API error")
+	// in lower case in the original format
+	assert.Contains(t, strings.ToLower(err.Error()), "anthropic")
+	// either contains the original error or the sanitized version
+	assert.True(t,
+		strings.Contains(err.Error(), "anthropic api error") ||
+			strings.Contains(err.Error(), "redacted because it may contain sensitive information"),
+		"Error should either contain original message or sanitized message")
+
 }

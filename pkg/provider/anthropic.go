@@ -20,7 +20,8 @@ type Anthropic struct {
 
 // NewAnthropic creates a new Anthropic provider
 func NewAnthropic(opts Options) *Anthropic {
-	if opts.APIKey == "" || !opts.Enabled {
+	// quick validation for direct constructor usage (without CreateProvider)
+	if opts.APIKey == "" || !opts.Enabled || opts.Model == "" {
 		return &Anthropic{enabled: false}
 	}
 
@@ -30,7 +31,7 @@ func NewAnthropic(opts Options) *Anthropic {
 	// set default max tokens if not specified
 	maxTokens := opts.MaxTokens
 	if maxTokens < 0 {
-		maxTokens = 1024 // default value
+		maxTokens = DefaultMaxTokens
 	}
 	// if maxTokens is 0, we'll use the model's maximum (API will determine the limit)
 
@@ -65,7 +66,8 @@ func (a *Anthropic) Generate(ctx context.Context, prompt string) (string, error)
 	})
 
 	if err != nil {
-		return "", fmt.Errorf("anthropic api error: %w", err)
+		// sanitize any potential sensitive information in error
+		return "", SanitizeError(fmt.Errorf("anthropic api error: %w", err))
 	}
 
 	// extract text from response

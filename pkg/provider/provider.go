@@ -4,7 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/umputun/mpt/pkg/provider/enum"
 )
+
+//go:generate go run github.com/go-pkgz/enum@latest -type=providerType -lower -path=enum
 
 // Provider defines the interface for LLM providers
 type Provider interface {
@@ -12,6 +16,20 @@ type Provider interface {
 	Generate(ctx context.Context, prompt string) (string, error)
 	Enabled() bool
 }
+
+// providerType is the base type for the generated enum
+// Used by go:generate - this type and constants are used by the enum generator
+// nolint:unused // These are used by the enum generator but not directly in the code
+type providerType uint8
+
+// nolint:unused // These constants are used by the enum generator but not directly in the code
+const (
+	providerTypeUnknown providerType = iota
+	providerTypeOpenAI
+	providerTypeAnthropic
+	providerTypeGoogle
+	providerTypeCustom
+)
 
 // Result represents a generation result from a provider
 type Result struct {
@@ -37,28 +55,90 @@ type Options struct {
 	Temperature float32 // controls randomness (0-1, default: 0.7)
 }
 
+// Validate checks if the provider options are valid
+func (o Options) Validate(providerType enum.ProviderType) error {
+	providerName := providerType.String()
+
+	if !o.Enabled {
+		return fmt.Errorf("provider %s is not enabled (use --%s.enabled flag to enable)",
+			providerName, providerName)
+	}
+
+	if o.APIKey == "" {
+		return fmt.Errorf("api key for %s provider is required (set with --%s.api-key flag or %s_API_KEY env var)",
+			providerName, providerName, strings.ToUpper(providerName))
+	}
+
+	if o.Model == "" {
+		return fmt.Errorf("model for %s provider is required (set with --%s.model flag or %s_MODEL env var)",
+			providerName, providerName, strings.ToUpper(providerName))
+	}
+
+	return nil
+}
+
+// SanitizeError cleans API error messages to prevent leaking sensitive information
+// such as API keys, tokens, and other credentials.
+func SanitizeError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	// convert error to string to analyze and sanitize
+	errStr := err.Error()
+
+	// list of patterns to sanitize (partial keys, tokens, credentials)
+	sensitivePatterns := []string{
+		// API Key patterns
+		"sk-", "key-", "api_key", "apikey", "api-key", "token", "secret", "key",
+		// authentication patterns
+		"auth", "bearer", "password", "credential",
+		// URL patterns with potential token/key in query params
+		"?key=", "&key=", "access_token=", "secret=",
+	}
+
+	// check if error contains any sensitive information
+	containsSensitiveInfo := false
+	for _, pattern := range sensitivePatterns {
+		if strings.Contains(strings.ToLower(errStr), strings.ToLower(pattern)) {
+			containsSensitiveInfo = true
+			break
+		}
+	}
+
+	// if sensitive info is found, replace it with a generic message
+	if containsSensitiveInfo {
+		// get the provider name if present at the start of the error message
+		// common format: "provider api error: ..."
+		providerPrefix := ""
+		if parts := strings.SplitN(errStr, " api error:", 2); len(parts) > 1 {
+			providerPrefix = parts[0]
+			return fmt.Errorf("%s API error: the original error was redacted because it may contain sensitive information", providerPrefix)
+		}
+		return fmt.Errorf("API error: the original error was redacted because it may contain sensitive information")
+	}
+
+	// if no sensitive information is detected, return the original error
+	return err
+}
+
 // CreateProvider creates a standard provider (OpenAI, Anthropic, Google)
 // based on the provider type and options. It validates required fields
 // and returns appropriate errors if validation fails.
-func CreateProvider(providerType string, opts Options) (Provider, error) {
-	if !opts.Enabled {
-		return nil, fmt.Errorf("provider %s is not enabled (use --%s.enabled flag to enable)", 
-			providerType, providerType)
-	}
-
-	if opts.APIKey == "" {
-		return nil, fmt.Errorf("api key for %s provider is required (set with --%s.api-key flag or %s_API_KEY env var)", 
-			providerType, providerType, strings.ToUpper(providerType))
+func CreateProvider(providerType enum.ProviderType, opts Options) (Provider, error) {
+	// validate options
+	if err := opts.Validate(providerType); err != nil {
+		return nil, err
 	}
 
 	switch providerType {
-	case "openai":
+	case enum.ProviderTypeOpenAI:
 		return NewOpenAI(opts), nil
-	case "anthropic":
+	case enum.ProviderTypeAnthropic:
 		return NewAnthropic(opts), nil
-	case "google":
+	case enum.ProviderTypeGoogle:
 		return NewGoogle(opts), nil
 	default:
-		return nil, fmt.Errorf("unknown provider type: %s (supported: openai, anthropic, google)", providerType)
+		return nil, fmt.Errorf("unsupported provider type: %s", providerType)
 	}
 }
