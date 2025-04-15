@@ -198,14 +198,11 @@ func TestAnthropic_Generate_APIError(t *testing.T) {
 	// test the Generate method - should return an error for API error
 	_, err := provider.Generate(context.Background(), "test prompt")
 	require.Error(t, err)
-	// should return a sanitized error since our error might trigger the sanitizer
-	assert.Contains(t, err.Error(), "API error")
-	// in lower case in the original format
-	assert.Contains(t, strings.ToLower(err.Error()), "anthropic")
-	// either contains the original error or the sanitized version
-	assert.True(t,
-		strings.Contains(err.Error(), "anthropic api error") ||
-			strings.Contains(err.Error(), "redacted because it may contain sensitive information"),
-		"Error should either contain original message or sanitized message")
+	// should contain API error mention
+	assert.Contains(t, err.Error(), "API error", "Error should mention API error")
+	// should contain provider name in some form
+	assert.Contains(t, strings.ToLower(err.Error()), "anthropic", "Error should mention the provider")
+	// should mention 'redacted' for sensitive information
+	assert.Contains(t, err.Error(), "redacted", "Error should mention redaction")
 
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -81,12 +82,32 @@ func (o *OpenAI) Generate(ctx context.Context, prompt string) (string, error) {
 	)
 
 	if err != nil {
+		// add more context to the error before sanitizing
+		var apiErr string
+		
+		// attempt to extract more context from the OpenAI error
+		errMsg := err.Error()
+		switch {
+		case strings.Contains(errMsg, "401"):
+			apiErr = "openai api error (authentication failed): %w"
+		case strings.Contains(errMsg, "429"):
+			apiErr = "openai api error (rate limit exceeded): %w" 
+		case strings.Contains(errMsg, "model"):
+			apiErr = "openai api error (model issue - check if model exists): %w"
+		case strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "deadline"):
+			apiErr = "openai api error (request timed out): %w"
+		case strings.Contains(errMsg, "context") || strings.Contains(errMsg, "length"):
+			apiErr = "openai api error (context length/token limit): %w"
+		default:
+			apiErr = "openai api error: %w"
+		}
+		
 		// sanitize any potential sensitive information in error
-		return "", SanitizeError(fmt.Errorf("openai api error: %w", err))
+		return "", SanitizeError(fmt.Errorf(apiErr, err))
 	}
 
 	if len(resp.Choices) == 0 {
-		return "", errors.New("openai returned no choices")
+		return "", errors.New("openai returned no choices - check your model configuration and prompt length")
 	}
 
 	return resp.Choices[0].Message.Content, nil
