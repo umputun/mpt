@@ -206,6 +206,7 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
 -x, --exclude         Patterns to exclude from file matching (can be used multiple times)
                       Uses the same pattern syntax as --file
 -t, --timeout         Timeout duration (e.g., 60s, 2m) (default: 60s)
+--max-file-size       Maximum size of individual files to process in bytes (default: 64KB)
 -v, --verbose         Verbose output, shows the complete prompt sent to models
 --json                Output results in JSON format for scripting and automation
 --dbg                 Enable debug mode

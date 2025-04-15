@@ -11,13 +11,14 @@ import (
 	"github.com/go-pkgz/lgr"
 )
 
-// MaxFileSize defines the maximum size of individual files to process (10MB)
-const MaxFileSize = 10 * 1024 * 1024
+// DefaultMaxFileSize defines the default maximum size of individual files to process (64KB)
+const DefaultMaxFileSize = 64 * 1024
 
 // LoadContent loads content from files matching the given patterns and returns a formatted string
 // with file names as comments and their contents. Supports recursive directory traversal.
 // Exclude patterns can be provided to filter out unwanted files.
-func LoadContent(patterns, excludePatterns []string) (string, error) {
+// The maxFileSize parameter controls the maximum size of individual files to process.
+func LoadContent(patterns, excludePatterns []string, maxFileSize int64) (string, error) {
 	if len(patterns) == 0 {
 		return "", nil
 	}
@@ -31,17 +32,17 @@ func LoadContent(patterns, excludePatterns []string) (string, error) {
 		switch {
 		case strings.Contains(pattern, "**"):
 			// bash-style patterns with **
-			if err := processBashStylePattern(pattern, matchedFiles); err != nil {
+			if err := processBashStylePattern(pattern, matchedFiles, maxFileSize); err != nil {
 				return "", err
 			}
 		case strings.Contains(pattern, "/..."):
 			// go-style recursive pattern: dir/...
-			if err := processGoStylePattern(pattern, matchedFiles); err != nil {
+			if err := processGoStylePattern(pattern, matchedFiles, maxFileSize); err != nil {
 				return "", err
 			}
 		default:
 			// standard glob pattern
-			if err := processStandardGlobPattern(pattern, matchedFiles); err != nil {
+			if err := processStandardGlobPattern(pattern, matchedFiles, maxFileSize); err != nil {
 				return "", err
 			}
 		}
@@ -64,7 +65,7 @@ func LoadContent(patterns, excludePatterns []string) (string, error) {
 }
 
 // processBashStylePattern handles patterns with ** using the doublestar library
-func processBashStylePattern(pattern string, matchedFiles map[string]struct{}) error {
+func processBashStylePattern(pattern string, matchedFiles map[string]struct{}, maxFileSize int64) error {
 	fsys := os.DirFS(".")
 	matches, err := doublestar.Glob(fsys, pattern)
 	if err != nil {
@@ -89,7 +90,7 @@ func processBashStylePattern(pattern string, matchedFiles map[string]struct{}) e
 
 		if !info.IsDir() {
 			// skip files that exceed the size limit
-			if info.Size() > MaxFileSize {
+			if info.Size() > maxFileSize {
 				lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", absPath, info.Size())
 				continue
 			}
@@ -109,7 +110,7 @@ func processBashStylePattern(pattern string, matchedFiles map[string]struct{}) e
 }
 
 // processGoStylePattern handles patterns with /... using filepath.Walk
-func processGoStylePattern(pattern string, matchedFiles map[string]struct{}) error {
+func processGoStylePattern(pattern string, matchedFiles map[string]struct{}, maxFileSize int64) error {
 	basePath, filter := parseRecursivePattern(pattern)
 
 	// check if base directory exists
@@ -126,8 +127,8 @@ func processGoStylePattern(pattern string, matchedFiles map[string]struct{}) err
 			return nil // skip files that can't be accessed
 		}
 
-		if info.IsDir() || info.Size() > MaxFileSize {
-			if info.Size() > MaxFileSize {
+		if info.IsDir() || info.Size() > maxFileSize {
+			if info.Size() > maxFileSize {
 				lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", path, info.Size())
 			}
 			return nil
@@ -160,7 +161,7 @@ func processGoStylePattern(pattern string, matchedFiles map[string]struct{}) err
 }
 
 // processStandardGlobPattern handles standard glob patterns using filepath.Glob
-func processStandardGlobPattern(pattern string, matchedFiles map[string]struct{}) error {
+func processStandardGlobPattern(pattern string, matchedFiles map[string]struct{}, maxFileSize int64) error {
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return fmt.Errorf("failed to glob pattern %s: %w", pattern, err)
@@ -182,8 +183,8 @@ func processStandardGlobPattern(pattern string, matchedFiles map[string]struct{}
 			// handle directories by walking them recursively
 			dirMatchCount := 0
 			err := filepath.Walk(match, func(path string, info os.FileInfo, err error) error {
-				if err != nil || info.IsDir() || info.Size() > MaxFileSize {
-					if err == nil && info.Size() > MaxFileSize {
+				if err != nil || info.IsDir() || info.Size() > maxFileSize {
+					if err == nil && info.Size() > maxFileSize {
 						lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", path, info.Size())
 					}
 					return nil
@@ -201,7 +202,7 @@ func processStandardGlobPattern(pattern string, matchedFiles map[string]struct{}
 		}
 
 		// skip files that exceed the size limit
-		if info.Size() > MaxFileSize {
+		if info.Size() > maxFileSize {
 			lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", match, info.Size())
 			continue
 		}
