@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jessevdk/go-flags"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/mpt/pkg/mcp"
@@ -707,4 +709,81 @@ func TestIntegrationMCPServerModeErrorScenarios(t *testing.T) {
 		// check for content indicating failure (the exact message might depend on mcp-go's error formatting)
 		require.Contains(t, output, "failed to run prompt through MPT", "Error message should indicate MPT runner failure")
 	})
+}
+
+// TestIntegrationJSONOutput tests the JSON output flag in an integration test
+func TestIntegrationJSONOutput(t *testing.T) {
+	// create a stub server that simulates the custom provider API
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chat/completions" {
+			resp := `{
+				"id": "test-id",
+				"object": "chat.completion",
+				"created": 1677858242,
+				"model": "test-model",
+				"usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+				"choices": [
+					{
+						"message": {"role": "assistant", "content": "This is a JSON output test response"},
+						"finish_reason": "stop",
+						"index": 0
+					}
+				]
+			}`
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(resp))
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+
+	// set up options for the custom provider with JSON output flag
+	opts := &options{
+		Prompt: "test prompt",
+		Custom: customOpenAIProvider{
+			Enabled:   true,
+			URL:       ts.URL,
+			Model:     "test-model",
+			APIKey:    "test-key",
+			MaxTokens: 16384,
+		},
+		Timeout: 5 * time.Second,
+		JSON:    true, // enable JSON output
+	}
+
+	// redirect stdout to capture output
+	oldStdout := os.Stdout
+	rOut, wOut, err := os.Pipe()
+	require.NoError(t, err, "failed to create pipe")
+	os.Stdout = wOut
+
+	// call run() from main.go with the custom provider options
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = run(ctx, opts)
+	require.NoError(t, err, "run() returned an error")
+
+	// restore stdout
+	wOut.Close()
+	os.Stdout = oldStdout
+
+	// read the captured output
+	var buf bytes.Buffer
+	io.Copy(&buf, rOut)
+	output := buf.String()
+
+	// verify that the output is valid JSON
+	var result map[string]interface{}
+	err = json.Unmarshal([]byte(output), &result)
+	require.NoError(t, err, "Output should be valid JSON")
+
+	// check that the JSON contains the expected response
+	assert.Contains(t, result, "responses", "JSON should contain 'responses' field")
+	assert.Contains(t, result, "timestamp", "JSON should contain 'timestamp' field")
+	assert.NotContains(t, result, "result", "JSON should not contain 'result' field")
+
+	// verify the content
+	assert.Contains(t, output, "This is a JSON output test response", "Output should contain provider response")
 }

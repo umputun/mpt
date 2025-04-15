@@ -112,16 +112,16 @@ func SanitizeError(err error) error {
 		// common format: "provider api error: ..."
 		providerPrefix := ""
 		errorType := "authentication"
-		
+
 		// try to extract provider name and determine error type for better context
 		if parts := strings.SplitN(errStr, " api error:", 2); len(parts) > 1 {
 			providerPrefix = parts[0]
-			
+
 			// check for common error patterns to provide better guidance
 			errorPart := strings.ToLower(parts[1])
 			switch {
-			case strings.Contains(errorPart, "authenticat") || strings.Contains(errorPart, "auth") || 
-				 strings.Contains(errorPart, "key") || strings.Contains(errorPart, "token"):
+			case strings.Contains(errorPart, "authenticat") || strings.Contains(errorPart, "auth") ||
+				strings.Contains(errorPart, "key") || strings.Contains(errorPart, "token"):
 				errorType = "authentication"
 			case strings.Contains(errorPart, "model"):
 				errorType = "model selection"
@@ -130,12 +130,12 @@ func SanitizeError(err error) error {
 			case strings.Contains(errorPart, "timeout") || strings.Contains(errorPart, "timed out"):
 				errorType = "timeout"
 			}
-			
-			return fmt.Errorf("%s API error: possible %s issue - the original error was redacted to protect sensitive information. Check your API key and configuration", 
+
+			return fmt.Errorf("%s API error: possible %s issue - the original error was redacted to protect sensitive information. Check your API key and configuration",
 				providerPrefix, errorType)
 		}
-		
-		return fmt.Errorf("API error: possible %s issue - the original error was redacted to protect sensitive information. Check your provider configuration", 
+
+		return fmt.Errorf("API error: possible %s issue - the original error was redacted to protect sensitive information. Check your provider configuration",
 			errorType)
 	}
 

@@ -17,6 +17,7 @@ import (
 // Runner executes prompts across multiple providers in parallel
 type Runner struct {
 	providers []Provider
+	results   []provider.Result // stores the latest results
 }
 
 // Provider defines the interface for LLM providers
@@ -67,15 +68,15 @@ func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
 	}()
 
 	// collect results
-	results := make([]provider.Result, 0, len(r.providers))
+	r.results = make([]provider.Result, 0, len(r.providers))
 	for result := range resultCh {
-		results = append(results, result)
+		r.results = append(r.results, result)
 	}
 
 	// check if all providers failed and collect all errors
 	allFailed := true
 	var errorMessages []string
-	for _, result := range results {
+	for _, result := range r.results {
 		if result.Error == nil {
 			allFailed = false
 		} else {
@@ -98,16 +99,16 @@ func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
 	}
 
 	// for single provider skip the header
-	if len(r.providers) == 1 && len(results) == 1 {
-		if results[0].Error != nil {
-			return "", fmt.Errorf("provider %s failed: %w", results[0].Provider, results[0].Error)
+	if len(r.providers) == 1 && len(r.results) == 1 {
+		if r.results[0].Error != nil {
+			return "", fmt.Errorf("provider %s failed: %w", r.results[0].Provider, r.results[0].Error)
 		}
-		return results[0].Text, nil
+		return r.results[0].Text, nil
 	}
 
 	// for multiple providers include headers, but skip failed ones
-	resultParts := make([]string, 0, len(results))
-	for _, result := range results {
+	resultParts := make([]string, 0, len(r.results))
+	for _, result := range r.results {
 		if result.Error != nil {
 			// log the error but don't include it in the output
 			lgr.Printf("[WARN] provider %s failed: %v", result.Provider, result.Error)
@@ -122,4 +123,9 @@ func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
 	}
 
 	return strings.Join(resultParts, "\n"), nil
+}
+
+// GetResults returns the raw results from the last Run
+func (r *Runner) GetResults() []provider.Result {
+	return r.results
 }

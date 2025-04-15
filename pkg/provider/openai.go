@@ -84,14 +84,14 @@ func (o *OpenAI) Generate(ctx context.Context, prompt string) (string, error) {
 	if err != nil {
 		// add more context to the error before sanitizing
 		var apiErr string
-		
+
 		// attempt to extract more context from the OpenAI error
 		errMsg := err.Error()
 		switch {
 		case strings.Contains(errMsg, "401"):
 			apiErr = "openai api error (authentication failed): %w"
 		case strings.Contains(errMsg, "429"):
-			apiErr = "openai api error (rate limit exceeded): %w" 
+			apiErr = "openai api error (rate limit exceeded): %w"
 		case strings.Contains(errMsg, "model"):
 			apiErr = "openai api error (model issue - check if model exists): %w"
 		case strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "deadline"):
@@ -101,7 +101,7 @@ func (o *OpenAI) Generate(ctx context.Context, prompt string) (string, error) {
 		default:
 			apiErr = "openai api error: %w"
 		}
-		
+
 		// sanitize any potential sensitive information in error
 		return "", SanitizeError(fmt.Errorf(apiErr, err))
 	}
