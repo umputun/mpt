@@ -207,6 +207,7 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
                       Uses the same pattern syntax as --file
 -t, --timeout         Timeout duration (e.g., 60s, 2m) (default: 60s)
 -v, --verbose         Verbose output, shows the complete prompt sent to models
+--json                Output results in JSON format for scripting and automation
 --dbg                 Enable debug mode
 -V, --version         Show version information
 ```
@@ -429,6 +430,45 @@ function calculateTotal(items) {
 ```
 
 The model can then analyze the code while following your specific instructions.
+
+### JSON Output Format
+
+When using the `--json` flag, MPT outputs results in a structured JSON format that's easy to parse in scripts or other programs:
+
+```bash
+mpt --openai.enabled --anthropic.enabled --prompt "Explain quantum computing" --json
+```
+
+This produces JSON output like:
+
+```json
+{
+  "responses": [
+    {
+      "provider": "OpenAI (gpt-4o)",
+      "text": "Quantum computing is a type of computing that..."
+    },
+    {
+      "provider": "Anthropic (claude-3-7-sonnet)",
+      "text": "Quantum computing leverages the principles of quantum mechanics..."
+    }
+  ],
+  "timestamp": "2025-04-15T12:34:56Z"
+}
+```
+
+The JSON output includes:
+- `responses`: An array of individual provider responses, including:
+  - `provider`: The name of the provider
+  - `text`: The response text
+  - `error`: Error message if the provider failed (field only present for failed providers)
+- `timestamp`: ISO-8601 timestamp when the response was generated
+
+This format is particularly useful for:
+- Processing MPT results in scripts
+- Storing responses in a database
+- Programmatic comparison of responses from different providers
+- Integration with other tools in automation pipelines
 
 Output:
 

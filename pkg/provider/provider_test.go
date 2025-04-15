@@ -94,7 +94,7 @@ func TestSanitizeError(t *testing.T) {
 				// check that sanitized error contains required elements
 				assert.Contains(t, result.Error(), "redacted", "Sanitized error should mention redaction")
 				assert.Contains(t, result.Error(), "sensitive information", "Sanitized error should mention sensitive information")
-				
+
 				// if we need to check for provider name
 				if tt.checkProvider {
 					assert.Contains(t, result.Error(), "openai", "Sanitized error should preserve provider name")

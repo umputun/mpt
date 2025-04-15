@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -40,6 +41,7 @@ type options struct {
 	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
 	Verbose bool `short:"v" long:"verbose" description:"verbose output, shows prompt sent to models"`
 	Version bool `short:"V" long:"version" description:"show version info"`
+	JSON    bool `long:"json" description:"output in JSON format for scripting and automation"`
 }
 
 // openAIOpts defines options for OpenAI provider
@@ -294,8 +296,8 @@ func initializeProviders(opts *options) ([]provider.Provider, error) {
 
 // anyProvidersEnabled checks if at least one provider is enabled in the options
 func anyProvidersEnabled(opts *options) bool {
-	return opts.OpenAI.Enabled || opts.Anthropic.Enabled || 
-	       opts.Google.Enabled || opts.Custom.Enabled
+	return opts.OpenAI.Enabled || opts.Anthropic.Enabled ||
+		opts.Google.Enabled || opts.Custom.Enabled
 }
 
 // initializeOpenAIProvider initializes the OpenAI provider and adds it to the providers list
@@ -313,9 +315,9 @@ func initializeOpenAIProvider(opts *options, providers *[]provider.Provider, pro
 		*providerErrors = append(*providerErrors, fmt.Sprintf("OpenAI: %v", err))
 		return
 	}
-	
+
 	*providers = append(*providers, p)
-	lgr.Printf("[DEBUG] added OpenAI provider, model: %s, temperature: %.2f", 
+	lgr.Printf("[DEBUG] added OpenAI provider, model: %s, temperature: %.2f",
 		opts.OpenAI.Model, opts.OpenAI.Temperature)
 }
 
@@ -334,7 +336,7 @@ func initializeAnthropicProvider(opts *options, providers *[]provider.Provider, 
 		*providerErrors = append(*providerErrors, fmt.Sprintf("Anthropic: %v", err))
 		return
 	}
-	
+
 	*providers = append(*providers, p)
 	lgr.Printf("[DEBUG] added Anthropic provider, model: %s", opts.Anthropic.Model)
 }
@@ -354,7 +356,7 @@ func initializeGoogleProvider(opts *options, providers *[]provider.Provider, pro
 		*providerErrors = append(*providerErrors, fmt.Sprintf("Google: %v", err))
 		return
 	}
-	
+
 	*providers = append(*providers, p)
 	lgr.Printf("[DEBUG] added Google provider, model: %s", opts.Google.Model)
 }
@@ -367,7 +369,7 @@ func initializeCustomProvider(opts *options, providers *[]provider.Provider, pro
 		lgr.Printf("[WARN] %s", customErr)
 		return
 	}
-	
+
 	// all validation passed, create and add the provider
 	addCustomProvider(opts, providers, providerErrors)
 }
@@ -435,6 +437,12 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 		return err
 	}
 
+	if opts.JSON {
+		// output results in JSON format for scripting
+		return outputJSON(result, r.GetResults())
+	}
+
+	// standard text output
 	fmt.Println(strings.TrimSpace(result))
 	return nil
 }
@@ -500,4 +508,49 @@ func readFromStdin() (string, error) {
 		return "", fmt.Errorf("error reading from stdin: %w", err)
 	}
 	return strings.TrimSpace(sb.String()), nil
+}
+
+// outputJSON formats the results as JSON and prints them to stdout
+func outputJSON(_ string, results []provider.Result) error {
+	// create json output structure
+	type ProviderResponse struct {
+		Provider string `json:"provider"`
+		Text     string `json:"text,omitempty"`
+		Error    string `json:"error,omitempty"`
+	}
+
+	type JSONOutput struct {
+		Responses []ProviderResponse `json:"responses"` // individual provider responses
+		Timestamp string             `json:"timestamp"`
+	}
+
+	// build responses array
+	responses := make([]ProviderResponse, 0, len(results))
+	for _, r := range results {
+		resp := ProviderResponse{
+			Provider: r.Provider,
+			Text:     r.Text,
+		}
+
+		if r.Error != nil {
+			resp.Error = r.Error.Error()
+		}
+
+		responses = append(responses, resp)
+	}
+
+	// create the output structure
+	output := JSONOutput{
+		Responses: responses,
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	// encode to JSON
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(output); err != nil {
+		return fmt.Errorf("error encoding JSON output: %w", err)
+	}
+
+	return nil
 }
