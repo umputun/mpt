@@ -33,7 +33,7 @@ type options struct {
 	Prompt   string        `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
 	Files    []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
 	Excludes []string      `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
-	Timeout  time.Duration `short:"t" long:"timeout" default:"30s" description:"timeout duration"`
+	Timeout  time.Duration `short:"t" long:"timeout" default:"60s" description:"timeout duration"`
 
 	// common options
 	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -45,7 +45,7 @@ type options struct {
 type openAIOpts struct {
 	Enabled     bool    `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
 	APIKey      string  `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
-	Model       string  `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4o"`
+	Model       string  `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4.1"`
 	MaxTokens   int     `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
 	Temperature float32 `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
 }

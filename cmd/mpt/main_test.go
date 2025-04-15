@@ -938,8 +938,8 @@ func TestExecutePrompt_Error(t *testing.T) {
 		// no error should be returned since at least one provider succeeded
 		require.NoError(t, err, "executePrompt should not return an error when some providers succeed")
 
-		// output should show both the error and success results
-		assert.Contains(t, output, "api error", "Output should contain the failing provider's error message")
+		// output should only show the successful result, not the error
+		assert.NotContains(t, output, "api error", "Output should not contain the failing provider's error message")
 		assert.Contains(t, output, "Success response", "Output should contain the successful provider's response")
 	})
 }

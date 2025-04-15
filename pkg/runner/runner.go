@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-pkgz/lgr"
+
 	"github.com/umputun/mpt/pkg/provider"
 )
 
@@ -103,10 +105,20 @@ func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
 		return results[0].Text, nil
 	}
 
-	// for multiple providers include headers
+	// for multiple providers include headers, but skip failed ones
 	resultParts := make([]string, 0, len(results))
 	for _, result := range results {
+		if result.Error != nil {
+			// log the error but don't include it in the output
+			lgr.Printf("[WARN] provider %s failed: %v", result.Provider, result.Error)
+			continue
+		}
 		resultParts = append(resultParts, result.Format())
+	}
+
+	if len(resultParts) == 0 {
+		// if all providers were filtered out due to errors, return the error from the first one
+		return "", fmt.Errorf("all providers failed, see logs for details")
 	}
 
 	return strings.Join(resultParts, "\n"), nil
