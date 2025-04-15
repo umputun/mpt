@@ -261,94 +261,27 @@ func initializeProviders(opts *options) ([]provider.Provider, error) {
 	// create a slice to hold enabled providers
 	providers := []provider.Provider{}
 	providerErrors := []string{}
-	enabledCount := 0
 
-	// count how many providers are enabled in options
-	if opts.OpenAI.Enabled {
-		enabledCount++
-	}
-	if opts.Anthropic.Enabled {
-		enabledCount++
-	}
-	if opts.Google.Enabled {
-		enabledCount++
-	}
-	if opts.Custom.Enabled {
-		enabledCount++
-	}
-
-	// fail fast if no providers are enabled
-	if enabledCount == 0 {
+	// check if any providers are enabled
+	if !anyProvidersEnabled(opts) {
 		return nil, fmt.Errorf("no providers enabled. Use --<provider>.enabled flag to enable at least one provider (e.g., --openai.enabled)")
 	}
 
-	// add OpenAI provider only if enabled
+	// initialize each enabled provider
 	if opts.OpenAI.Enabled {
-		p, err := provider.CreateProvider(enum.ProviderTypeOpenAI, provider.Options{
-			APIKey:      opts.OpenAI.APIKey,
-			Model:       opts.OpenAI.Model,
-			Enabled:     true,
-			MaxTokens:   opts.OpenAI.MaxTokens,
-			Temperature: opts.OpenAI.Temperature,
-		})
-
-		if err != nil {
-			lgr.Printf("[WARN] OpenAI provider failed to initialize: %v", err)
-			providerErrors = append(providerErrors, fmt.Sprintf("OpenAI: %v", err))
-		} else {
-			providers = append(providers, p)
-			lgr.Printf("[DEBUG] added OpenAI provider, model: %s, temperature: %.2f", opts.OpenAI.Model, opts.OpenAI.Temperature)
-		}
+		initializeOpenAIProvider(opts, &providers, &providerErrors)
 	}
 
-	// add Anthropic provider only if enabled
 	if opts.Anthropic.Enabled {
-		p, err := provider.CreateProvider(enum.ProviderTypeAnthropic, provider.Options{
-			APIKey:      opts.Anthropic.APIKey,
-			Model:       opts.Anthropic.Model,
-			Enabled:     true,
-			MaxTokens:   opts.Anthropic.MaxTokens,
-			Temperature: 0.7, // default temperature
-		})
-
-		if err != nil {
-			lgr.Printf("[WARN] Anthropic provider failed to initialize: %v", err)
-			providerErrors = append(providerErrors, fmt.Sprintf("Anthropic: %v", err))
-		} else {
-			providers = append(providers, p)
-			lgr.Printf("[DEBUG] added Anthropic provider, model: %s", opts.Anthropic.Model)
-		}
+		initializeAnthropicProvider(opts, &providers, &providerErrors)
 	}
 
-	// add Google provider only if enabled
 	if opts.Google.Enabled {
-		p, err := provider.CreateProvider(enum.ProviderTypeGoogle, provider.Options{
-			APIKey:      opts.Google.APIKey,
-			Model:       opts.Google.Model,
-			Enabled:     true,
-			MaxTokens:   opts.Google.MaxTokens,
-			Temperature: 0.7, // default temperature
-		})
-
-		if err != nil {
-			lgr.Printf("[WARN] Google provider failed to initialize: %v", err)
-			providerErrors = append(providerErrors, fmt.Sprintf("Google: %v", err))
-		} else {
-			providers = append(providers, p)
-			lgr.Printf("[DEBUG] added Google provider, model: %s", opts.Google.Model)
-		}
+		initializeGoogleProvider(opts, &providers, &providerErrors)
 	}
 
-	// add custom provider if enabled
 	if opts.Custom.Enabled {
-		// first validate required fields and collect errors
-		customErr := validateCustomProvider(opts, &providerErrors)
-		if customErr != nil {
-			lgr.Printf("[WARN] %s", customErr)
-		} else {
-			// all validation passed, create and add the provider
-			addCustomProvider(opts, &providers, &providerErrors)
-		}
+		initializeCustomProvider(opts, &providers, &providerErrors)
 	}
 
 	// check if any providers were successfully initialized
@@ -357,6 +290,86 @@ func initializeProviders(opts *options) ([]provider.Provider, error) {
 	}
 
 	return providers, nil
+}
+
+// anyProvidersEnabled checks if at least one provider is enabled in the options
+func anyProvidersEnabled(opts *options) bool {
+	return opts.OpenAI.Enabled || opts.Anthropic.Enabled || 
+	       opts.Google.Enabled || opts.Custom.Enabled
+}
+
+// initializeOpenAIProvider initializes the OpenAI provider and adds it to the providers list
+func initializeOpenAIProvider(opts *options, providers *[]provider.Provider, providerErrors *[]string) {
+	p, err := provider.CreateProvider(enum.ProviderTypeOpenAI, provider.Options{
+		APIKey:      opts.OpenAI.APIKey,
+		Model:       opts.OpenAI.Model,
+		Enabled:     true,
+		MaxTokens:   opts.OpenAI.MaxTokens,
+		Temperature: opts.OpenAI.Temperature,
+	})
+
+	if err != nil {
+		lgr.Printf("[WARN] OpenAI provider failed to initialize: %v", err)
+		*providerErrors = append(*providerErrors, fmt.Sprintf("OpenAI: %v", err))
+		return
+	}
+	
+	*providers = append(*providers, p)
+	lgr.Printf("[DEBUG] added OpenAI provider, model: %s, temperature: %.2f", 
+		opts.OpenAI.Model, opts.OpenAI.Temperature)
+}
+
+// initializeAnthropicProvider initializes the Anthropic provider and adds it to the providers list
+func initializeAnthropicProvider(opts *options, providers *[]provider.Provider, providerErrors *[]string) {
+	p, err := provider.CreateProvider(enum.ProviderTypeAnthropic, provider.Options{
+		APIKey:      opts.Anthropic.APIKey,
+		Model:       opts.Anthropic.Model,
+		Enabled:     true,
+		MaxTokens:   opts.Anthropic.MaxTokens,
+		Temperature: 0.7, // default temperature
+	})
+
+	if err != nil {
+		lgr.Printf("[WARN] Anthropic provider failed to initialize: %v", err)
+		*providerErrors = append(*providerErrors, fmt.Sprintf("Anthropic: %v", err))
+		return
+	}
+	
+	*providers = append(*providers, p)
+	lgr.Printf("[DEBUG] added Anthropic provider, model: %s", opts.Anthropic.Model)
+}
+
+// initializeGoogleProvider initializes the Google provider and adds it to the providers list
+func initializeGoogleProvider(opts *options, providers *[]provider.Provider, providerErrors *[]string) {
+	p, err := provider.CreateProvider(enum.ProviderTypeGoogle, provider.Options{
+		APIKey:      opts.Google.APIKey,
+		Model:       opts.Google.Model,
+		Enabled:     true,
+		MaxTokens:   opts.Google.MaxTokens,
+		Temperature: 0.7, // default temperature
+	})
+
+	if err != nil {
+		lgr.Printf("[WARN] Google provider failed to initialize: %v", err)
+		*providerErrors = append(*providerErrors, fmt.Sprintf("Google: %v", err))
+		return
+	}
+	
+	*providers = append(*providers, p)
+	lgr.Printf("[DEBUG] added Google provider, model: %s", opts.Google.Model)
+}
+
+// initializeCustomProvider initializes the custom provider and adds it to the providers list
+func initializeCustomProvider(opts *options, providers *[]provider.Provider, providerErrors *[]string) {
+	// first validate required fields and collect errors
+	customErr := validateCustomProvider(opts, providerErrors)
+	if customErr != nil {
+		lgr.Printf("[WARN] %s", customErr)
+		return
+	}
+	
+	// all validation passed, create and add the provider
+	addCustomProvider(opts, providers, providerErrors)
 }
 
 // validateCustomProvider checks if the custom provider has all required fields
