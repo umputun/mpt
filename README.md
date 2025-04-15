@@ -126,7 +126,9 @@ You can provide a prompt in the following ways:
 1. Using the `--prompt` flag: `mpt --prompt "Your question here"`
 2. Piping content: `echo "Your question" | mpt`
 3. Combining flag and piped content: `echo "Additional context" | mpt --prompt "Main question"`
-   - This combines both inputs with a newline separator
+   - When both are provided, MPT automatically combines them with a newline separator
+   - The CLI prompt (`--prompt` flag) appears first, followed by the piped stdin content
+   - This is especially useful for adding instructions to process piped data (see [Why Combine Inputs?](#why-combine-inputs) section)
 4. Interactive mode: If no prompt is provided via command line or pipe, you'll be prompted to enter one
 
 ### Provider Configuration
@@ -381,7 +383,14 @@ This approach gives you insights from multiple AI models, helping you catch issu
 
 ### Why Combine Inputs?
 
-The ability to combine the prompt flag with piped stdin content is particularly powerful for workflows where you want to:
+When you provide both a CLI prompt (using the `--prompt` flag) and piped stdin content, MPT combines them as follows:
+
+```
+[CLI Prompt from --prompt flag]
+[Piped content from stdin]
+```
+
+The two are always combined in this order with a newline separator. This automatic combination behavior is particularly powerful for workflows where you want to:
 
 1. **Analyze code or text with specific instructions**: Pipe in code, logs, or data while specifying exactly what you want the AI to do with it.
 
@@ -401,6 +410,25 @@ The ability to combine the prompt flag with piped stdin content is particularly 
    ```
 
 This approach gives you much more flexibility than either using just stdin or just the prompt flag alone.
+
+#### Example of Combined Input
+
+If you run:
+```bash
+echo "function calculateTotal(items) {
+  return items.reduce((sum, item) => sum + item.price, 0);
+}" | mpt --openai.enabled --prompt "Review this JavaScript function for potential bugs and edge cases"
+```
+
+MPT will send the following combined prompt to the AI model:
+```
+Review this JavaScript function for potential bugs and edge cases
+function calculateTotal(items) {
+  return items.reduce((sum, item) => sum + item.price, 0);
+}
+```
+
+The model can then analyze the code while following your specific instructions.
 
 Output:
 
