@@ -8,7 +8,7 @@ require (
 	github.com/go-pkgz/lgr v0.12.0
 	github.com/google/generative-ai-go v0.19.0
 	github.com/jessevdk/go-flags v1.6.1
-	github.com/mark3labs/mcp-go v0.20.0
+	github.com/mark3labs/mcp-go v0.20.1
 	github.com/sashabaranov/go-openai v1.38.1
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/api v0.228.0
