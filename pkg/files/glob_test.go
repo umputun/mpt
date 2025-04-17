@@ -204,9 +204,17 @@ func TestCommonIgnorePatterns(t *testing.T) {
 	err = os.WriteFile(binPath, []byte("binary file"), 0o644)
 	require.NoError(t, err)
 
+	// explicitly add a temp file to verify /tmp exclusion was removed from common patterns
+	tmpFilePath := filepath.Join(tmpDir, "tmp", "temp.txt")
+	err = os.MkdirAll(filepath.Dir(tmpFilePath), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(tmpFilePath, []byte("temp file content"), 0o644)
+	require.NoError(t, err)
+
 	result, err = LoadContent([]string{"**/*"}, []string{"**/bin/**"}, 64*1024)
 	require.NoError(t, err)
 	assert.NotContains(t, result, "binary file", "Should exclude files matching explicit exclude pattern")
+	assert.Contains(t, result, "temp file content", "Should include files in tmp directory since it's not excluded by default")
 }
 
 func TestLoadContent(t *testing.T) {

@@ -470,12 +470,12 @@ var commonIgnorePatterns = []string{
 	"**/.vscode/**",        // Visual Studio Code
 	"**/.vs/**",            // Visual Studio
 	
-	// Logs and temporary files
+	// Logs and metadata files
 	"**/logs/**",           // Log directories
 	"**/*.log",             // Log files
-	"**/tmp/**",            // Temp directories
 	"**/.DS_Store",         // macOS metadata
 	"**/Thumbs.db",         // Windows thumbnails
+	// Note: We don't exclude /tmp as it's often used in tests
 }
 
 // gitignoreFile is the name of the Git ignore file

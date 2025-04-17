@@ -316,7 +316,7 @@ MPT automatically excludes common directories and files you typically don't want
    - Version control: `.git`, `.svn`, `.hg`, `.bzr`
    - Build outputs and dependencies: `vendor`, `node_modules`, `.venv`, `__pycache__`, etc.
    - IDE files: `.idea`, `.vscode`, `.vs`
-   - Logs and temp files: `logs`, `*.log`, `tmp`, `.DS_Store`, etc.
+   - Logs and metadata files: `logs`, `*.log`, `.DS_Store`, etc.
 
 2. **.gitignore Integration**:
    - All patterns from the `.gitignore` file in the current directory are converted to glob patterns
