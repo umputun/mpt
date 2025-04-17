@@ -1,3 +1,4 @@
+// Package files provides functionality for working with file globs and content loading.
 package files
 
 import (
@@ -18,10 +19,14 @@ const DefaultMaxFileSize = 64 * 1024
 // with file names as comments and their contents. Supports recursive directory traversal.
 // Exclude patterns can be provided to filter out unwanted files.
 // The maxFileSize parameter controls the maximum size of individual files to process.
+// Git ignore patterns from .gitignore files are automatically respected.
 func LoadContent(patterns, excludePatterns []string, maxFileSize int64) (string, error) {
 	if len(patterns) == 0 {
 		return "", nil
 	}
+
+	// prepare all exclude patterns
+	allExcludePatterns := prepareExcludePatterns(excludePatterns)
 
 	// map to store all matched file paths
 	matchedFiles := make(map[string]struct{})
@@ -49,10 +54,7 @@ func LoadContent(patterns, excludePatterns []string, maxFileSize int64) (string,
 	}
 
 	// apply exclusion patterns if any
-	if len(excludePatterns) > 0 {
-		// process and remove excluded files
-		matchedFiles = applyExcludePatterns(matchedFiles, excludePatterns)
-	}
+	matchedFiles = applyExcludePatterns(matchedFiles, allExcludePatterns)
 
 	// get sorted list of files
 	sortedFiles := getSortedFiles(matchedFiles)
@@ -261,6 +263,48 @@ func formatFileContents(files []string) (string, error) {
 	return sb.String(), nil
 }
 
+// prepareExcludePatterns combines and deduplicates all exclude patterns
+func prepareExcludePatterns(excludePatterns []string) []string {
+	// estimate capacity for the combined patterns
+	totalCapacity := len(excludePatterns) + len(commonIgnorePatterns)
+	gitIgnorePatterns := loadGitIgnorePatterns()
+	totalCapacity += len(gitIgnorePatterns)
+	
+	// pre-allocate slice with sufficient capacity
+	allPatterns := make([]string, 0, totalCapacity)
+	
+	// user-provided exclude patterns have highest priority
+	allPatterns = append(allPatterns, excludePatterns...)
+	
+	// add common ignore patterns
+	allPatterns = append(allPatterns, commonIgnorePatterns...)
+	
+	// add patterns from .gitignore
+	allPatterns = append(allPatterns, gitIgnorePatterns...)
+	
+	// deduplicate patterns to avoid redundant processing
+	return deduplicatePatterns(allPatterns)
+}
+
+// deduplicatePatterns removes duplicate patterns while preserving order
+func deduplicatePatterns(patterns []string) []string {
+	if len(patterns) == 0 {
+		return patterns
+	}
+	
+	seen := make(map[string]struct{}, len(patterns))
+	deduped := make([]string, 0, len(patterns))
+	
+	for _, pattern := range patterns {
+		if _, ok := seen[pattern]; !ok {
+			seen[pattern] = struct{}{}
+			deduped = append(deduped, pattern)
+		}
+	}
+	
+	return deduped
+}
+
 // applyExcludePatterns removes files that match any of the exclude patterns from the matched files
 func applyExcludePatterns(matchedFiles map[string]struct{}, excludePatterns []string) map[string]struct{} {
 	if len(excludePatterns) == 0 {
@@ -398,6 +442,128 @@ func parseRecursivePattern(pattern string) (basePath, filter string) {
 	}
 
 	return basePath, filter
+}
+
+// commonIgnorePatterns defines patterns for directories and files that should always be ignored
+// regardless of .gitignore files
+var commonIgnorePatterns = []string{
+	// Version control
+	"**/.git/**",           // Git
+	"**/.svn/**",           // Subversion
+	"**/.hg/**",            // Mercurial
+	"**/.bzr/**",           // Bazaar
+	
+	// Build outputs and dependencies
+	"**/vendor/**",         // Go vendor
+	"**/node_modules/**",   // Node.js
+	"**/.venv/**",          // Python virtual environments
+	"**/venv/**",           // Python virtual environments
+	"**/__pycache__/**",    // Python cache
+	"**/*.pyc",             // Python compiled files
+	"**/target/**",         // Rust, Maven
+	"**/dist/**",           // Many build systems
+	"**/build/**",          // Many build systems
+	"**/.gradle/**",        // Gradle
+	
+	// IDE and editor files
+	"**/.idea/**",          // JetBrains IDEs
+	"**/.vscode/**",        // Visual Studio Code
+	"**/.vs/**",            // Visual Studio
+	
+	// Logs and temporary files
+	"**/logs/**",           // Log directories
+	"**/*.log",             // Log files
+	"**/tmp/**",            // Temp directories
+	"**/.DS_Store",         // macOS metadata
+	"**/Thumbs.db",         // Windows thumbnails
+}
+
+// gitignoreFile is the name of the Git ignore file
+const gitignoreFile = ".gitignore"
+
+// maxGitignoreSize is the maximum size of a .gitignore file to process (1MB)
+const maxGitignoreSize = 1 * 1024 * 1024
+
+// loadGitIgnorePatterns reads the .gitignore file in the current directory
+// and converts its patterns to glob patterns compatible with our exclude system.
+// Note: Only top-level .gitignore is processed. Nested .gitignore files are not supported.
+// Negation patterns (patterns starting with !) are not supported.
+func loadGitIgnorePatterns() []string {
+	// check if .gitignore exists and is accessible
+	fileInfo, err := os.Stat(gitignoreFile)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			lgr.Printf("[DEBUG] error accessing .gitignore: %v", err)
+		}
+		return nil
+	}
+	
+	// check file size limit
+	if fileInfo.Size() > maxGitignoreSize {
+		lgr.Printf("[WARN] .gitignore file exceeds maximum size limit of %d bytes, ignoring", maxGitignoreSize)
+		return nil
+	}
+	
+	// try to read .gitignore from current directory
+	data, err := os.ReadFile(gitignoreFile)
+	if err != nil {
+		lgr.Printf("[DEBUG] error reading .gitignore: %v", err)
+		return nil
+	}
+	
+	// pre-allocate slice with reasonable capacity
+	lines := strings.Split(string(data), "\n")
+	patterns := make([]string, 0, len(lines))
+	
+	// process each line from .gitignore
+	for i, line := range lines {
+		pattern := convertGitIgnorePattern(line, i+1)
+		if pattern != "" {
+			patterns = append(patterns, pattern)
+		}
+	}
+	
+	if len(patterns) > 0 {
+		lgr.Printf("[DEBUG] loaded %d patterns from .gitignore", len(patterns))
+	}
+	
+	return patterns
+}
+
+// convertGitIgnorePattern converts a single .gitignore pattern to a glob pattern
+// returns empty string for patterns that should be skipped
+func convertGitIgnorePattern(line string, lineNum int) string {
+	// skip empty lines and comments
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "#") {
+		return ""
+	}
+	
+	// handle negation (!) - not supported currently
+	if strings.HasPrefix(line, "!") {
+		lgr.Printf("[WARN] .gitignore negation pattern not supported at line %d: %s", lineNum, line)
+		return ""
+	}
+	
+	// handle / prefix - pattern relative to the root directory
+	line = strings.TrimPrefix(line, "/")
+	
+	// add ** to make pattern recursive if needed (only for basic patterns without /)
+	if !strings.Contains(line, "**") && !strings.Contains(line, "/") {
+		line = "**/" + line
+	}
+	
+	// handle directory-only patterns (ending with /)
+	if strings.HasSuffix(line, "/") {
+		line += "**"
+	}
+	
+	// add ** to the beginning of the pattern if it doesn't already have / or **
+	if !strings.HasPrefix(line, "**") && !strings.Contains(line, "/") {
+		line = "**/" + line
+	}
+	
+	return line
 }
 
 // getFileHeader returns an appropriate comment header for a file based on its extension
