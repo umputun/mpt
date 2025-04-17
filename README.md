@@ -57,6 +57,7 @@ The second command will produce clean output without any provider headers, since
 - **File Context Inclusion**: Easily add files, directories, or patterns to provide context for your prompts
 - **Smart Pattern Matching**: Include files using standard glob patterns, directory paths, bash-style wildcards (`**/*.go`), or Go-style patterns (`pkg/...`)
 - **Exclusion Filtering**: Filter out unwanted files with the same pattern matching syntax (`--exclude "**/tests/**"`)
+- **Smart Exclusions**: Automatically respects .gitignore patterns and commonly ignored directories
 - **Stdin Integration**: Pipe content directly from other tools (like `git diff`) for AI analysis
 - **Customizable Execution**: Configure timeouts, token limits, and models per provider
 - **Clean Output Formatting**: Provider-specific headers (or none when using a single provider)
@@ -306,6 +307,26 @@ Filter out unwanted files using the **same pattern syntax** as `--file`:
 # Exclude generated files
 --exclude "**/*.gen.go"
 ```
+
+#### Built-in Smart Exclusions
+
+MPT automatically excludes common directories and files you typically don't want to include:
+
+1. **Common Ignored Directories** - Always excluded by default:
+   - Version control: `.git`, `.svn`, `.hg`, `.bzr`
+   - Build outputs and dependencies: `vendor`, `node_modules`, `.venv`, `__pycache__`, etc.
+   - IDE files: `.idea`, `.vscode`, `.vs`
+   - Logs and metadata files: `logs`, `*.log`, `.DS_Store`, etc.
+
+2. **.gitignore Integration**:
+   - All patterns from the `.gitignore` file in the current directory are converted to glob patterns
+   - Files matching those patterns are automatically excluded from the results
+   - This works transparently with all file inclusion methods
+   
+3. **Priority Rules**:
+   - Explicit `--exclude` patterns take precedence over both common patterns and `.gitignore` patterns
+
+This means you don't need to manually exclude common directories like `.git`, `node_modules`, or build artifacts - they're automatically filtered out even without a `.gitignore` file.
 
 #### Common Pattern Examples
 
