@@ -59,6 +59,14 @@ func LoadContent(patterns, excludePatterns []string, maxFileSize int64) (string,
 	// get sorted list of files
 	sortedFiles := getSortedFiles(matchedFiles)
 	if len(sortedFiles) == 0 {
+		if len(patterns) > 0 && len(excludePatterns) == 0 {
+			// check if any original file paths existed but were skipped due to size
+			for _, pattern := range patterns {
+				if fileExists(pattern) && isFileTooLarge(pattern, maxFileSize) {
+					return "", fmt.Errorf("file '%s' exceeds the size limit of %d bytes. Use --max-file-size flag to increase the limit", pattern, maxFileSize)
+				}
+			}
+		}
 		return "", fmt.Errorf("no files matched the provided patterns. Try a different pattern such as \"./.../*.go\" or \"./**/*.go\" for recursive matching")
 	}
 
@@ -269,19 +277,19 @@ func prepareExcludePatterns(excludePatterns []string) []string {
 	totalCapacity := len(excludePatterns) + len(commonIgnorePatterns)
 	gitIgnorePatterns := loadGitIgnorePatterns()
 	totalCapacity += len(gitIgnorePatterns)
-	
+
 	// pre-allocate slice with sufficient capacity
 	allPatterns := make([]string, 0, totalCapacity)
-	
+
 	// user-provided exclude patterns have highest priority
 	allPatterns = append(allPatterns, excludePatterns...)
-	
+
 	// add common ignore patterns
 	allPatterns = append(allPatterns, commonIgnorePatterns...)
-	
+
 	// add patterns from .gitignore
 	allPatterns = append(allPatterns, gitIgnorePatterns...)
-	
+
 	// deduplicate patterns to avoid redundant processing
 	return deduplicatePatterns(allPatterns)
 }
@@ -291,17 +299,17 @@ func deduplicatePatterns(patterns []string) []string {
 	if len(patterns) == 0 {
 		return patterns
 	}
-	
+
 	seen := make(map[string]struct{}, len(patterns))
 	deduped := make([]string, 0, len(patterns))
-	
+
 	for _, pattern := range patterns {
 		if _, ok := seen[pattern]; !ok {
 			seen[pattern] = struct{}{}
 			deduped = append(deduped, pattern)
 		}
 	}
-	
+
 	return deduped
 }
 
@@ -448,33 +456,33 @@ func parseRecursivePattern(pattern string) (basePath, filter string) {
 // regardless of .gitignore files
 var commonIgnorePatterns = []string{
 	// Version control
-	"**/.git/**",           // Git
-	"**/.svn/**",           // Subversion
-	"**/.hg/**",            // Mercurial
-	"**/.bzr/**",           // Bazaar
-	
+	"**/.git/**", // Git
+	"**/.svn/**", // Subversion
+	"**/.hg/**",  // Mercurial
+	"**/.bzr/**", // Bazaar
+
 	// Build outputs and dependencies
-	"**/vendor/**",         // Go vendor
-	"**/node_modules/**",   // Node.js
-	"**/.venv/**",          // Python virtual environments
-	"**/venv/**",           // Python virtual environments
-	"**/__pycache__/**",    // Python cache
-	"**/*.pyc",             // Python compiled files
-	"**/target/**",         // Rust, Maven
-	"**/dist/**",           // Many build systems
-	"**/build/**",          // Many build systems
-	"**/.gradle/**",        // Gradle
-	
+	"**/vendor/**",       // Go vendor
+	"**/node_modules/**", // Node.js
+	"**/.venv/**",        // Python virtual environments
+	"**/venv/**",         // Python virtual environments
+	"**/__pycache__/**",  // Python cache
+	"**/*.pyc",           // Python compiled files
+	"**/target/**",       // Rust, Maven
+	"**/dist/**",         // Many build systems
+	"**/build/**",        // Many build systems
+	"**/.gradle/**",      // Gradle
+
 	// IDE and editor files
-	"**/.idea/**",          // JetBrains IDEs
-	"**/.vscode/**",        // Visual Studio Code
-	"**/.vs/**",            // Visual Studio
-	
+	"**/.idea/**",   // JetBrains IDEs
+	"**/.vscode/**", // Visual Studio Code
+	"**/.vs/**",     // Visual Studio
+
 	// Logs and metadata files
-	"**/logs/**",           // Log directories
-	"**/*.log",             // Log files
-	"**/.DS_Store",         // macOS metadata
-	"**/Thumbs.db",         // Windows thumbnails
+	"**/logs/**",   // Log directories
+	"**/*.log",     // Log files
+	"**/.DS_Store", // macOS metadata
+	"**/Thumbs.db", // Windows thumbnails
 	// Note: We don't exclude /tmp as it's often used in tests
 }
 
@@ -497,24 +505,24 @@ func loadGitIgnorePatterns() []string {
 		}
 		return nil
 	}
-	
+
 	// check file size limit
 	if fileInfo.Size() > maxGitignoreSize {
 		lgr.Printf("[WARN] .gitignore file exceeds maximum size limit of %d bytes, ignoring", maxGitignoreSize)
 		return nil
 	}
-	
+
 	// try to read .gitignore from current directory
 	data, err := os.ReadFile(gitignoreFile)
 	if err != nil {
 		lgr.Printf("[DEBUG] error reading .gitignore: %v", err)
 		return nil
 	}
-	
+
 	// pre-allocate slice with reasonable capacity
 	lines := strings.Split(string(data), "\n")
 	patterns := make([]string, 0, len(lines))
-	
+
 	// process each line from .gitignore
 	for i, line := range lines {
 		pattern := convertGitIgnorePattern(line, i+1)
@@ -522,11 +530,11 @@ func loadGitIgnorePatterns() []string {
 			patterns = append(patterns, pattern)
 		}
 	}
-	
+
 	if len(patterns) > 0 {
 		lgr.Printf("[DEBUG] loaded %d patterns from .gitignore", len(patterns))
 	}
-	
+
 	return patterns
 }
 
@@ -538,31 +546,31 @@ func convertGitIgnorePattern(line string, lineNum int) string {
 	if line == "" || strings.HasPrefix(line, "#") {
 		return ""
 	}
-	
+
 	// handle negation (!) - not supported currently
 	if strings.HasPrefix(line, "!") {
 		lgr.Printf("[WARN] .gitignore negation pattern not supported at line %d: %s", lineNum, line)
 		return ""
 	}
-	
+
 	// handle / prefix - pattern relative to the root directory
 	line = strings.TrimPrefix(line, "/")
-	
+
 	// add ** to make pattern recursive if needed (only for basic patterns without /)
 	if !strings.Contains(line, "**") && !strings.Contains(line, "/") {
 		line = "**/" + line
 	}
-	
+
 	// handle directory-only patterns (ending with /)
 	if strings.HasSuffix(line, "/") {
 		line += "**"
 	}
-	
+
 	// add ** to the beginning of the pattern if it doesn't already have / or **
 	if !strings.HasPrefix(line, "**") && !strings.Contains(line, "/") {
 		line = "**/" + line
 	}
-	
+
 	return line
 }
 
@@ -623,4 +631,22 @@ func getFileHeader(filePath string) string {
 	default:
 		return fmt.Sprintf("// file: %s\n", filePath)
 	}
+}
+
+// fileExists checks if a file exists and is not a directory
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
+}
+
+// isFileTooLarge checks if a file's size exceeds the maximum allowed size
+func isFileTooLarge(path string, maxFileSize int64) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.Size() > maxFileSize
 }

@@ -714,7 +714,8 @@ func TestProcessPatterns(t *testing.T) {
 		tinySize := int64(1)
 		result, err := LoadContent([]string{file1, file2}, nil, tinySize)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no files matched")
+		assert.Contains(t, err.Error(), "exceeds the size limit")
+		assert.Contains(t, err.Error(), "--max-file-size flag")
 		assert.Empty(t, result)
 
 		// set max file size to exclude just the larger file
