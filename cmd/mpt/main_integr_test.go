@@ -719,10 +719,10 @@ func TestHumanSizeValueIntegration(t *testing.T) {
 		if r.URL.Path == "/chat/completions" {
 			// read and parse the request body to check max_tokens value
 			body, err := io.ReadAll(r.Body)
-			require.NoError(t, err, "Failed to read request body")
+			assert.NoError(t, err, "Failed to read request body")
 
 			err = json.Unmarshal(body, &requestData)
-			require.NoError(t, err, "Failed to parse request body")
+			assert.NoError(t, err, "Failed to parse request body")
 
 			// standard OpenAI response
 			resp := `{
@@ -802,7 +802,7 @@ func TestHumanSizeValueIntegration(t *testing.T) {
 	// check that the max_tokens value in the request matched our human-readable setting
 	maxTokens, ok := requestData["max_tokens"]
 	require.True(t, ok, "Request should include max_tokens")
-	require.Equal(t, float64(8192), maxTokens, "max_tokens in API request should be 8192 (8k)")
+	require.InDelta(t, float64(8192), maxTokens.(float64), 0.001, "max_tokens in API request should be 8192 (8k)")
 
 	// verify the response
 	require.Contains(t, output.String(), "Human-size value test response",
