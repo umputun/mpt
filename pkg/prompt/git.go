@@ -12,6 +12,38 @@ import (
 	"github.com/go-pkgz/lgr"
 )
 
+//go:generate moq -out mocks/git_executor.go -pkg mocks -skip-ensure -fmt goimports . GitExecutor
+
+// GitExecutor defines operations for executing git commands
+type GitExecutor interface {
+	LookPath(file string) (string, error)
+	Command(name string, args ...string) *exec.Cmd
+	CommandOutput(cmd *exec.Cmd) ([]byte, error)
+	CommandRun(cmd *exec.Cmd) error
+}
+
+// default implementation
+type defaultGitExecutor struct{}
+
+func (e *defaultGitExecutor) LookPath(file string) (string, error) {
+	return exec.LookPath(file)
+}
+
+func (e *defaultGitExecutor) Command(name string, args ...string) *exec.Cmd {
+	return exec.Command(name, args...)
+}
+
+func (e *defaultGitExecutor) CommandOutput(cmd *exec.Cmd) ([]byte, error) {
+	return cmd.Output()
+}
+
+func (e *defaultGitExecutor) CommandRun(cmd *exec.Cmd) error {
+	return cmd.Run()
+}
+
+// default executor instance
+var executor GitExecutor = &defaultGitExecutor{}
+
 // WithGitDiff adds uncommitted changes from git diff to the prompt
 // Creates a temporary file with the diff output and adds it to the files to process
 func (b *Builder) WithGitDiff() (*Builder, error) {
@@ -81,7 +113,7 @@ func CleanupGitDiffFiles() {
 // isDiff indicates whether to get uncommitted changes, if false branchName is used for branch comparison
 func processGitDiff(isDiff bool, branchName string) (tempFilePath, diffDescription string, err error) {
 	// verify git is available in the system
-	if _, err := exec.LookPath("git"); err != nil {
+	if _, err := executor.LookPath("git"); err != nil {
 		return "", "", fmt.Errorf("git executable not found: %w", err)
 	}
 
@@ -101,7 +133,7 @@ func processGitDiff(isDiff bool, branchName string) (tempFilePath, diffDescripti
 	switch {
 	case isDiff:
 		// get uncommitted changes
-		diffCmd = exec.Command("git", "diff")
+		diffCmd = executor.Command("git", "diff")
 		diffDescription = "git diff (uncommitted changes)"
 
 	case branchName != "":
@@ -113,12 +145,12 @@ func processGitDiff(isDiff bool, branchName string) (tempFilePath, diffDescripti
 			return "", "", fmt.Errorf("invalid branch name: %s", branchName)
 		}
 		// use separate args for diff command with branch comparison
-		diffCmd = exec.Command("git", "diff", defaultBranch+"..."+sanitizedBranch) // #nosec G204 - sanitizeBranchName ensures the input is safe
+		diffCmd = executor.Command("git", "diff", defaultBranch+"..."+sanitizedBranch) // #nosec G204 - sanitizeBranchName ensures the input is safe
 		diffDescription = fmt.Sprintf("git diff between %s and %s", defaultBranch, sanitizedBranch)
 	}
 
 	// execute the git command and capture output
-	diffOutput, err := diffCmd.Output()
+	diffOutput, err := executor.CommandOutput(diffCmd)
 	if err != nil {
 		return "", "", fmt.Errorf("git command failed: %w", err)
 	}
@@ -151,8 +183,8 @@ func getDefaultBranch() string {
 
 // checkBranchExists checks if a branch exists in the repository
 func checkBranchExists(branch string) bool {
-	cmd := exec.Command("git", "rev-parse", "--verify", branch)
-	return cmd.Run() == nil
+	cmd := executor.Command("git", "rev-parse", "--verify", branch)
+	return executor.CommandRun(cmd) == nil
 }
 
 // sanitizeBranchName ensures the branch name is a valid git reference
@@ -180,12 +212,12 @@ func sanitizeBranchName(branch string) string {
 
 // isValidGitRef checks if a git reference is valid without executing it
 func isValidGitRef(ref string) bool {
-	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+ref) // #nosec G204 - only called after sanitization
-	if cmd.Run() == nil {
+	cmd := executor.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+ref) // #nosec G204 - only called after sanitization
+	if executor.CommandRun(cmd) == nil {
 		return true
 	}
 
 	// also check if it's a valid remote branch
-	cmd = exec.Command("git", "show-ref", "--verify", "--quiet", "refs/remotes/"+ref) // #nosec G204 - only called after sanitization
-	return cmd.Run() == nil
+	cmd = executor.Command("git", "show-ref", "--verify", "--quiet", "refs/remotes/"+ref) // #nosec G204 - only called after sanitization
+	return executor.CommandRun(cmd) == nil
 }
