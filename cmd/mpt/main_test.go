@@ -30,6 +30,90 @@ func TestSetupLog(t *testing.T) {
 	setupLog(true, "secret1", "secret2")
 }
 
+func TestSizeValue_UnmarshalFlag(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		expected  int64
+		shouldErr bool
+	}{
+		{
+			name:     "plain number",
+			input:    "1024",
+			expected: 1024,
+		},
+		{
+			name:     "kilobytes with k",
+			input:    "64k",
+			expected: 65536, // 64 * 1024
+		},
+		{
+			name:     "kilobytes with K",
+			input:    "64K",
+			expected: 65536,
+		},
+		{
+			name:     "kilobytes with kb",
+			input:    "64kb",
+			expected: 65536,
+		},
+		{
+			name:     "kilobytes with KB",
+			input:    "64KB",
+			expected: 65536,
+		},
+		{
+			name:     "megabytes with m",
+			input:    "4m",
+			expected: 4194304, // 4 * 1024 * 1024
+		},
+		{
+			name:     "megabytes with M",
+			input:    "4M",
+			expected: 4194304,
+		},
+		{
+			name:     "megabytes with mb",
+			input:    "4mb",
+			expected: 4194304,
+		},
+		{
+			name:     "megabytes with MB",
+			input:    "4MB",
+			expected: 4194304,
+		},
+		{
+			name:     "value with whitespace",
+			input:    " 128k ",
+			expected: 131072, // 128 * 1024
+		},
+		{
+			name:      "invalid format",
+			input:     "abc",
+			shouldErr: true,
+		},
+		{
+			name:      "invalid suffix",
+			input:     "64x",
+			shouldErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var size SizeValue
+			err := size.UnmarshalFlag(tt.input)
+
+			if tt.shouldErr {
+				assert.Error(t, err, "Expected error for input: %s", tt.input)
+			} else {
+				require.NoError(t, err, "Unexpected error for input: %s", tt.input)
+				assert.Equal(t, SizeValue(tt.expected), size, "Expected %d, got %d for input: %s", tt.expected, size, tt.input)
+			}
+		})
+	}
+}
+
 func TestVerboseOutput(t *testing.T) {
 	// create a buffer to capture output
 	var buf strings.Builder

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,38 @@ import (
 	"github.com/umputun/mpt/pkg/provider/enum"
 	"github.com/umputun/mpt/pkg/runner"
 )
+
+// SizeValue is a custom type that supports human-readable size values with k/m suffixes
+type SizeValue int64
+
+// UnmarshalFlag implements the flags.Unmarshaler interface for human-readable sizes
+func (v *SizeValue) UnmarshalFlag(value string) error {
+	value = strings.TrimSpace(strings.ToLower(value))
+
+	var multiplier int64 = 1
+	switch {
+	case strings.HasSuffix(value, "kb"):
+		multiplier = 1024
+		value = value[:len(value)-2]
+	case strings.HasSuffix(value, "k"):
+		multiplier = 1024
+		value = value[:len(value)-1]
+	case strings.HasSuffix(value, "mb"):
+		multiplier = 1024 * 1024
+		value = value[:len(value)-2]
+	case strings.HasSuffix(value, "m"):
+		multiplier = 1024 * 1024
+		value = value[:len(value)-1]
+	}
+
+	val, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid size value %q: %w", value, err)
+	}
+
+	*v = SizeValue(val * multiplier)
+	return nil
+}
 
 // options with all CLI options
 type options struct {
@@ -36,7 +69,7 @@ type options struct {
 	Files       []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
 	Excludes    []string      `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
 	Timeout     time.Duration `short:"t" long:"timeout" default:"60s" description:"timeout duration"`
-	MaxFileSize int64         `long:"max-file-size" env:"MAX_FILE_SIZE" default:"65536" description:"maximum size of individual files to process in bytes (default: 64KB)"`
+	MaxFileSize SizeValue     `long:"max-file-size" env:"MAX_FILE_SIZE" default:"65536" description:"maximum size of individual files to process in bytes (default: 64KB, supports k/m suffixes)"`
 
 	// common options
 	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -47,27 +80,27 @@ type options struct {
 
 // openAIOpts defines options for OpenAI provider
 type openAIOpts struct {
-	Enabled     bool    `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
-	APIKey      string  `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
-	Model       string  `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4.1"`
-	MaxTokens   int     `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
-	Temperature float32 `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
+	Enabled     bool      `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
+	APIKey      string    `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
+	Model       string    `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4.1"`
+	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
+	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
 }
 
 // anthropicOpts defines options for Anthropic provider
 type anthropicOpts struct {
-	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Anthropic provider"`
-	APIKey    string `long:"api-key" env:"API_KEY" description:"Anthropic API key"`
-	Model     string `long:"model" env:"MODEL" description:"Anthropic model" default:"claude-3-7-sonnet-20250219"`
-	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
+	Enabled   bool      `long:"enabled" env:"ENABLED" description:"enable Anthropic provider"`
+	APIKey    string    `long:"api-key" env:"API_KEY" description:"Anthropic API key"`
+	Model     string    `long:"model" env:"MODEL" description:"Anthropic model" default:"claude-3-7-sonnet-20250219"`
+	MaxTokens SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
 }
 
 // googleOpts defines options for Google provider
 type googleOpts struct {
-	Enabled   bool   `long:"enabled" env:"ENABLED" description:"enable Google provider"`
-	APIKey    string `long:"api-key" env:"API_KEY" description:"Google API key"`
-	Model     string `long:"model" env:"MODEL" description:"Google model" default:"gemini-2.5-pro-exp-03-25"`
-	MaxTokens int    `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate" default:"16384"`
+	Enabled   bool      `long:"enabled" env:"ENABLED" description:"enable Google provider"`
+	APIKey    string    `long:"api-key" env:"API_KEY" description:"Google API key"`
+	Model     string    `long:"model" env:"MODEL" description:"Google model" default:"gemini-2.5-pro-exp-03-25"`
+	MaxTokens SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
 }
 
 // mcpOpts defines options for MCP server mode
@@ -78,13 +111,13 @@ type mcpOpts struct {
 
 // customOpenAIProvider defines options for a custom OpenAI-compatible provider
 type customOpenAIProvider struct {
-	Enabled     bool    `long:"enabled" env:"ENABLED" description:"enable custom provider"`
-	Name        string  `long:"name" env:"NAME" description:"custom provider name" default:"custom"`
-	URL         string  `long:"url" env:"URL" description:"Base URL for the custom provider API"`
-	APIKey      string  `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
-	Model       string  `long:"model" env:"MODEL" description:"Model to use for the custom provider"`
-	MaxTokens   int     `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate" default:"16384"`
-	Temperature float32 `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
+	Enabled     bool      `long:"enabled" env:"ENABLED" description:"enable custom provider"`
+	Name        string    `long:"name" env:"NAME" description:"custom provider name" default:"custom"`
+	URL         string    `long:"url" env:"URL" description:"Base URL for the custom provider API"`
+	APIKey      string    `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
+	Model       string    `long:"model" env:"MODEL" description:"Model to use for the custom provider"`
+	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
+	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
 }
 
 var revision = "unknown"
@@ -92,6 +125,7 @@ var revision = "unknown"
 func main() {
 	opts := &options{}
 	p := flags.NewParser(opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
+
 	if _, err := p.Parse(); err != nil {
 		if !errors.Is(err.(*flags.Error).Type, flags.ErrHelp) {
 			fmt.Printf("%v", err)
@@ -223,7 +257,7 @@ func buildFullPrompt(opts *options) error {
 	builder := prompt.New(opts.Prompt).
 		WithFiles(opts.Files).
 		WithExcludes(opts.Excludes).
-		WithMaxFileSize(opts.MaxFileSize)
+		WithMaxFileSize(int64(opts.MaxFileSize))
 
 	fullPrompt, err := builder.Build()
 	if err != nil {
@@ -308,7 +342,7 @@ func initializeOpenAIProvider(opts *options, providers *[]provider.Provider, pro
 		APIKey:      opts.OpenAI.APIKey,
 		Model:       opts.OpenAI.Model,
 		Enabled:     true,
-		MaxTokens:   opts.OpenAI.MaxTokens,
+		MaxTokens:   int(opts.OpenAI.MaxTokens),
 		Temperature: opts.OpenAI.Temperature,
 	})
 
@@ -329,7 +363,7 @@ func initializeAnthropicProvider(opts *options, providers *[]provider.Provider, 
 		APIKey:      opts.Anthropic.APIKey,
 		Model:       opts.Anthropic.Model,
 		Enabled:     true,
-		MaxTokens:   opts.Anthropic.MaxTokens,
+		MaxTokens:   int(opts.Anthropic.MaxTokens),
 		Temperature: 0.7, // default temperature
 	})
 
@@ -349,7 +383,7 @@ func initializeGoogleProvider(opts *options, providers *[]provider.Provider, pro
 		APIKey:      opts.Google.APIKey,
 		Model:       opts.Google.Model,
 		Enabled:     true,
-		MaxTokens:   opts.Google.MaxTokens,
+		MaxTokens:   int(opts.Google.MaxTokens),
 		Temperature: 0.7, // default temperature
 	})
 
@@ -401,7 +435,7 @@ func addCustomProvider(opts *options, providers *[]provider.Provider, providerEr
 		APIKey:      opts.Custom.APIKey,
 		Model:       opts.Custom.Model,
 		Enabled:     true,
-		MaxTokens:   opts.Custom.MaxTokens,
+		MaxTokens:   int(opts.Custom.MaxTokens),
 		Temperature: opts.Custom.Temperature,
 	})
 
