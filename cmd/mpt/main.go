@@ -23,38 +23,6 @@ import (
 	"github.com/umputun/mpt/pkg/runner"
 )
 
-// SizeValue is a custom type that supports human-readable size values with k/m suffixes
-type SizeValue int64
-
-// UnmarshalFlag implements the flags.Unmarshaler interface for human-readable sizes
-func (v *SizeValue) UnmarshalFlag(value string) error {
-	value = strings.TrimSpace(strings.ToLower(value))
-
-	var multiplier int64 = 1
-	switch {
-	case strings.HasSuffix(value, "kb"):
-		multiplier = 1024
-		value = value[:len(value)-2]
-	case strings.HasSuffix(value, "k"):
-		multiplier = 1024
-		value = value[:len(value)-1]
-	case strings.HasSuffix(value, "mb"):
-		multiplier = 1024 * 1024
-		value = value[:len(value)-2]
-	case strings.HasSuffix(value, "m"):
-		multiplier = 1024 * 1024
-		value = value[:len(value)-1]
-	}
-
-	val, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid size value %q: %w", value, err)
-	}
-
-	*v = SizeValue(val * multiplier)
-	return nil
-}
-
 // options with all CLI options
 type options struct {
 	OpenAI    openAIOpts    `group:"openai" namespace:"openai" env-namespace:"OPENAI"`
@@ -64,6 +32,7 @@ type options struct {
 	Custom customOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
 
 	MCP mcpOpts `group:"mcp" namespace:"mcp" env-namespace:"MCP"`
+	Git gitOpts `group:"git" namespace:"git" env-namespace:"GIT"`
 
 	Prompt      string        `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
 	Files       []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
@@ -118,6 +87,12 @@ type customOpenAIProvider struct {
 	Model       string    `long:"model" env:"MODEL" description:"Model to use for the custom provider"`
 	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
 	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
+}
+
+// gitOpts defines options for Git integration
+type gitOpts struct {
+	Diff   bool   `long:"diff" env:"DIFF" description:"include git diff as context (uncommitted changes)"`
+	Branch string `long:"branch" env:"BRANCH" description:"include git diff between given branch and master/main (for PR review)"`
 }
 
 var revision = "unknown"
@@ -259,10 +234,31 @@ func buildFullPrompt(opts *options) error {
 		WithExcludes(opts.Excludes).
 		WithMaxFileSize(int64(opts.MaxFileSize))
 
+	// add git diff if requested
+	var err error
+	if opts.Git.Diff {
+		builder, err = builder.WithGitDiff()
+		if err != nil {
+			return fmt.Errorf("failed to process git diff: %w", err)
+		}
+	}
+
+	// add git branch diff if requested
+	if opts.Git.Branch != "" {
+		builder, err = builder.WithGitBranchDiff(opts.Git.Branch)
+		if err != nil {
+			return fmt.Errorf("failed to process git branch diff: %w", err)
+		}
+	}
+
+	// build the prompt
 	fullPrompt, err := builder.Build()
 	if err != nil {
 		return fmt.Errorf("failed to build prompt: %w", err)
 	}
+
+	// schedule cleanup of git diff files when program exits
+	defer prompt.CleanupGitDiffFiles()
 
 	opts.Prompt = fullPrompt
 	return nil
@@ -546,7 +542,6 @@ func readFromStdin() (string, error) {
 	return strings.TrimSpace(sb.String()), nil
 }
 
-// outputJSON formats the results as JSON and prints them to stdout
 func outputJSON(_ string, results []provider.Result) error {
 	// create json output structure
 	type ProviderResponse struct {
@@ -588,5 +583,37 @@ func outputJSON(_ string, results []provider.Result) error {
 		return fmt.Errorf("error encoding JSON output: %w", err)
 	}
 
+	return nil
+}
+
+// SizeValue is a custom type that supports human-readable size values with k/m suffixes
+type SizeValue int64
+
+// UnmarshalFlag implements the flags.Unmarshaler interface for human-readable sizes
+func (v *SizeValue) UnmarshalFlag(value string) error {
+	value = strings.TrimSpace(strings.ToLower(value))
+
+	var multiplier int64 = 1
+	switch {
+	case strings.HasSuffix(value, "kb"):
+		multiplier = 1024
+		value = value[:len(value)-2]
+	case strings.HasSuffix(value, "k"):
+		multiplier = 1024
+		value = value[:len(value)-1]
+	case strings.HasSuffix(value, "mb"):
+		multiplier = 1024 * 1024
+		value = value[:len(value)-2]
+	case strings.HasSuffix(value, "m"):
+		multiplier = 1024 * 1024
+		value = value[:len(value)-1]
+	}
+
+	val, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid size value %q: %w", value, err)
+	}
+
+	*v = SizeValue(val * multiplier)
 	return nil
 }
