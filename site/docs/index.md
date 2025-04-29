@@ -32,6 +32,11 @@ MPT makes working with AI language models simpler and more powerful by:
 
 For example, when reviewing code changes:
 ```
+# Using native git integration
+mpt --git.diff --openai.enabled --anthropic.enabled --google.enabled \
+    --prompt "Review this code and identify potential bugs or security issues"
+
+# Or using the traditional pipe approach
 git diff HEAD~1 | mpt --openai.enabled --anthropic.enabled --google.enabled \
     --prompt "Review this code and identify potential bugs or security issues"
 ```
@@ -40,9 +45,13 @@ This will show you different perspectives on the same code, potentially catching
 
 You can also create cascading workflows, where multiple models analyze content first, and then another model synthesizes their insights:
 ```
-# First gather multiple perspectives
-git diff HEAD~1 | mpt --openai.enabled --anthropic.enabled --google.enabled \
-    --prompt "Review this code thoroughly" > reviews.txt
+# First gather multiple perspectives using the built-in git integration
+mpt --git.diff --openai.enabled --anthropic.enabled --google.enabled \
+    --prompt "Review these uncommitted changes thoroughly" > reviews.txt
+
+# Or with a specific branch comparison
+mpt --git.branch=feature-branch --openai.enabled --anthropic.enabled --google.enabled \
+    --prompt "Review this pull request thoroughly" > reviews.txt
 
 # Then have a single model summarize the key points
 cat reviews.txt | mpt --anthropic.enabled \
@@ -55,10 +64,11 @@ The second command will produce clean output without any provider headers, since
 
 - **Multi-Provider Support**: Run prompts in parallel across OpenAI, Anthropic (Claude), Google (Gemini), and custom LLMs
 - **File Context Inclusion**: Easily add files, directories, or patterns to provide context for your prompts
+- **Native Git Integration**: Include git diffs from uncommitted changes or between branches with simple flags
 - **Smart Pattern Matching**: Include files using standard glob patterns, directory paths, bash-style wildcards (`**/*.go`), or Go-style patterns (`pkg/...`)
 - **Exclusion Filtering**: Filter out unwanted files with the same pattern matching syntax (`--exclude "**/tests/**"`)
 - **Smart Exclusions**: Automatically respects .gitignore patterns and commonly ignored directories
-- **Stdin Integration**: Pipe content directly from other tools (like `git diff`) for AI analysis
+- **Stdin Integration**: Pipe content directly from other tools for AI analysis
 - **Customizable Execution**: Configure timeouts, token limits, and models per provider
 - **Clean Output Formatting**: Provider-specific headers (or none when using a single provider)
 - **Environment Variable Support**: Store API keys and settings in environment variables instead of flags
@@ -206,6 +216,8 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
                       - Go-style recursive patterns like "pkg/..." or "cmd/.../*.go"
 -x, --exclude         Patterns to exclude from file matching (can be used multiple times)
                       Uses the same pattern syntax as --file
+--git.diff            Include git diff (uncommitted changes) in the prompt context
+--git.branch          Include git diff between given branch and main/master (for PR review)
 -t, --timeout         Timeout duration (e.g., 60s, 2m) (default: 60s)
 --max-file-size       Maximum size of individual files to process in bytes (default: 64KB)
 -v, --verbose         Verbose output, shows the complete prompt sent to models
@@ -244,6 +256,35 @@ mpt --openai.enabled --prompt "Explain the architecture of this project" --file 
 Using Go-style recursive patterns:
 ```
 mpt --anthropic.enabled --prompt "Find bugs in my Go code" --file "pkg/..." --file "cmd/.../*.go"
+```
+
+### Git Integration
+
+MPT provides built-in git integration, allowing you to easily incorporate git diffs into your prompts without manual piping:
+
+```bash
+# Include uncommitted changes in the prompt context
+mpt --git.diff --anthropic.enabled --prompt "Review my changes and suggest improvements"
+
+# Include diff between a specific branch and the default branch (main or master)
+mpt --git.branch=feature-branch --openai.enabled --prompt "Review this PR"
+
+# Combine with other files for additional context
+mpt --git.diff --file "README.md" --prompt "Explain what these changes do"
+```
+
+This is more convenient than the traditional pipe approach (`git diff | mpt ...`) because:
+
+1. MPT handles all the temporary file creation and cleanup
+2. The diffs are clearly labeled in the context
+3. You can easily combine git diffs with other context files
+4. It works well in shell scripts and aliases
+
+#### Git Integration Options
+
+```
+--git.diff            Include git diff as context (uncommitted changes)
+--git.branch=BRANCH   Include git diff between given branch and master/main (for PR review)
 ```
 
 ### File Pattern and Filtering Reference
@@ -384,7 +425,27 @@ find . -name "*.go" -exec grep -l "TODO" {} \; | mpt --openai.enabled \
 
 ### Using MPT for Code Reviews
 
-MPT is particularly effective for code reviews. For best results, save git diff output to a file and then use the file as input:
+MPT is particularly effective for code reviews. You can use the built-in git integration for a streamlined experience:
+
+```bash
+# Review uncommitted changes
+mpt --git.diff --openai.enabled --timeout=5m \
+    -p "Perform a comprehensive code review of these changes"
+
+# Review a pull request by comparing branches
+mpt --git.branch=feature-xyz --anthropic.enabled --timeout=5m \
+    -p "Perform a comprehensive code review of this PR"
+```
+
+For more detailed reviews with multiple providers:
+
+```bash
+# Review uncommitted changes with multiple providers
+mpt --git.diff --openai.enabled --google.enabled --anthropic.enabled --timeout=5m \
+    -p "Perform a comprehensive code review of these changes. Analyze the design patterns and architecture. Identify any security vulnerabilities or risks. Evaluate code readability, maintainability, and idiomatic usage. Suggest specific improvements where needed."
+```
+
+The traditional approach also works by saving git diff output to a file:
 
 ```bash
 # Save changes to a file
@@ -568,6 +629,10 @@ GOOGLE_API_KEY="your-google-key"
 GOOGLE_MODEL="gemini-2.5-pro-exp-03-25"
 GOOGLE_ENABLED=true
 GOOGLE_MAX_TOKENS=16384
+
+# Git options
+GIT_DIFF=true            # Include git diff (uncommitted changes)
+GIT_BRANCH="feature-xyz" # Include diff between feature-xyz and main/master
 
 # MCP Server Mode
 MCP_SERVER=true
