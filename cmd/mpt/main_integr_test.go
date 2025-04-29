@@ -711,6 +711,104 @@ func TestIntegrationMCPServerModeErrorScenarios(t *testing.T) {
 	})
 }
 
+// TestHumanSizeValueIntegration tests the human-readable size values in an integration test
+func TestHumanSizeValueIntegration(t *testing.T) {
+	// create a stub server that simulates the custom provider API
+	requestData := make(map[string]interface{})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chat/completions" {
+			// read and parse the request body to check max_tokens value
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err, "Failed to read request body")
+
+			err = json.Unmarshal(body, &requestData)
+			require.NoError(t, err, "Failed to parse request body")
+
+			// standard OpenAI response
+			resp := `{
+				"id": "test-id",
+				"object": "chat.completion",
+				"created": 1677858242,
+				"model": "test-model",
+				"usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+				"choices": [
+					{
+						"message": {"role": "assistant", "content": "Human-size value test response"},
+						"finish_reason": "stop",
+						"index": 0
+					}
+				]
+			}`
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(resp))
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+
+	// save original args and restore them after the test
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// set up command line arguments with human-readable size values
+	os.Args = []string{
+		"test",
+		"--prompt", "test prompt",
+		"--custom.enabled",
+		"--custom.url", ts.URL,
+		"--custom.model", "test-model",
+		"--custom.api-key", "test-key",
+		"--custom.max-tokens", "8k", // human-readable value (8 * 1024 = 8192)
+		"--max-file-size", "2m", // human-readable value (2 * 1024 * 1024 = 2097152)
+	}
+
+	// create options and parse command line
+	opts := &options{
+		Timeout: 5 * time.Second,
+	}
+
+	p := flags.NewParser(opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
+	_, err := p.Parse()
+	require.NoError(t, err, "Failed to parse command line")
+
+	// verify that human-readable values were correctly parsed
+	require.Equal(t, SizeValue(8*1024), opts.Custom.MaxTokens,
+		"MaxTokens should be 8k (8192)")
+	require.Equal(t, SizeValue(2*1024*1024), opts.MaxFileSize,
+		"MaxFileSize should be 2m (2097152)")
+
+	// redirect stdout to capture output
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// run the program
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = run(ctx, opts)
+	require.NoError(t, err, "run() returned an error")
+
+	// restore stdout
+	w.Close()
+	os.Stdout = oldStdout
+
+	// read the output
+	var output strings.Builder
+	io.Copy(&output, r)
+
+	// check that the max_tokens value in the request matched our human-readable setting
+	maxTokens, ok := requestData["max_tokens"]
+	require.True(t, ok, "Request should include max_tokens")
+	require.Equal(t, float64(8192), maxTokens, "max_tokens in API request should be 8192 (8k)")
+
+	// verify the response
+	require.Contains(t, output.String(), "Human-size value test response",
+		"Output should contain the provider response")
+}
+
 // TestIntegrationJSONOutput tests the JSON output flag in an integration test
 func TestIntegrationJSONOutput(t *testing.T) {
 	// create a stub server that simulates the custom provider API
