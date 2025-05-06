@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/mpt/pkg/provider"
+	"github.com/umputun/mpt/pkg/provider/enum"
 	"github.com/umputun/mpt/pkg/runner"
 	"github.com/umputun/mpt/pkg/runner/mocks"
 )
@@ -643,8 +644,8 @@ func TestRun_PromptCombination(t *testing.T) {
 	require.NotEmpty(t, tester.mockProvider.GenerateCalls())
 }
 
-// TestCreateStandardProvider tests the provider creation functionality
-func TestCreateStandardProvider(t *testing.T) {
+// TestInitializeProvider tests the provider initialization functionality
+func TestInitializeProvider(t *testing.T) {
 	tests := []struct {
 		name         string
 		providerType string
@@ -694,15 +695,27 @@ func TestCreateStandardProvider(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			providerInstance := createStandardProvider(tt.providerType, tt.apiKey, tt.model, tt.maxTokens, tt.temperature)
-
-			switch tt.name {
-			case "unknown provider":
-				assert.Nil(t, providerInstance, "Provider should be nil for unknown provider type")
+			// for testing "unknown provider" we use parse error checking
+			if tt.name == "unknown provider" {
+				_, err := enum.ParseProviderType("not-a-real-provider-type")
+				assert.Error(t, err, "Should get error for unknown provider type")
 				return
-			default:
-				require.NotNil(t, providerInstance, "Provider should not be nil")
 			}
+
+			// for valid provider types, test initialization
+			provType, err := enum.ParseProviderType(tt.providerType)
+			require.NoError(t, err, "Should parse provider type")
+
+			providerInstance, err := initializeProvider(provType, tt.apiKey, tt.model, tt.maxTokens, tt.temperature)
+
+			if tt.expectNil {
+				assert.Nil(t, providerInstance, "Provider should be nil")
+				assert.Error(t, err, "Should have error")
+				return
+			}
+
+			require.NoError(t, err, "Should not have error")
+			require.NotNil(t, providerInstance, "Provider should not be nil")
 
 			// verify the provider name matches the expected type (case-insensitive)
 			assert.Contains(t, strings.ToLower(providerInstance.Name()), tt.providerType, "Provider name should contain the provider type")
@@ -1233,7 +1246,7 @@ func TestInitializeProviders(t *testing.T) {
 				return
 			case "custom provider without model":
 				require.Error(t, err, "Should return error when custom provider model is missing")
-				assert.Contains(t, err.Error(), "Model is required")
+				assert.Contains(t, err.Error(), "model is required")
 				return
 			case "mix enabled with single provider":
 				require.NoError(t, err, "Should initialize providers without error")
