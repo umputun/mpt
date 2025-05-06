@@ -1183,6 +1183,39 @@ func TestInitializeProviders(t *testing.T) {
 			opts:          &options{},
 			expectedCount: 0,
 		},
+		{
+			name: "mix enabled with multiple providers",
+			opts: &options{
+				OpenAI: openAIOpts{
+					Enabled: true,
+					APIKey:  "test-key",
+					Model:   "gpt-4o",
+				},
+				Anthropic: anthropicOpts{
+					Enabled: true,
+					APIKey:  "test-key",
+					Model:   "claude-3",
+				},
+				MixEnabled:  true,
+				MixProvider: "openai",
+			},
+			expectedCount: 2,
+			expectedTypes: []string{"openai", "anthropic"},
+		},
+		{
+			name: "mix enabled with single provider",
+			opts: &options{
+				OpenAI: openAIOpts{
+					Enabled: true,
+					APIKey:  "test-key",
+					Model:   "gpt-4o",
+				},
+				MixEnabled:  true,
+				MixProvider: "openai",
+			},
+			expectedCount: 1,
+			expectedTypes: []string{"openai"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1202,6 +1235,10 @@ func TestInitializeProviders(t *testing.T) {
 				require.Error(t, err, "Should return error when custom provider model is missing")
 				assert.Contains(t, err.Error(), "Model is required")
 				return
+			case "mix enabled with single provider":
+				require.NoError(t, err, "Should initialize providers without error")
+				// the mix functionality will not be used with a single provider,
+				// but initialization should still succeed
 			default:
 				require.NoError(t, err, "Should initialize providers without error")
 			}
@@ -1409,4 +1446,316 @@ func TestExecutePrompt_JSON(t *testing.T) {
 	response := responses[0].(map[string]interface{})
 	assert.Equal(t, "MockProvider", response["provider"], "Provider name should match")
 	assert.Equal(t, "Test response for JSON test", response["text"], "Response text should match")
+}
+
+// TestMixResults tests the mix functionality
+func TestMixResults(t *testing.T) {
+	// create a context for testing
+	ctx := context.Background()
+
+	// setup test cases
+	tests := []struct {
+		name           string
+		providers      []provider.Provider
+		results        []provider.Result
+		opts           *options
+		expectedError  bool
+		expectedOutput string
+	}{
+		{
+			name: "mix with multiple providers",
+			providers: []provider.Provider{
+				&mocks.ProviderMock{
+					NameFunc:    func() string { return "OpenAI" },
+					EnabledFunc: func() bool { return true },
+					GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+						if strings.Contains(prompt, "merge results") {
+							return "Mixed result from OpenAI", nil
+						}
+						return "OpenAI result", nil
+					},
+				},
+				&mocks.ProviderMock{
+					NameFunc:    func() string { return "Anthropic" },
+					EnabledFunc: func() bool { return true },
+					GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+						return "Anthropic result", nil
+					},
+				},
+			},
+			results: []provider.Result{
+				{Provider: "OpenAI", Text: "OpenAI result", Error: nil},
+				{Provider: "Anthropic", Text: "Anthropic result", Error: nil},
+			},
+			opts: &options{
+				MixEnabled:  true,
+				MixProvider: "openai",
+				MixPrompt:   "merge results from all providers",
+			},
+			expectedError:  false,
+			expectedOutput: "== mixed results by OpenAI ==",
+		},
+		{
+			name: "fallback to another provider when specified provider not found",
+			providers: []provider.Provider{
+				&mocks.ProviderMock{
+					NameFunc:    func() string { return "OpenAI" },
+					EnabledFunc: func() bool { return true },
+					GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+						return "OpenAI result", nil
+					},
+				},
+				&mocks.ProviderMock{
+					NameFunc:    func() string { return "Anthropic" },
+					EnabledFunc: func() bool { return true },
+					GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+						if strings.Contains(prompt, "merge results") {
+							return "Mixed result from Anthropic", nil
+						}
+						return "Anthropic result", nil
+					},
+				},
+			},
+			results: []provider.Result{
+				{Provider: "OpenAI", Text: "OpenAI result", Error: nil},
+				{Provider: "Anthropic", Text: "Anthropic result", Error: nil},
+			},
+			opts: &options{
+				MixEnabled:  true,
+				MixProvider: "google", // not in the available providers
+				MixPrompt:   "merge results from all providers",
+			},
+			expectedError:  false,
+			expectedOutput: "== mixed results by ", // will be followed by the name of the first provider
+		},
+		{
+			name: "provider error during mixing",
+			providers: []provider.Provider{
+				&mocks.ProviderMock{
+					NameFunc:    func() string { return "OpenAI" },
+					EnabledFunc: func() bool { return true },
+					GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+						if strings.Contains(prompt, "merge results") {
+							return "", fmt.Errorf("mixing error")
+						}
+						return "OpenAI result", nil
+					},
+				},
+				&mocks.ProviderMock{
+					NameFunc:    func() string { return "Anthropic" },
+					EnabledFunc: func() bool { return true },
+					GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+						return "Anthropic result", nil
+					},
+				},
+			},
+			results: []provider.Result{
+				{Provider: "OpenAI", Text: "OpenAI result", Error: nil},
+				{Provider: "Anthropic", Text: "Anthropic result", Error: nil},
+			},
+			opts: &options{
+				MixEnabled:  true,
+				MixProvider: "openai",
+				MixPrompt:   "merge results from all providers",
+			},
+			expectedError: true,
+		},
+		{
+			name: "no enabled providers",
+			providers: []provider.Provider{
+				&mocks.ProviderMock{
+					NameFunc:    func() string { return "OpenAI" },
+					EnabledFunc: func() bool { return false },
+					GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+						return "OpenAI result", nil
+					},
+				},
+				&mocks.ProviderMock{
+					NameFunc:    func() string { return "Anthropic" },
+					EnabledFunc: func() bool { return false },
+					GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+						return "Anthropic result", nil
+					},
+				},
+			},
+			results: []provider.Result{
+				{Provider: "OpenAI", Text: "OpenAI result", Error: nil},
+				{Provider: "Anthropic", Text: "Anthropic result", Error: nil},
+			},
+			opts: &options{
+				MixEnabled:  true,
+				MixProvider: "openai",
+				MixPrompt:   "merge results from all providers",
+			},
+			expectedError: true,
+		},
+	}
+
+	// run tests
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := mixResults(ctx, tt.opts, tt.providers, tt.results)
+
+			if tt.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Contains(t, result, tt.expectedOutput)
+			}
+		})
+	}
+}
+
+// TestExecutePrompt_WithMix tests the mix functionality in executePrompt
+func TestExecutePrompt_WithMix(t *testing.T) {
+	// setup mock providers
+	mockProvider1 := &mocks.ProviderMock{
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			if strings.Contains(prompt, "merge results") {
+				// this is the mixing prompt
+				return "Mixed result combining all inputs", nil
+			}
+			return "Result from Provider1", nil
+		},
+		NameFunc: func() string {
+			return "Provider1"
+		},
+		EnabledFunc: func() bool {
+			return true
+		},
+	}
+
+	mockProvider2 := &mocks.ProviderMock{
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			return "Result from Provider2", nil
+		},
+		NameFunc: func() string {
+			return "Provider2"
+		},
+		EnabledFunc: func() bool {
+			return true
+		},
+	}
+
+	providers := []provider.Provider{mockProvider1, mockProvider2}
+
+	// create stdout capture
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+
+	// create options with mix enabled
+	opts := &options{
+		Prompt:      "test prompt",
+		Timeout:     5 * time.Second,
+		MixEnabled:  true,
+		MixProvider: "provider1", // should match mockProvider1 (case-insensitive)
+		MixPrompt:   "merge results from all providers",
+	}
+
+	// execute the function
+	ctx := context.Background()
+	err = executePrompt(ctx, opts, providers)
+
+	// restore stdout
+	w.Close()
+	os.Stdout = oldStdout
+
+	// read the output
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	// check results
+	require.NoError(t, err, "executePrompt should not error")
+	assert.Contains(t, output, "mixed results by Provider1", "Output should contain the mixed results header")
+	assert.Contains(t, output, "Mixed result combining all inputs", "Output should contain the mixed result")
+}
+
+// TestExecutePrompt_WithMixJSON tests the mix functionality with JSON output
+func TestExecutePrompt_WithMixJSON(t *testing.T) {
+	// setup mock providers
+	mockProvider1 := &mocks.ProviderMock{
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			if strings.Contains(prompt, "merge results") {
+				// this is the mixing prompt
+				return "Mixed result combining all inputs", nil
+			}
+			return "Result from Provider1", nil
+		},
+		NameFunc: func() string {
+			return "Provider1"
+		},
+		EnabledFunc: func() bool {
+			return true
+		},
+	}
+
+	mockProvider2 := &mocks.ProviderMock{
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			return "Result from Provider2", nil
+		},
+		NameFunc: func() string {
+			return "Provider2"
+		},
+		EnabledFunc: func() bool {
+			return true
+		},
+	}
+
+	providers := []provider.Provider{mockProvider1, mockProvider2}
+
+	// create stdout capture
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+
+	// create options with mix enabled and JSON output
+	opts := &options{
+		Prompt:      "test prompt",
+		Timeout:     5 * time.Second,
+		MixEnabled:  true,
+		MixProvider: "provider1",
+		MixPrompt:   "merge results from all providers",
+		JSON:        true,
+	}
+
+	// execute the function
+	ctx := context.Background()
+	err = executePrompt(ctx, opts, providers)
+
+	// restore stdout
+	w.Close()
+	os.Stdout = oldStdout
+
+	// read the output
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	// check results
+	require.NoError(t, err, "executePrompt should not error")
+
+	// verify that output is valid JSON
+	var result map[string]interface{}
+	err = json.Unmarshal([]byte(output), &result)
+	require.NoError(t, err, "Output should be valid JSON")
+
+	// check important fields
+	assert.Contains(t, result, "responses", "JSON should have responses field")
+	assert.Contains(t, result, "mixed", "JSON should have mixed field")
+	assert.Contains(t, result, "timestamp", "JSON should have timestamp field")
+
+	// check mixed field
+	mixed, ok := result["mixed"].(string)
+	require.True(t, ok, "mixed should be a string")
+	assert.Contains(t, mixed, "mixed results by Provider1", "Mixed field should contain provider info")
+	assert.Contains(t, mixed, "Mixed result combining all inputs", "Mixed field should contain the mixed result")
+
+	// check responses array
+	responses, ok := result["responses"].([]interface{})
+	require.True(t, ok, "responses should be an array")
+	require.Len(t, responses, 2, "Should have two responses")
 }
