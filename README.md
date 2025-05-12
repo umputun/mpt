@@ -4,8 +4,11 @@
 
 MPT is a command-line utility that sends prompts to multiple AI language model providers (OpenAI, Anthropic, Google, and custom providers) in parallel and combines the results. It enables easy file inclusion for context and supports flexible pattern matching to quickly include relevant code or documentation in your prompts.
 
-<div align="center">
-  <img class="logo" src="https://github.com/umputun/mpt/raw/master/site/docs/logo.png" width="400px" alt="MPT"/>
+<div align="center">  
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="site/docs/logo-inverted.png">
+    <img class="logo" src="site/docs/logo.png" width="400px" alt="MPT">
+  </picture>
 </div>
 
 ## What MPT Does
