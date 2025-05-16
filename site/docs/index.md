@@ -4,8 +4,11 @@
 
 MPT is a command-line utility that sends prompts to multiple AI language model providers (OpenAI, Anthropic, Google, and custom providers) in parallel and combines the results. It enables easy file inclusion for context and supports flexible pattern matching to quickly include relevant code or documentation in your prompts.
 
-<div align="center">
-  <img class="logo" src="logo.png" width="400px" alt="MPT"/>
+<div align="center">  
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="site/docs/logo-inverted.png">
+    <img class="logo" src="site/docs/logo.png" width="400px" alt="MPT">
+  </picture>
 </div>
 
 ## What MPT Does
@@ -48,6 +51,7 @@ You can create cascading workflows in two ways:
 **Option 1: Manual cascading with files (traditional approach):**
 ```
 # First gather multiple perspectives using the built-in git integration
+# (Shows uncommitted changes, or branch diff if no uncommitted changes exist)
 mpt --git.diff --openai.enabled --anthropic.enabled --google.enabled \
     --prompt "Review these uncommitted changes thoroughly" > reviews.txt
 
@@ -285,6 +289,7 @@ MPT provides built-in git integration, allowing you to easily incorporate git di
 
 ```bash
 # Include uncommitted changes in the prompt context
+# If no uncommitted changes exist, automatically shows diff between current branch and main/master
 mpt --git.diff --anthropic.enabled --prompt "Review my changes and suggest improvements"
 
 # Include diff between a specific branch and the default branch (main or master)
@@ -292,6 +297,12 @@ mpt --git.branch=feature-branch --openai.enabled --prompt "Review this PR"
 
 # Combine with other files for additional context
 mpt --git.diff --file "README.md" --prompt "Explain what these changes do"
+
+# Automatic branch diff detection: if you're on a feature branch with no uncommitted changes,
+# --git.diff will automatically show the diff between your branch and main/master
+git checkout feature-branch
+git add . && git commit -m "all changes committed"
+mpt --git.diff --prompt "Review this branch"  # Shows diff between feature-branch and main/master
 ```
 
 This is more convenient than the traditional pipe approach (`git diff | mpt ...`) because:
@@ -300,11 +311,14 @@ This is more convenient than the traditional pipe approach (`git diff | mpt ...`
 2. The diffs are clearly labeled in the context
 3. You can easily combine git diffs with other context files
 4. It works well in shell scripts and aliases
+5. Automatically detects when to show uncommitted changes vs branch differences
 
 #### Git Integration Options
 
 ```
 --git.diff            Include git diff as context (uncommitted changes)
+                      If no uncommitted changes exist, automatically shows diff
+                      between current branch and main/master (if applicable)
 --git.branch=BRANCH   Include git diff between given branch and master/main (for PR review)
 ```
 
