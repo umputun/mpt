@@ -44,25 +44,38 @@ func (e *defaultGitExecutor) CommandRun(cmd *exec.Cmd) error {
 // default executor instance
 var executor GitExecutor = &defaultGitExecutor{}
 
+// getCommandOutputTrimmed executes the given command and returns trimmed output
+func getCommandOutputTrimmed(cmd *exec.Cmd, errorContext string) (string, error) {
+	output, err := executor.CommandOutput(cmd)
+	if err != nil {
+		lgr.Printf("[WARN] %s: %v", errorContext, err)
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 // WithGitDiff adds uncommitted changes from git diff to the prompt
 // Creates a temporary file with the diff output and adds it to the files to process
 func (b *Builder) WithGitDiff() (*Builder, error) {
+	// first try to get uncommitted changes
 	tempFile, description, err := processGitDiff(true, "")
 	if err != nil {
 		return b, err
 	}
 
+	// early return if we have uncommitted changes
 	if tempFile != "" {
-		// add temporary file to cleanup list
-		gitCleanupFiles = append(gitCleanupFiles, tempFile)
+		return b.addGitDiffFile(tempFile, description), nil
+	}
 
-		// add the file to the list of files to include
-		b.files = append(b.files, tempFile)
+	// no uncommitted changes, try branch diff
+	tempFile, description, err = b.tryBranchDiff()
+	if err != nil {
+		return b, err
+	}
 
-		// prepend a description of the git diff to the prompt
-		if b.baseText != "" {
-			b.baseText = fmt.Sprintf("I'm providing %s for context.\n\n%s", description, b.baseText)
-		}
+	if tempFile != "" {
+		return b.addGitDiffFile(tempFile, description), nil
 	}
 
 	return b, nil
@@ -91,7 +104,54 @@ func (b *Builder) WithGitBranchDiff(branch string) (*Builder, error) {
 	return b, nil
 }
 
-// var to store files to cleanup
+// var to store files to cleanup// tryBranchDiff attempts to get diff between current branch and default branch
+func (b *Builder) tryBranchDiff() (tempFile, description string, err error) {
+	currentBranch := getCurrentBranch()
+	defaultBranch := getDefaultBranch()
+
+	// sanitize and validate current branch
+	if currentBranch != "" {
+		currentBranch = sanitizeBranchName(currentBranch)
+		if currentBranch == "" {
+			lgr.Printf("[WARN] invalid current branch name, skipping branch comparison")
+			return "", "", nil
+		}
+	}
+
+	// sanitize and validate default branch
+	if defaultBranch != "" {
+		defaultBranch = sanitizeBranchName(defaultBranch)
+		if defaultBranch == "" {
+			lgr.Printf("[WARN] invalid default branch name, skipping branch comparison")
+			return "", "", nil
+		}
+	}
+
+	// check if we're on a different branch from the default
+	if currentBranch == "" || defaultBranch == "" || currentBranch == defaultBranch {
+		return "", "", nil
+	}
+
+	lgr.Printf("[DEBUG] no uncommitted changes, showing diff between %s and %s", defaultBranch, currentBranch)
+	return processGitDiff(false, currentBranch)
+}
+
+// addGitDiffFile adds the git diff file to the builder
+func (b *Builder) addGitDiffFile(tempFile, description string) *Builder {
+	// add temporary file to cleanup list
+	gitCleanupFiles = append(gitCleanupFiles, tempFile)
+
+	// add the file to the list of files to include
+	b.files = append(b.files, tempFile)
+
+	// prepend a description of the git diff to the prompt
+	if b.baseText != "" {
+		b.baseText = fmt.Sprintf("I'm providing %s for context.\n\n%s", description, b.baseText)
+	}
+
+	return b
+}
+
 var gitCleanupFiles []string
 
 // CleanupGitDiffFiles removes all temporary git diff files
@@ -146,7 +206,7 @@ func processGitDiff(isDiff bool, branchName string) (tempFilePath, diffDescripti
 		}
 		// use separate args for diff command with branch comparison
 		diffCmd = executor.Command("git", "diff", defaultBranch+"..."+sanitizedBranch) // #nosec G204 - sanitizeBranchName ensures the input is safe
-		diffDescription = fmt.Sprintf("git diff between %s and %s", defaultBranch, sanitizedBranch)
+		diffDescription = fmt.Sprintf("git diff between %s and %s branches", defaultBranch, sanitizedBranch)
 	}
 
 	// execute the git command and capture output
@@ -170,8 +230,16 @@ func processGitDiff(isDiff bool, branchName string) (tempFilePath, diffDescripti
 	return tempFile, diffDescription, nil
 }
 
-// getDefaultBranch tries to determine the default branch (main or master) for the repository
+// getDefaultBranch tries to determine the default branch (main or master) for the repository.
+// It first checks git config for init.defaultBranch, then looks for main, and finally falls back to master.
 func getDefaultBranch() string {
+	// try to get the default branch from git config
+	cmd := executor.Command("git", "config", "--get", "init.defaultBranch")
+	defaultBranch, err := getCommandOutputTrimmed(cmd, "failed to get default branch from git config")
+	if err == nil && defaultBranch != "" && checkBranchExists(defaultBranch) {
+		return defaultBranch
+	}
+
 	// check if main branch exists
 	if checkBranchExists("main") {
 		return "main"
@@ -185,6 +253,27 @@ func getDefaultBranch() string {
 func checkBranchExists(branch string) bool {
 	cmd := executor.Command("git", "rev-parse", "--verify", branch)
 	return executor.CommandRun(cmd) == nil
+}
+
+// getCurrentBranch returns the current git branch name.
+// It first tries the modern git approach with --show-current flag,
+// then falls back to using rev-parse --abbrev-ref HEAD for older git versions.
+// Returns an empty string if the current branch cannot be determined.
+func getCurrentBranch() string {
+	// try modern git version first
+	cmd := executor.Command("git", "branch", "--show-current")
+	output, err := getCommandOutputTrimmed(cmd, "failed to get current git branch using --show-current")
+	if err == nil {
+		return output
+	}
+
+	// fallback to older git versions that don't have --show-current
+	cmd = executor.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	output, err = getCommandOutputTrimmed(cmd, "failed to get current git branch using rev-parse fallback")
+	if err != nil {
+		return ""
+	}
+	return output
 }
 
 // sanitizeBranchName ensures the branch name is a valid git reference
