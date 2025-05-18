@@ -681,6 +681,107 @@ mpt --mcp.server --openai.enabled --anthropic.enabled --google.enabled
 
 When run in MCP server mode, MPT communicates with the MCP client using the Model Context Protocol over standard input/output. The client can then use MPT's multiple providers as if they were a single provider, with MPT handling all the provider-specific details.
 
+### Configuring MPT in Claude Desktop
+
+To use MPT as an MCP server in Claude Desktop, add it to your MCP client configuration file (`~/.config/claude/claude_desktop_config.json`):
+
+```json
+{
+  "mpt": {
+    "command": "mpt",
+    "args": ["--mcp.server"],
+    "name": "MPT MCP Server",
+    "description": "Multi-Provider Tool for accessing multiple LLM providers",
+    "version": "latest",
+    "env": {
+      "OPENAI_API_KEY": "your-openai-api-key",
+      "ANTHROPIC_API_KEY": "your-anthropic-api-key",
+      "GOOGLE_API_KEY": "your-google-api-key"
+    }
+  }
+}
+```
+
+For a more specific configuration with selected providers and settings:
+
+```json
+{
+  "mpt": {
+    "command": "mpt",
+    "args": [
+      "--mcp.server",
+      "--openai.enabled",
+      "--openai.model=gpt-4o",
+      "--anthropic.enabled",
+      "--anthropic.model=claude-3-7-sonnet-20250219",
+      "--google.enabled",
+      "--google.model=gemini-2.5-pro-exp-03-25"
+    ],
+    "name": "MPT MCP Server",
+    "description": "Multi-Provider Tool for accessing OpenAI, Anthropic, and Google models",
+    "version": "latest",
+    "env": {
+      "OPENAI_API_KEY": "your-openai-api-key",
+      "ANTHROPIC_API_KEY": "your-anthropic-api-key",
+      "GOOGLE_API_KEY": "your-google-api-key",
+      "MCP_SERVER_NAME": "Multi-Provider AI Tool"
+    }
+  }
+}
+```
+
+### Using MPT in Claude
+
+Once configured, MPT runs as a focused MCP server that provides multi-provider text generation. Unlike some MCP servers that expose file systems or other resources, MPT's MCP mode is intentionally simple - it focuses solely on sending prompts to multiple AI providers and returning their responses.
+
+The `mpt_generate` tool accepts a single `prompt` parameter that should contain both your question/request and any context (like code) you want to analyze. This design works well with Claude's own context management - Claude handles file access and context building, while MPT handles multi-provider generation.
+
+For workflows requiring extensive file inclusion or directory traversal, consider using MPT's CLI mode instead, which has full file handling capabilities.
+
+Here are some example prompts:
+
+**Simple question without context:**
+```
+Use the mpt_generate tool to ask all available providers: "Explain quantum computing in simple terms"
+```
+
+**Analyzing code (include both code and question in the prompt):**
+```
+Use mpt_generate with this prompt: "Review this Go function for potential issues and suggest improvements:
+
+func processData(data []string) []string {
+    result := []string{}
+    for _, item := range data {
+        if item != "" {
+            result = append(result, strings.ToUpper(item))
+        }
+    }
+    return result
+}"
+```
+
+**Working with code context from Claude:**
+If you have code visible in Claude's interface, you need to explicitly include it in the prompt:
+```
+Use the MPT tool with this prompt: "Here's my React component:
+
+[paste or reference your code here]
+
+Please analyze it for performance issues and suggest optimizations."
+```
+
+Important: The MCP tool only receives what you explicitly put in the prompt parameter. If you want MPT to analyze code or other context, you must include it as part of the prompt string.
+
+When you use these prompts, Claude will:
+1. Invoke the `mpt_generate` tool with your prompt
+2. MPT sends the prompt (including any context) to all enabled providers (OpenAI, Anthropic, Google, etc.)
+3. MPT collects and returns the results from all providers
+4. Claude presents the multi-provider response to you
+
+Note: Since MPT is running as an MCP server in this mode, it doesn't have the same file inclusion capabilities as the CLI. The context is limited to what's passed in the prompt parameter by the MCP client (Claude).
+
+This allows you to get insights from multiple AI models simultaneously, helping you get more comprehensive answers and identify different perspectives on the same question.
+
 ## Using Environment Variables
 
 You can use environment variables instead of command-line flags:
