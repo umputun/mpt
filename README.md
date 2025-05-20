@@ -170,7 +170,7 @@ You can provide a prompt in the following ways:
 
 ```
 --openai.api-key      OpenAI API key (or OPENAI_API_KEY env var)
---openai.model        OpenAI model to use (default: gpt-4o)
+--openai.model        OpenAI model to use (default: gpt-4.1)
 --openai.enabled      Enable OpenAI provider
 --openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 --openai.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
@@ -788,7 +788,7 @@ You can use environment variables instead of command-line flags:
 
 ```
 OPENAI_API_KEY="your-openai-key"
-OPENAI_MODEL="gpt-4o"
+OPENAI_MODEL="gpt-4.1"
 OPENAI_ENABLED=true
 OPENAI_MAX_TOKENS=16384
 OPENAI_TEMPERATURE=0.7

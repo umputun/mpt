@@ -67,10 +67,22 @@ func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
 		close(resultCh)
 	}()
 
-	// collect results
-	r.results = make([]provider.Result, 0, len(r.providers))
+	// collect results and maintain a consistent, deterministic order
+	// this is critical for:
+	// 1. predictable output formatting in both terminal display and json output
+	// 2. reliable testing (results should be in the same order regardless of completion timing)
+	// 3. downstream processing that may depend on a stable order (e.g., mixing results)
+	resultMap := make(map[string]provider.Result)
 	for result := range resultCh {
-		r.results = append(r.results, result)
+		resultMap[result.Provider] = result
+	}
+	
+	// rebuild results slice maintaining the original provider order from r.providers
+	r.results = make([]provider.Result, 0, len(r.providers))
+	for _, p := range r.providers {
+		if result, ok := resultMap[p.Name()]; ok {
+			r.results = append(r.results, result)
+		}
 	}
 
 	// check if all providers failed and collect all errors

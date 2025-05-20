@@ -291,7 +291,8 @@ func sanitizeBranchName(branch string) string {
 		}
 	}
 
-	// verify it's a valid git reference by checking if it exists
+	// at this point, the branch name is safe for command-line use
+	// now verify it's a valid git reference by checking if it exists
 	if !isValidGitRef(branch) {
 		return ""
 	}
@@ -299,14 +300,17 @@ func sanitizeBranchName(branch string) string {
 	return branch
 }
 
-// isValidGitRef checks if a git reference is valid without executing it
+// isValidGitRef checks if a git reference is valid
+// Note: This function should ONLY be called with sanitized input from sanitizeBranchName
 func isValidGitRef(ref string) bool {
-	cmd := executor.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+ref) // #nosec G204 - only called after sanitization
-	if executor.CommandRun(cmd) == nil {
+	// use array-based command construction to avoid shell injection
+	// this ensures arguments are properly escaped
+	cmdLocal := executor.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+ref)
+	if executor.CommandRun(cmdLocal) == nil {
 		return true
 	}
 
-	// also check if it's a valid remote branch
-	cmd = executor.Command("git", "show-ref", "--verify", "--quiet", "refs/remotes/"+ref) // #nosec G204 - only called after sanitization
-	return executor.CommandRun(cmd) == nil
+	// also check if it's a valid remote branch, still using array-based construction
+	cmdRemote := executor.Command("git", "show-ref", "--verify", "--quiet", "refs/remotes/"+ref)
+	return executor.CommandRun(cmdRemote) == nil
 }

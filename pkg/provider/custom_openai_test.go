@@ -87,7 +87,7 @@ func mockCustomOpenAIServer(t *testing.T, jsonResponse string) (*openai.Client, 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte(jsonResponse))
-		_ = err
+		assert.NoError(t, err, "failed to write test server response")
 	}))
 
 	// create a custom client configuration
@@ -179,7 +179,7 @@ func TestCustomOpenAI_Generate_APIError(t *testing.T) {
 				"code": "invalid_api_key"
 			}
 		}`))
-		_ = err
+		assert.NoError(t, err, "failed to write test server response")
 	}))
 	defer server.Close()
 
