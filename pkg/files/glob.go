@@ -59,19 +59,36 @@ func LoadContent(patterns, excludePatterns []string, maxFileSize int64) (string,
 	// get sorted list of files
 	sortedFiles := getSortedFiles(matchedFiles)
 	if len(sortedFiles) == 0 {
-		if len(patterns) > 0 && len(excludePatterns) == 0 {
-			// check if any original file paths existed but were skipped due to size
-			for _, pattern := range patterns {
-				if fileExists(pattern) && isFileTooLarge(pattern, maxFileSize) {
-					return "", fmt.Errorf("file '%s' exceeds the size limit of %d bytes. Use --max-file-size flag to increase the limit", pattern, maxFileSize)
-				}
-			}
+		// check if we should report file size errors
+		if err := checkFileSizeErrors(patterns, excludePatterns, maxFileSize); err != nil {
+			return "", err
 		}
 		return "", fmt.Errorf("no files matched the provided patterns. Try a different pattern such as \"./.../*.go\" or \"./**/*.go\" for recursive matching")
 	}
 
 	// format and combine file contents
 	return formatFileContents(sortedFiles)
+}
+
+// checkFileSizeErrors checks if any direct file paths were skipped due to size limits
+func checkFileSizeErrors(patterns, excludePatterns []string, maxFileSize int64) error {
+	// only check for size errors when no exclude patterns are provided
+	if len(patterns) == 0 || len(excludePatterns) > 0 {
+		return nil
+	}
+
+	// check if any original file paths existed but were skipped due to size
+	for _, pattern := range patterns {
+		if !fileExists(pattern) {
+			continue
+		}
+
+		if tooLarge, fileSize := isFileTooLarge(pattern, maxFileSize); tooLarge {
+			return fmt.Errorf("file '%s' exceeds the size limit of %d bytes (file size: %d bytes). Use --max-file-size flag to increase the limit", pattern, maxFileSize, fileSize)
+		}
+	}
+
+	return nil
 }
 
 // processBashStylePattern handles patterns with ** using the doublestar library
@@ -643,10 +660,11 @@ func fileExists(path string) bool {
 }
 
 // isFileTooLarge checks if a file's size exceeds the maximum allowed size
-func isFileTooLarge(path string, maxFileSize int64) bool {
+// returns true if file is too large and the actual file size
+func isFileTooLarge(path string, maxFileSize int64) (tooLarge bool, fileSize int64) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return false
+		return false, 0
 	}
-	return info.Size() > maxFileSize
+	return info.Size() > maxFileSize, info.Size()
 }

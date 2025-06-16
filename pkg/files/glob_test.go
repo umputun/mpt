@@ -1,6 +1,7 @@
 package files
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -66,7 +67,7 @@ func TestGitIgnoreRespect(t *testing.T) {
 	assert.NotContains(t, result, "debug logs", "Should respect src/logs/ pattern")
 	assert.NotContains(t, result, "package main", "Should respect /build/ pattern")
 	assert.NotContains(t, result, "package util", "Should respect vendor/ pattern")
-	
+
 	// negation patterns are not supported, so should not include this file
 	assert.NotContains(t, result, "important log content", "Should ignore negation patterns")
 
@@ -716,6 +717,8 @@ func TestProcessPatterns(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "exceeds the size limit")
 		assert.Contains(t, err.Error(), "--max-file-size flag")
+		// check that the error message includes the actual file size
+		assert.Contains(t, err.Error(), fmt.Sprintf("(file size: %d bytes)", size1)) // should contain actual file size
 		assert.Empty(t, result)
 
 		// set max file size to exclude just the larger file
