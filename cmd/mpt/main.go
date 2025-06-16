@@ -385,7 +385,6 @@ func anyProvidersEnabled(opts *options) bool {
 		opts.Google.Enabled || opts.Custom.Enabled
 }
 
-
 // initializeCustomProvider initializes the custom provider
 func initializeCustomProvider(opts *options) (provider.Provider, error) {
 	// validate required fields
@@ -414,7 +413,7 @@ func initializeCustomProvider(opts *options) (provider.Provider, error) {
 			opts.Custom.Name, opts.Custom.URL, opts.Custom.Model, opts.Custom.Temperature)
 		return customProvider, nil
 	}
-	
+
 	// provider failed to initialize
 	return nil, fmt.Errorf("custom provider %s failed to initialize", opts.Custom.Name)
 }

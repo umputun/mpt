@@ -76,7 +76,7 @@ func (r *Runner) Run(ctx context.Context, prompt string) (string, error) {
 	for result := range resultCh {
 		resultMap[result.Provider] = result
 	}
-	
+
 	// rebuild results slice maintaining the original provider order from r.providers
 	r.results = make([]provider.Result, 0, len(r.providers))
 	for _, p := range r.providers {
