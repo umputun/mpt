@@ -58,14 +58,14 @@ type openAIOpts struct {
 	APIKey      string    `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
 	Model       string    `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4.1"`
 	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
-	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
+	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.1"`
 }
 
 // anthropicOpts defines options for Anthropic provider
 type anthropicOpts struct {
 	Enabled   bool      `long:"enabled" env:"ENABLED" description:"enable Anthropic provider"`
 	APIKey    string    `long:"api-key" env:"API_KEY" description:"Anthropic API key"`
-	Model     string    `long:"model" env:"MODEL" description:"Anthropic model" default:"claude-3-7-sonnet-20250219"`
+	Model     string    `long:"model" env:"MODEL" description:"Anthropic model" default:"claude-sonnet-4-20250514"`
 	MaxTokens SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
 }
 
@@ -73,7 +73,7 @@ type anthropicOpts struct {
 type googleOpts struct {
 	Enabled   bool      `long:"enabled" env:"ENABLED" description:"enable Google provider"`
 	APIKey    string    `long:"api-key" env:"API_KEY" description:"Google API key"`
-	Model     string    `long:"model" env:"MODEL" description:"Google model" default:"gemini-2.5-pro-exp-03-25"`
+	Model     string    `long:"model" env:"MODEL" description:"Google model" default:"gemini-2.5-pro-preview-06-05"`
 	MaxTokens SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
 }
 
