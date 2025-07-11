@@ -17,6 +17,7 @@ type Builder struct {
 	files       []string
 	excludes    []string
 	maxFileSize int64
+	force       bool
 }
 
 // New creates a new prompt builder with the provided base text.
@@ -49,6 +50,12 @@ func (b *Builder) WithMaxFileSize(maxFileSize int64) *Builder {
 	return b
 }
 
+// WithForce enables force mode to skip all exclusion patterns.
+func (b *Builder) WithForce(force bool) *Builder {
+	b.force = force
+	return b
+}
+
 // Build constructs the final prompt string by combining the base text with
 // content from the matched files. Returns an error if file loading fails.
 func (b *Builder) Build() (string, error) {
@@ -61,7 +68,7 @@ func (b *Builder) Build() (string, error) {
 			lgr.Printf("[DEBUG] excluding patterns: %v", b.excludes)
 		}
 
-		fileContent, err := files.LoadContent(b.files, b.excludes, b.maxFileSize)
+		fileContent, err := files.LoadContent(b.files, b.excludes, b.maxFileSize, b.force)
 		if err != nil {
 			return "", fmt.Errorf("failed to load files: %w", err)
 		}

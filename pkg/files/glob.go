@@ -20,13 +20,25 @@ const DefaultMaxFileSize = 64 * 1024
 // Exclude patterns can be provided to filter out unwanted files.
 // The maxFileSize parameter controls the maximum size of individual files to process.
 // Git ignore patterns from .gitignore files are automatically respected.
-func LoadContent(patterns, excludePatterns []string, maxFileSize int64) (string, error) {
+// If force is true, all exclusion patterns (including .gitignore and common patterns) are skipped.
+func LoadContent(patterns, excludePatterns []string, maxFileSize int64, force bool) (string, error) {
 	if len(patterns) == 0 {
 		return "", nil
 	}
 
+	// check if all patterns are concrete file paths (no wildcards)
+	if !force && allConcretePaths(patterns) {
+		lgr.Printf("[DEBUG] all patterns are concrete file paths, enabling force mode automatically")
+		force = true
+	}
+
 	// prepare all exclude patterns
-	allExcludePatterns := prepareExcludePatterns(excludePatterns)
+	var allExcludePatterns []string
+	if !force {
+		allExcludePatterns = prepareExcludePatterns(excludePatterns)
+	} else {
+		lgr.Printf("[DEBUG] force mode enabled, skipping all exclusion patterns")
+	}
 
 	// map to store all matched file paths
 	matchedFiles := make(map[string]struct{})
@@ -53,8 +65,12 @@ func LoadContent(patterns, excludePatterns []string, maxFileSize int64) (string,
 		}
 	}
 
+	// track original count before exclusions
+	originalCount := len(matchedFiles)
+
 	// apply exclusion patterns if any
 	matchedFiles = applyExcludePatterns(matchedFiles, allExcludePatterns)
+	excludedCount := originalCount - len(matchedFiles)
 
 	// get sorted list of files
 	sortedFiles := getSortedFiles(matchedFiles)
@@ -62,6 +78,11 @@ func LoadContent(patterns, excludePatterns []string, maxFileSize int64) (string,
 		// check if we should report file size errors
 		if err := checkFileSizeErrors(patterns, excludePatterns, maxFileSize); err != nil {
 			return "", err
+		}
+
+		// provide helpful error message based on what happened
+		if excludedCount > 0 && !force {
+			return "", fmt.Errorf("no files matched after exclusions (excluded %d files). Files may be ignored by .gitignore or common patterns (vendor/**, node_modules/**, etc). Use --force to skip exclusions", excludedCount)
 		}
 		return "", fmt.Errorf("no files matched the provided patterns. Try a different pattern such as \"./.../*.go\" or \"./**/*.go\" for recursive matching")
 	}
@@ -487,7 +508,6 @@ var commonIgnorePatterns = []string{
 	"**/*.pyc",           // Python compiled files
 	"**/target/**",       // Rust, Maven
 	"**/dist/**",         // Many build systems
-	"**/build/**",        // Many build systems
 	"**/.gradle/**",      // Gradle
 
 	// IDE and editor files
@@ -667,4 +687,20 @@ func isFileTooLarge(path string, maxFileSize int64) (tooLarge bool, fileSize int
 		return false, 0
 	}
 	return info.Size() > maxFileSize, info.Size()
+}
+
+// allConcretePaths checks if all patterns are concrete file paths without wildcards
+func allConcretePaths(patterns []string) bool {
+	for _, pattern := range patterns {
+		if !isConcretePath(pattern) {
+			return false
+		}
+	}
+	return true
+}
+
+// isConcretePath checks if a pattern is a concrete file path without wildcards
+func isConcretePath(pattern string) bool {
+	// check for common glob wildcards
+	return !strings.ContainsAny(pattern, "*?[]{}") && !strings.Contains(pattern, "**") && !strings.Contains(pattern, "/...")
 }

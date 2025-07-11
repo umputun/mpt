@@ -90,6 +90,7 @@ This integrated approach is more efficient and convenient than the manual proces
 - **Smart Pattern Matching**: Include files using standard glob patterns, directory paths, bash-style wildcards (`**/*.go`), or Go-style patterns (`pkg/...`)
 - **Exclusion Filtering**: Filter out unwanted files with the same pattern matching syntax (`--exclude "**/tests/**"`)
 - **Smart Exclusions**: Automatically respects .gitignore patterns and commonly ignored directories
+- **Force Mode**: Override all exclusions with `--force`, or automatic bypass for concrete file paths
 - **Stdin Integration**: Pipe content directly from other tools for AI analysis
 - **Customizable Execution**: Configure timeouts, token limits, and models per provider
 - **Clean Output Formatting**: Provider-specific headers (or none when using a single provider)
@@ -238,6 +239,8 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
                       - Go-style recursive patterns like "pkg/..." or "cmd/.../*.go"
 -x, --exclude         Patterns to exclude from file matching (can be used multiple times)
                       Uses the same pattern syntax as --file
+--force               Force loading files by skipping all exclusion patterns
+                      (including .gitignore and common patterns like vendor/, node_modules/)
 --git.diff            Include git diff (uncommitted changes) in the prompt context
 --git.branch          Include git diff between given branch and main/master (for PR review)
 -t, --timeout         Timeout duration (e.g., 60s, 2m) (default: 60s)
@@ -403,6 +406,31 @@ MPT automatically excludes common directories and files you typically don't want
    - Explicit `--exclude` patterns take precedence over both common patterns and `.gitignore` patterns
 
 This means you don't need to manually exclude common directories like `.git`, `node_modules`, or build artifacts - they're automatically filtered out even without a `.gitignore` file.
+
+#### Force Mode with `--force`
+
+Sometimes you need to include files that would normally be excluded by the smart exclusions. The `--force` flag skips all exclusion patterns:
+
+```bash
+# Force include all files, ignoring .gitignore and common patterns
+mpt --anthropic.enabled --prompt "Analyze this vendor code" \
+    --file "vendor/**/*.go" --force
+
+# Include files from normally ignored directories
+mpt --openai.enabled --prompt "Review build scripts" \
+    --file "build/**" --force
+```
+
+**Automatic Force Mode**: When you specify concrete file paths (without wildcards), force mode is automatically enabled:
+
+```bash
+# These automatically bypass exclusions (no --force needed)
+mpt --prompt "Check this config" --file "./build/config.json"
+mpt --prompt "Review vendor lib" --file "vendor/lib.go" --file "node_modules/pkg/index.js"
+
+# This will NOT auto-enable force (contains wildcards)
+mpt --prompt "Check configs" --file "./build/*.json"
+```
 
 #### Common Pattern Examples
 
