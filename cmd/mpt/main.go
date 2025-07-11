@@ -39,6 +39,7 @@ type options struct {
 	Excludes    []string      `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
 	Timeout     time.Duration `short:"t" long:"timeout" default:"60s" description:"timeout duration"`
 	MaxFileSize SizeValue     `long:"max-file-size" env:"MAX_FILE_SIZE" default:"65536" description:"maximum size of individual files to process in bytes (default: 64KB, supports k/m suffixes)"`
+	Force       bool          `long:"force" description:"force loading files by skipping all exclusion patterns (including .gitignore and common patterns)"`
 
 	// mix options
 	MixEnabled  bool   `long:"mix" env:"MIX" description:"enable mix (merge) results from all providers"`
@@ -237,7 +238,8 @@ func buildFullPrompt(opts *options) error {
 	builder := prompt.New(opts.Prompt).
 		WithFiles(opts.Files).
 		WithExcludes(opts.Excludes).
-		WithMaxFileSize(int64(opts.MaxFileSize))
+		WithMaxFileSize(int64(opts.MaxFileSize)).
+		WithForce(opts.Force)
 
 	// add git diff if requested
 	var err error
