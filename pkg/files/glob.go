@@ -278,6 +278,8 @@ func getSortedFiles(matchedFiles map[string]struct{}) []string {
 	return sortedFiles
 }
 
+const maxTotalOutputSize = 10 * 1024 * 1024 // 10MB max total output size to prevent memory issues
+
 // formatFileContents creates a formatted string with file contents and appropriate headers
 func formatFileContents(files []string) (string, error) {
 	var sb strings.Builder
@@ -286,7 +288,8 @@ func formatFileContents(files []string) (string, error) {
 		return "", fmt.Errorf("failed to get current working directory: %w", err)
 	}
 
-	for _, file := range files {
+	totalBytesWritten := 0
+	for i, file := range files {
 		content, err := os.ReadFile(file) // #nosec G304 - file paths are validated earlier
 		if err != nil {
 			return "", fmt.Errorf("failed to read file %s: %w", file, err)
@@ -301,9 +304,19 @@ func formatFileContents(files []string) (string, error) {
 		// determine the appropriate comment style based on file extension
 		fileHeader := getFileHeader(relPath)
 
+		// check if adding this file would exceed the total output limit
+		fileSize := len(fileHeader) + len(content) + 2 // +2 for \n\n
+		if totalBytesWritten+fileSize > maxTotalOutputSize {
+			remainingFiles := len(files) - i
+			lgr.Printf("[WARN] reached total output size limit of %d bytes, skipping remaining %d files", maxTotalOutputSize, remainingFiles)
+			sb.WriteString(fmt.Sprintf("\n// ... output truncated (reached %d MB limit, %d files remaining) ...\n", maxTotalOutputSize/1024/1024, remainingFiles))
+			break
+		}
+
 		sb.WriteString(fileHeader)
 		sb.Write(content)
 		sb.WriteString("\n\n")
+		totalBytesWritten += fileSize
 	}
 
 	return sb.String(), nil

@@ -46,14 +46,22 @@ var executor GitExecutor = &defaultGitExecutor{}
 
 // gitDiffer handles git diff operations and temporary file management
 type gitDiffer struct {
-	executor  GitExecutor
-	tempFiles []string
+	executor GitExecutor
+	tempDir  string
 }
 
 // newGitDiffer creates a new gitDiffer with the default executor (for internal use)
 func newGitDiffer() *gitDiffer {
+	// create a unique temp directory for this session
+	tempDir, err := os.MkdirTemp("", "mpt-git-diff-*")
+	if err != nil {
+		lgr.Printf("[WARN] failed to create temp directory, using system temp: %v", err)
+		tempDir = os.TempDir()
+	}
+
 	return &gitDiffer{
 		executor: executor,
+		tempDir:  tempDir,
 	}
 }
 
@@ -62,19 +70,18 @@ func NewGitDiffer() GitDiffProcessor {
 	return newGitDiffer()
 }
 
-// Cleanup removes all temporary files created by this gitDiffer
+// Cleanup removes the temporary directory and all its contents
 func (g *gitDiffer) Cleanup() {
-	for _, filePath := range g.tempFiles {
-		if err := os.Remove(filePath); err != nil {
-			if !os.IsNotExist(err) {
-				lgr.Printf("[WARN] failed to remove temporary git diff file: %v", err)
-			}
-		} else {
-			lgr.Printf("[DEBUG] removed temporary git diff file: %s", filePath)
-		}
+	// skip if using system temp dir (fallback case)
+	if g.tempDir == os.TempDir() {
+		return
 	}
-	// clear the list
-	g.tempFiles = []string{}
+
+	if err := os.RemoveAll(g.tempDir); err != nil {
+		lgr.Printf("[WARN] failed to remove temporary directory %s: %v", g.tempDir, err)
+	} else {
+		lgr.Printf("[DEBUG] removed temporary directory: %s", g.tempDir)
+	}
 }
 
 // TryBranchDiff attempts to get diff between current branch and default branch
@@ -127,15 +134,9 @@ func (g *gitDiffer) ProcessGitDiff(isDiff bool, branchName string) (tempFilePath
 		return "", "", fmt.Errorf("git executable not found: %w", err)
 	}
 
-	// create temporary directory if it doesn't exist
-	tempDir := os.TempDir()
-	if _, err := os.Stat(tempDir); err != nil {
-		return "", "", fmt.Errorf("failed to access temp directory: %w", err)
-	}
-
 	// generate a unique filename for the diff output
 	timestamp := time.Now().Format("20060102-150405")
-	tempFile := filepath.Join(tempDir, fmt.Sprintf("mpt-git-diff-%s.txt", timestamp))
+	tempFile := filepath.Join(g.tempDir, fmt.Sprintf("mpt-git-diff-%s.txt", timestamp))
 
 	// generate diff based on the provided option
 	var diffCmd *exec.Cmd
@@ -175,9 +176,6 @@ func (g *gitDiffer) ProcessGitDiff(isDiff bool, branchName string) (tempFilePath
 	if err := os.WriteFile(tempFile, diffOutput, 0o600); err != nil {
 		return "", "", fmt.Errorf("failed to write git diff to temporary file: %w", err)
 	}
-
-	// track the temp file for cleanup
-	g.tempFiles = append(g.tempFiles, tempFile)
 
 	lgr.Printf("[INFO] wrote git diff to temporary file: %s", tempFile)
 	return tempFile, diffDescription, nil

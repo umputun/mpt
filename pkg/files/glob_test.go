@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1013,5 +1014,29 @@ func TestProcessPatterns(t *testing.T) {
 				assert.Equal(t, tt.expected, result)
 			})
 		}
+	})
+
+	t.Run("total output size limit", func(t *testing.T) {
+		// create a temp directory with many large files
+		tempDir := t.TempDir()
+
+		// create files that will exceed the 10MB limit when combined
+		largeContent := strings.Repeat("This is a large file content. ", 50000) // ~1.5MB per file
+		for i := 0; i < 10; i++ {
+			filePath := filepath.Join(tempDir, fmt.Sprintf("large%d.txt", i))
+			err := os.WriteFile(filePath, []byte(largeContent), 0o644)
+			require.NoError(t, err)
+		}
+
+		// load all files - should truncate output
+		result, err := LoadContent([]string{filepath.Join(tempDir, "*.txt")}, nil, 10*1024*1024, false)
+		require.NoError(t, err)
+
+		// verify output was truncated
+		assert.Contains(t, result, "... output truncated (reached 10 MB limit")
+		assert.Contains(t, result, "files remaining) ...")
+
+		// verify the output size is under the limit
+		assert.LessOrEqual(t, len(result), 10*1024*1024+200) // +200 for the truncation message
 	})
 }

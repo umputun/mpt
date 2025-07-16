@@ -431,8 +431,8 @@ func TestGitDiffer_ProcessGitDiff(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEmpty(t, tempFile)
 		assert.Equal(t, "git diff (uncommitted changes)", desc)
-		assert.Len(t, differ.tempFiles, 1)
-		assert.Equal(t, tempFile, differ.tempFiles[0])
+		assert.Contains(t, tempFile, differ.tempDir)
+		assert.FileExists(t, tempFile)
 
 		// verify calls
 		lookPathCalls := mockExec.LookPathCalls()
@@ -467,7 +467,7 @@ func TestGitDiffer_ProcessGitDiff(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, tempFile)
 		assert.Empty(t, desc)
-		assert.Empty(t, differ.tempFiles)
+		// no temp files created for empty diff
 
 		// verify calls were made even for empty diff
 		lookPathCalls := mockExec.LookPathCalls()
@@ -482,23 +482,46 @@ func TestGitDiffer_ProcessGitDiff(t *testing.T) {
 }
 
 func TestGitDiffer_Cleanup(t *testing.T) {
-	// create a fake temp file to test cleanup
-	dir := t.TempDir()
-	tempFile := filepath.Join(dir, "mpt-git-diff-test.txt")
-	err := os.WriteFile(tempFile, []byte("test content"), 0o600)
-	require.NoError(t, err)
+	t.Run("cleanup removes temp directory", func(t *testing.T) {
+		// create a gitDiffer which will create its own temp dir
+		differ := newGitDiffer()
+		tempDir := differ.tempDir
 
-	// create a gitDiffer and add file to its cleanup list
-	differ := newGitDiffer()
-	differ.tempFiles = append(differ.tempFiles, tempFile)
+		// verify the directory exists
+		_, err := os.Stat(tempDir)
+		require.NoError(t, err, "Temp directory should exist")
 
-	// test cleanup
-	differ.Cleanup()
+		// create some test files in the temp directory
+		testFile1 := filepath.Join(tempDir, "test1.txt")
+		testFile2 := filepath.Join(tempDir, "test2.txt")
+		require.NoError(t, os.WriteFile(testFile1, []byte("test1"), 0o600))
+		require.NoError(t, os.WriteFile(testFile2, []byte("test2"), 0o600))
 
-	// verify the file is removed
-	_, err = os.Stat(tempFile)
-	assert.True(t, os.IsNotExist(err), "File should have been removed")
+		// test cleanup
+		differ.Cleanup()
 
-	// verify cleanup list is empty
-	assert.Empty(t, differ.tempFiles, "Cleanup list should be empty")
+		// verify the entire directory is removed
+		_, err = os.Stat(tempDir)
+		assert.True(t, os.IsNotExist(err), "Temp directory should have been removed")
+	})
+
+	t.Run("cleanup skips system temp dir", func(t *testing.T) {
+		// create a gitDiffer with system temp dir (fallback case)
+		differ := &gitDiffer{
+			executor: executor,
+			tempDir:  os.TempDir(),
+		}
+
+		// create a test file in system temp
+		testFile := filepath.Join(os.TempDir(), "mpt-test-should-remain.txt")
+		require.NoError(t, os.WriteFile(testFile, []byte("test"), 0o600))
+		defer os.Remove(testFile) // cleanup after test
+
+		// test cleanup
+		differ.Cleanup()
+
+		// verify the file still exists (cleanup should skip system temp)
+		_, err := os.Stat(testFile)
+		assert.NoError(t, err, "File in system temp should not be removed")
+	})
 }
