@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/umputun/mpt/pkg/provider/enum"
 )
 
 func TestResult_Format(t *testing.T) {
@@ -101,6 +103,215 @@ func TestSanitizeError(t *testing.T) {
 				}
 			} else {
 				assert.Equal(t, tt.inputErr.Error(), result.Error(), "Non-sensitive errors should be unchanged")
+			}
+		})
+	}
+}
+
+func TestOptions_Validate(t *testing.T) {
+	tests := []struct {
+		name         string
+		opts         Options
+		providerType enum.ProviderType
+		wantErr      bool
+		errContains  string
+	}{
+		{
+			name: "valid options",
+			opts: Options{
+				APIKey:  "test-key",
+				Enabled: true,
+				Model:   "test-model",
+			},
+			providerType: enum.ProviderTypeOpenAI,
+			wantErr:      false,
+		},
+		{
+			name: "not enabled",
+			opts: Options{
+				APIKey:  "test-key",
+				Enabled: false,
+				Model:   "test-model",
+			},
+			providerType: enum.ProviderTypeOpenAI,
+			wantErr:      true,
+			errContains:  "is not enabled",
+		},
+		{
+			name: "missing api key",
+			opts: Options{
+				Enabled: true,
+				Model:   "test-model",
+			},
+			providerType: enum.ProviderTypeAnthropic,
+			wantErr:      true,
+			errContains:  "api key for anthropic provider is required",
+		},
+		{
+			name: "missing model",
+			opts: Options{
+				APIKey:  "test-key",
+				Enabled: true,
+			},
+			providerType: enum.ProviderTypeGoogle,
+			wantErr:      true,
+			errContains:  "model for google provider is required",
+		},
+		{
+			name: "empty api key",
+			opts: Options{
+				APIKey:  "",
+				Enabled: true,
+				Model:   "test-model",
+			},
+			providerType: enum.ProviderTypeOpenAI,
+			wantErr:      true,
+			errContains:  "api key for openai provider is required",
+		},
+		{
+			name: "empty model",
+			opts: Options{
+				APIKey:  "test-key",
+				Enabled: true,
+				Model:   "",
+			},
+			providerType: enum.ProviderTypeAnthropic,
+			wantErr:      true,
+			errContains:  "model for anthropic provider is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.opts.Validate(tt.providerType)
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestCreateProvider(t *testing.T) {
+	tests := []struct {
+		name         string
+		providerType enum.ProviderType
+		opts         Options
+		wantErr      bool
+		errContains  string
+		checkType    string // expected provider type name
+	}{
+		{
+			name:         "create openai provider",
+			providerType: enum.ProviderTypeOpenAI,
+			opts: Options{
+				APIKey:      "test-openai-key",
+				Enabled:     true,
+				Model:       "gpt-4",
+				MaxTokens:   1000,
+				Temperature: 0.7,
+			},
+			wantErr:   false,
+			checkType: "OpenAI",
+		},
+		{
+			name:         "create anthropic provider",
+			providerType: enum.ProviderTypeAnthropic,
+			opts: Options{
+				APIKey:    "test-anthropic-key",
+				Enabled:   true,
+				Model:     "claude-3",
+				MaxTokens: 2000,
+			},
+			wantErr:   false,
+			checkType: "Anthropic",
+		},
+		{
+			name:         "create google provider",
+			providerType: enum.ProviderTypeGoogle,
+			opts: Options{
+				APIKey:    "test-google-key",
+				Enabled:   true,
+				Model:     "gemini-pro",
+				MaxTokens: 1500,
+			},
+			wantErr:   false,
+			checkType: "Google",
+		},
+		{
+			name:         "unsupported provider type",
+			providerType: enum.ProviderTypeCustom,
+			opts: Options{
+				APIKey:  "test-key",
+				Enabled: true,
+				Model:   "test-model",
+			},
+			wantErr:     true,
+			errContains: "unsupported provider type",
+		},
+		{
+			name:         "validation failed - no api key",
+			providerType: enum.ProviderTypeOpenAI,
+			opts: Options{
+				Enabled: true,
+				Model:   "gpt-4",
+			},
+			wantErr:     true,
+			errContains: "provider validation failed",
+		},
+		{
+			name:         "validation failed - not enabled",
+			providerType: enum.ProviderTypeAnthropic,
+			opts: Options{
+				APIKey:  "test-key",
+				Enabled: false,
+				Model:   "claude-3",
+			},
+			wantErr:     true,
+			errContains: "provider validation failed",
+		},
+		{
+			name:         "validation failed - no model",
+			providerType: enum.ProviderTypeGoogle,
+			opts: Options{
+				APIKey:  "test-key",
+				Enabled: true,
+			},
+			wantErr:     true,
+			errContains: "provider validation failed",
+		},
+		{
+			name:         "unknown provider type",
+			providerType: enum.ProviderTypeUnknown,
+			opts: Options{
+				APIKey:  "test-key",
+				Enabled: true,
+				Model:   "test-model",
+			},
+			wantErr:     true,
+			errContains: "unsupported provider type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider, err := CreateProvider(tt.providerType, tt.opts)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Nil(t, provider)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, provider)
+				assert.Equal(t, tt.checkType, provider.Name())
+				assert.True(t, provider.Enabled())
 			}
 		})
 	}
