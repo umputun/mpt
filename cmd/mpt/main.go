@@ -234,8 +234,11 @@ func processPrompt(opts *options) error {
 
 // buildFullPrompt loads content from specified files and builds the complete prompt
 func buildFullPrompt(opts *options) error {
+	// create git diff processor
+	gitDiffer := prompt.NewGitDiffer()
+
 	// use the prompt builder to handle file loading and prompt construction
-	builder := prompt.New(opts.Prompt).
+	builder := prompt.New(opts.Prompt, gitDiffer).
 		WithFiles(opts.Files).
 		WithExcludes(opts.Excludes).
 		WithMaxFileSize(int64(opts.MaxFileSize)).
@@ -263,9 +266,6 @@ func buildFullPrompt(opts *options) error {
 	if err != nil {
 		return fmt.Errorf("failed to build prompt: %w", err)
 	}
-
-	// schedule cleanup of git diff files when program exits
-	defer prompt.CleanupGitDiffFiles()
 
 	opts.Prompt = fullPrompt
 	return nil
