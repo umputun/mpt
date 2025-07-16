@@ -287,60 +287,29 @@ func initializeProvider(provType enum.ProviderType, apiKey, model string, maxTok
 	return p, nil
 }
 
+// providerConfig holds configuration for a provider
+type providerConfig struct {
+	enabled   bool
+	provType  enum.ProviderType
+	name      string
+	apiKey    string
+	model     string
+	maxTokens int
+	temp      float32
+}
+
 // initializeProviders creates provider instances from the options
 func initializeProviders(opts *options) ([]provider.Provider, error) {
-	// create slices to hold enabled providers and errors
-	providers := make([]provider.Provider, 0, 4) // pre-allocate for 4 providers (3 standard + 1 custom)
-	providerErrors := make([]string, 0)
-
 	// check if any providers are enabled
 	if !anyProvidersEnabled(opts) {
 		return nil, fmt.Errorf("no providers enabled. Use --<provider>.enabled flag to enable at least one provider (e.g., --openai.enabled)")
 	}
 
+	providers := make([]provider.Provider, 0, 4) // pre-allocate for 4 providers (3 standard + 1 custom)
+	providerErrors := make([]string, 0)
+
 	// initialize standard providers
-	type providerConfig struct {
-		enabled   bool
-		provType  enum.ProviderType
-		name      string
-		apiKey    string
-		model     string
-		maxTokens int
-		temp      float32
-	}
-
-	// define provider configurations
-	standardProviders := []providerConfig{
-		{
-			enabled:   opts.OpenAI.Enabled,
-			provType:  enum.ProviderTypeOpenAI,
-			name:      "OpenAI",
-			apiKey:    opts.OpenAI.APIKey,
-			model:     opts.OpenAI.Model,
-			maxTokens: int(opts.OpenAI.MaxTokens),
-			temp:      opts.OpenAI.Temperature,
-		},
-		{
-			enabled:   opts.Anthropic.Enabled,
-			provType:  enum.ProviderTypeAnthropic,
-			name:      "Anthropic",
-			apiKey:    opts.Anthropic.APIKey,
-			model:     opts.Anthropic.Model,
-			maxTokens: int(opts.Anthropic.MaxTokens),
-			temp:      0.7, // default temperature for Anthropic
-		},
-		{
-			enabled:   opts.Google.Enabled,
-			provType:  enum.ProviderTypeGoogle,
-			name:      "Google",
-			apiKey:    opts.Google.APIKey,
-			model:     opts.Google.Model,
-			maxTokens: int(opts.Google.MaxTokens),
-			temp:      0.7, // default temperature for Google
-		},
-	}
-
-	// initialize each enabled standard provider
+	standardProviders := getStandardProviderConfigs(opts)
 	for _, config := range standardProviders {
 		if !config.enabled {
 			continue
@@ -379,6 +348,39 @@ func initializeProviders(opts *options) ([]provider.Provider, error) {
 	}
 
 	return providers, nil
+}
+
+// getStandardProviderConfigs returns configurations for all standard providers
+func getStandardProviderConfigs(opts *options) []providerConfig {
+	return []providerConfig{
+		{
+			enabled:   opts.OpenAI.Enabled,
+			provType:  enum.ProviderTypeOpenAI,
+			name:      "OpenAI",
+			apiKey:    opts.OpenAI.APIKey,
+			model:     opts.OpenAI.Model,
+			maxTokens: int(opts.OpenAI.MaxTokens),
+			temp:      opts.OpenAI.Temperature,
+		},
+		{
+			enabled:   opts.Anthropic.Enabled,
+			provType:  enum.ProviderTypeAnthropic,
+			name:      "Anthropic",
+			apiKey:    opts.Anthropic.APIKey,
+			model:     opts.Anthropic.Model,
+			maxTokens: int(opts.Anthropic.MaxTokens),
+			temp:      0, // anthropic doesn't use temperature parameter
+		},
+		{
+			enabled:   opts.Google.Enabled,
+			provType:  enum.ProviderTypeGoogle,
+			name:      "Google",
+			apiKey:    opts.Google.APIKey,
+			model:     opts.Google.Model,
+			maxTokens: int(opts.Google.MaxTokens),
+			temp:      0, // google doesn't use temperature parameter
+		},
+	}
 }
 
 // anyProvidersEnabled checks if at least one provider is enabled in the options
@@ -443,35 +445,41 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 		return err
 	}
 
-	// handle mix mode if enabled and we have multiple results
+	// handle mix mode if enabled
 	if opts.MixEnabled && len(providers) > 1 {
-		rawResults := r.GetResults()
-		// only process successful results
-		var successfulResults []provider.Result
-		for _, res := range rawResults {
-			if res.Error == nil {
-				successfulResults = append(successfulResults, res)
-			}
+		mixedResult, err := processMixMode(timeoutCtx, opts, providers, r.GetResults())
+		if err != nil {
+			return fmt.Errorf("failed to mix results: %w", err)
 		}
-
-		// if we have more than one successful result, mix them
-		if len(successfulResults) > 1 {
-			mixedResult, err := mixResults(timeoutCtx, opts, providers, successfulResults)
-			if err != nil {
-				return fmt.Errorf("failed to mix results: %w", err)
-			}
+		if mixedResult != "" {
 			result = mixedResult
 		}
 	}
 
+	// output results
 	if opts.JSON {
-		// output results in JSON format for scripting
 		return outputJSON(result, r.GetResults())
 	}
-
-	// standard text output
 	fmt.Println(strings.TrimSpace(result))
 	return nil
+}
+
+// processMixMode handles mixing results from multiple providers
+func processMixMode(ctx context.Context, opts *options, providers []provider.Provider, rawResults []provider.Result) (string, error) {
+	// filter successful results
+	var successfulResults []provider.Result
+	for _, res := range rawResults {
+		if res.Error == nil {
+			successfulResults = append(successfulResults, res)
+		}
+	}
+
+	// need at least 2 successful results to mix
+	if len(successfulResults) < 2 {
+		return "", nil
+	}
+
+	return mixResults(ctx, opts, providers, successfulResults)
 }
 
 // showVerbosePrompt displays the prompt text that will be sent to the models
@@ -485,8 +493,12 @@ func showVerbosePrompt(w io.Writer, opts options) {
 // getPrompt handles reading the prompt from stdin (piped or interactive) or command line
 func getPrompt(opts *options) error {
 	// check if input is coming from a pipe
-	stat, _ := os.Stdin.Stat()
-	isPiped := (stat.Mode() & os.ModeCharDevice) == 0
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		// if we can't stat stdin, assume it's not piped
+		stat = nil
+	}
+	isPiped := stat != nil && (stat.Mode()&os.ModeCharDevice) == 0
 
 	if isPiped {
 		// handle piped input
