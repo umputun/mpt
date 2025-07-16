@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/google/generative-ai-go/genai"
@@ -262,4 +263,152 @@ func TestGoogle_TokenLimits(t *testing.T) {
 			assert.Equal(t, tc.expected, actualMaxTokens)
 		})
 	}
+}
+
+func TestGoogle_Generate_MultipleTextParts(t *testing.T) {
+	// create mock response with multiple text parts
+	mockResp := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []genai.Part{
+						genai.Text("First part"),
+						genai.Text(" second part"),
+						genai.Text(" third part"),
+					},
+				},
+			},
+		},
+	}
+
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: mockResp,
+			err:      nil,
+		},
+	}
+
+	response, err := provider.Generate(context.Background(), "test prompt")
+	require.NoError(t, err)
+	assert.Equal(t, "First part second part third part", response)
+}
+
+func TestGoogle_Generate_NonTextParts(t *testing.T) {
+	// create mock response with mixed content types
+	mockResp := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []genai.Part{
+						genai.Text("Text part"),
+						genai.Blob{MIMEType: "image/png", Data: []byte("fake image data")},
+						genai.Text(" another text"),
+					},
+				},
+			},
+		},
+	}
+
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: mockResp,
+			err:      nil,
+		},
+	}
+
+	// should only return text parts, ignoring non-text
+	response, err := provider.Generate(context.Background(), "test prompt")
+	require.NoError(t, err)
+	assert.Equal(t, "Text part another text", response)
+}
+
+func TestGoogle_Generate_EmptyCandidateContent(t *testing.T) {
+	// create mock response with candidate but empty content parts
+	mockResp := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []genai.Part{},
+				},
+			},
+		},
+	}
+
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: mockResp,
+			err:      nil,
+		},
+	}
+
+	_, err := provider.Generate(context.Background(), "test prompt")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty response")
+}
+
+func TestGoogle_Generate_SanitizedError(t *testing.T) {
+	// test that the SanitizeError function is used correctly
+	// simulate the error handling from the real Generate method
+	err := SanitizeError(fmt.Errorf("google api error: %w", errors.New("invalid api_key=sk-12345678")))
+	assert.Contains(t, err.Error(), "redacted")
+	assert.Contains(t, err.Error(), "authentication")
+	assert.Contains(t, err.Error(), "google API error")
+}
+
+func TestGoogle_NewGoogle_DefaultMaxTokens(t *testing.T) {
+	// test that negative max tokens gets set to default
+	opts := Options{
+		APIKey:    "test-key",
+		Enabled:   true,
+		Model:     "gemini-pro",
+		MaxTokens: -1,
+	}
+
+	g := NewGoogle(opts)
+	assert.Equal(t, DefaultMaxTokens, g.maxTokens)
+}
+
+func TestGoogle_NewGoogle_ZeroMaxTokens(t *testing.T) {
+	// test that zero max tokens stays zero (use model maximum)
+	opts := Options{
+		APIKey:    "test-key",
+		Enabled:   true,
+		Model:     "gemini-pro",
+		MaxTokens: 0,
+	}
+
+	g := NewGoogle(opts)
+	assert.Equal(t, 0, g.maxTokens)
+}
+
+func TestGoogle_Generate_ContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: nil,
+			err:      context.Canceled,
+		},
+	}
+
+	_, err := provider.Generate(ctx, "test prompt")
+	require.Error(t, err)
+	assert.Equal(t, context.Canceled, err)
 }
