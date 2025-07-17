@@ -883,3 +883,90 @@ func TestGitDiffer_Cleanup_ErrorHandling(t *testing.T) {
 		}
 	})
 }
+
+func TestDefaultGitExecutor(t *testing.T) {
+	executor := &defaultGitExecutor{}
+
+	t.Run("LookPath", func(t *testing.T) {
+		// test with a known command that should exist
+		path, err := executor.LookPath("echo")
+		if err == nil {
+			assert.NotEmpty(t, path)
+			assert.Contains(t, path, "echo")
+		}
+
+		// test with a command that shouldn't exist
+		_, err = executor.LookPath("nonexistentcommand123456")
+		assert.Error(t, err)
+	})
+
+	t.Run("Command", func(t *testing.T) {
+		cmd := executor.Command("echo", "hello", "world")
+		assert.NotNil(t, cmd)
+		// cmd.Path is the resolved path, so just check it ends with echo
+		assert.Contains(t, cmd.Path, "echo")
+		assert.Equal(t, []string{"echo", "hello", "world"}, cmd.Args)
+	})
+
+	t.Run("CommandOutput", func(t *testing.T) {
+		// create a command that will succeed
+		cmd := exec.Command("echo", "test output")
+		output, err := executor.CommandOutput(cmd)
+		require.NoError(t, err)
+		assert.Equal(t, "test output\n", string(output))
+
+		// create a command that will fail
+		cmd = exec.Command("false")
+		_, err = executor.CommandOutput(cmd)
+		assert.Error(t, err)
+	})
+
+	t.Run("CommandRun", func(t *testing.T) {
+		// create a command that will succeed
+		cmd := exec.Command("true")
+		err := executor.CommandRun(cmd)
+		require.NoError(t, err)
+
+		// create a command that will fail
+		cmd = exec.Command("false")
+		err = executor.CommandRun(cmd)
+		assert.Error(t, err)
+	})
+}
+
+func TestNewGitDiffer(t *testing.T) {
+	differ := NewGitDiffer()
+	assert.NotNil(t, differ)
+
+	// verify it's a gitDiffer instance
+	gd, ok := differ.(*gitDiffer)
+	assert.True(t, ok)
+	assert.NotNil(t, gd.executor)
+	assert.NotEmpty(t, gd.tempDir)
+	assert.Contains(t, gd.tempDir, "mpt-git-diff-")
+
+	// cleanup
+	differ.Cleanup()
+}
+
+func TestGitDiffer_newGitDiffer(t *testing.T) {
+	t.Run("successful temp dir creation", func(t *testing.T) {
+		differ := newGitDiffer()
+		assert.NotNil(t, differ)
+		assert.NotNil(t, differ.executor)
+		assert.NotEmpty(t, differ.tempDir)
+		assert.Contains(t, differ.tempDir, "mpt-git-diff-")
+		assert.NotEqual(t, os.TempDir(), differ.tempDir)
+
+		// verify temp dir exists
+		_, err := os.Stat(differ.tempDir)
+		require.NoError(t, err)
+
+		// cleanup
+		differ.Cleanup()
+
+		// verify temp dir is removed
+		_, err = os.Stat(differ.tempDir)
+		assert.True(t, os.IsNotExist(err))
+	})
+}

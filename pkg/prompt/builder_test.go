@@ -222,4 +222,165 @@ func TestBuilder_WithGitBranchDiff(t *testing.T) {
 		// verify Cleanup was called once
 		assert.Len(t, mockDiffer.CleanupCalls(), 1)
 	})
+
+	t.Run("error from ProcessGitDiff", func(t *testing.T) {
+		mockDiffer := &mocks.GitDiffProcessorMock{
+			ProcessGitDiffFunc: func(isDiff bool, branchName string) (string, string, error) {
+				return "", "", assert.AnError
+			},
+			CleanupFunc: func() {},
+		}
+
+		builder := New("test prompt", mockDiffer)
+		result, err := builder.WithGitBranchDiff("feature-branch")
+		require.Error(t, err)
+		assert.Equal(t, builder, result) // builder is still returned
+	})
+
+	t.Run("empty diff result", func(t *testing.T) {
+		mockDiffer := &mocks.GitDiffProcessorMock{
+			ProcessGitDiffFunc: func(isDiff bool, branchName string) (string, string, error) {
+				return "", "", nil // no diff
+			},
+			CleanupFunc: func() {},
+		}
+
+		builder := New("test prompt", mockDiffer)
+		originalText := builder.baseText
+		result, err := builder.WithGitBranchDiff("feature-branch")
+		require.NoError(t, err)
+		assert.Equal(t, builder, result)
+		assert.Equal(t, originalText, builder.baseText) // baseText should not change
+		assert.Empty(t, builder.files)                  // no files added
+	})
+}
+
+func TestBuilder_WithMaxFileSize(t *testing.T) {
+	mockDiffer := &mocks.GitDiffProcessorMock{
+		CleanupFunc: func() {},
+	}
+	builder := New("test prompt", mockDiffer)
+
+	result := builder.WithMaxFileSize(1024 * 1024) // 1MB
+	assert.Equal(t, builder, result)
+	assert.Equal(t, int64(1024*1024), builder.maxFileSize)
+}
+
+func TestBuilder_WithForce(t *testing.T) {
+	mockDiffer := &mocks.GitDiffProcessorMock{
+		CleanupFunc: func() {},
+	}
+	builder := New("test prompt", mockDiffer)
+
+	result := builder.WithForce(true)
+	assert.Equal(t, builder, result)
+	assert.True(t, builder.force)
+
+	result = builder.WithForce(false)
+	assert.Equal(t, builder, result)
+	assert.False(t, builder.force)
+}
+
+func TestBuilder_WithGitDiff_ErrorCases(t *testing.T) {
+	t.Run("error from ProcessGitDiff", func(t *testing.T) {
+		mockDiffer := &mocks.GitDiffProcessorMock{
+			ProcessGitDiffFunc: func(isDiff bool, branchName string) (string, string, error) {
+				return "", "", assert.AnError
+			},
+			CleanupFunc: func() {},
+		}
+
+		builder := New("test prompt", mockDiffer)
+		result, err := builder.WithGitDiff()
+		require.Error(t, err)
+		assert.Equal(t, builder, result) // builder is still returned
+	})
+
+	t.Run("error from TryBranchDiff", func(t *testing.T) {
+		callCount := 0
+		mockDiffer := &mocks.GitDiffProcessorMock{
+			ProcessGitDiffFunc: func(isDiff bool, branchName string) (string, string, error) {
+				callCount++
+				// first call - no uncommitted changes
+				return "", "", nil
+			},
+			TryBranchDiffFunc: func() (string, string, error) {
+				return "", "", assert.AnError
+			},
+			CleanupFunc: func() {},
+		}
+
+		builder := New("test prompt", mockDiffer)
+		result, err := builder.WithGitDiff()
+		require.Error(t, err)
+		assert.Equal(t, builder, result)
+		assert.Equal(t, 1, callCount)
+	})
+
+	t.Run("no diff at all", func(t *testing.T) {
+		mockDiffer := &mocks.GitDiffProcessorMock{
+			ProcessGitDiffFunc: func(isDiff bool, branchName string) (string, string, error) {
+				return "", "", nil // no uncommitted changes
+			},
+			TryBranchDiffFunc: func() (string, string, error) {
+				return "", "", nil // no branch diff
+			},
+			CleanupFunc: func() {},
+		}
+
+		builder := New("test prompt", mockDiffer)
+		originalText := builder.baseText
+		result, err := builder.WithGitDiff()
+		require.NoError(t, err)
+		assert.Equal(t, builder, result)
+		assert.Equal(t, originalText, builder.baseText) // baseText should not change
+		assert.Empty(t, builder.files)                  // no files added
+	})
+}
+
+func TestBuilder_Build_ErrorCase(t *testing.T) {
+	t.Run("no files matched pattern", func(t *testing.T) {
+		mockDiffer := &mocks.GitDiffProcessorMock{
+			CleanupFunc: func() {},
+		}
+
+		builder := New("test prompt", mockDiffer)
+		// add a pattern that won't match any files
+		tempDir := t.TempDir()
+		builder.WithFiles([]string{filepath.Join(tempDir, "*.nonexistent")})
+
+		// this should now error because no files matched
+		_, err := builder.Build()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no files matched the provided patterns")
+	})
+}
+
+func TestBuilder_AddGitDiffFile(t *testing.T) {
+	t.Run("with existing base text", func(t *testing.T) {
+		mockDiffer := &mocks.GitDiffProcessorMock{
+			CleanupFunc: func() {},
+		}
+
+		builder := New("original prompt", mockDiffer)
+		result := builder.addGitDiffFile("/tmp/diff.txt", "git diff description")
+
+		assert.Equal(t, builder, result)
+		assert.Contains(t, builder.baseText, "I'm providing git diff description for context.")
+		assert.Contains(t, builder.baseText, "original prompt")
+		assert.Contains(t, builder.files, "/tmp/diff.txt")
+	})
+
+	t.Run("with empty base text", func(t *testing.T) {
+		mockDiffer := &mocks.GitDiffProcessorMock{
+			CleanupFunc: func() {},
+		}
+
+		builder := New("", mockDiffer)
+		result := builder.addGitDiffFile("/tmp/diff.txt", "git diff description")
+
+		assert.Equal(t, builder, result)
+		assert.Empty(t, builder.baseText) // should remain empty
+		assert.Contains(t, builder.files, "/tmp/diff.txt")
+	})
 }
