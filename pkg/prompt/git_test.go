@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -523,5 +524,362 @@ func TestGitDiffer_Cleanup(t *testing.T) {
 		// verify the file still exists (cleanup should skip system temp)
 		_, err := os.Stat(testFile)
 		assert.NoError(t, err, "File in system temp should not be removed")
+	})
+}
+
+func TestGitDiffer_TryBranchDiff(t *testing.T) {
+	origExecutor := executor
+	defer func() { executor = origExecutor }()
+
+	t.Run("successful branch diff", func(t *testing.T) {
+		callCount := 0
+		mockExec := &mocks.GitExecutorMock{
+			LookPathFunc: func(file string) (string, error) {
+				return "/usr/bin/git", nil
+			},
+			CommandFunc: func(name string, args ...string) *exec.Cmd {
+				cmd := exec.Command("echo", "test")
+				cmd.Path = name
+				cmd.Args = append([]string{name}, args...)
+				return cmd
+			},
+			CommandOutputFunc: func(cmd *exec.Cmd) ([]byte, error) {
+				callCount++
+				switch callCount {
+				case 1:
+					// getCurrentBranch
+					return []byte("feature-branch\n"), nil
+				case 2:
+					// getDefaultBranch - config check
+					return []byte(""), errors.New("no config")
+				default:
+					// for ProcessGitDiff, return empty since it writes to a file
+					return []byte("diff output"), nil
+				}
+			},
+			CommandRunFunc: func(cmd *exec.Cmd) error {
+				// checkBranchExists for "main"
+				if len(cmd.Args) >= 4 && cmd.Args[3] == "main" {
+					return nil
+				}
+				// isValidGitRef for sanitizeBranchName
+				if len(cmd.Args) >= 5 && cmd.Args[1] == "show-ref" {
+					return nil
+				}
+				return errors.New("branch not found")
+			},
+		}
+
+		executor = mockExec
+		differ := newGitDiffer()
+		tempFile, desc, err := differ.TryBranchDiff()
+		require.NoError(t, err)
+		assert.NotEmpty(t, tempFile)
+		assert.Contains(t, desc, "git diff between main and feature-branch branches")
+		assert.FileExists(t, tempFile)
+	})
+
+	t.Run("same branch as default", func(t *testing.T) {
+		mockExec := &mocks.GitExecutorMock{
+			CommandFunc: func(name string, args ...string) *exec.Cmd {
+				return exec.Command("echo", "test")
+			},
+			CommandOutputFunc: func(cmd *exec.Cmd) ([]byte, error) {
+				// both getCurrentBranch and getDefaultBranch return "main"
+				return []byte("main\n"), nil
+			},
+			CommandRunFunc: func(cmd *exec.Cmd) error {
+				return nil
+			},
+		}
+
+		executor = mockExec
+		differ := newGitDiffer()
+		tempFile, desc, err := differ.TryBranchDiff()
+		require.NoError(t, err)
+		assert.Empty(t, tempFile)
+		assert.Empty(t, desc)
+	})
+
+	t.Run("no current branch", func(t *testing.T) {
+		mockExec := &mocks.GitExecutorMock{
+			CommandFunc: func(name string, args ...string) *exec.Cmd {
+				return exec.Command("echo", "test")
+			},
+			CommandOutputFunc: func(cmd *exec.Cmd) ([]byte, error) {
+				// getCurrentBranch fails
+				return []byte(""), errors.New("not in git repo")
+			},
+			CommandRunFunc: func(cmd *exec.Cmd) error {
+				return errors.New("not in git repo")
+			},
+		}
+
+		executor = mockExec
+		differ := newGitDiffer()
+		tempFile, desc, err := differ.TryBranchDiff()
+		require.NoError(t, err)
+		assert.Empty(t, tempFile)
+		assert.Empty(t, desc)
+	})
+
+	t.Run("invalid current branch name", func(t *testing.T) {
+		mockExec := &mocks.GitExecutorMock{
+			CommandFunc: func(name string, args ...string) *exec.Cmd {
+				return exec.Command("echo", "test")
+			},
+			CommandOutputFunc: func(cmd *exec.Cmd) ([]byte, error) {
+				// getCurrentBranch returns invalid name
+				return []byte("branch;with;semicolons\n"), nil
+			},
+			CommandRunFunc: func(cmd *exec.Cmd) error {
+				return errors.New("invalid branch")
+			},
+		}
+
+		executor = mockExec
+		differ := newGitDiffer()
+		tempFile, desc, err := differ.TryBranchDiff()
+		require.NoError(t, err)
+		assert.Empty(t, tempFile)
+		assert.Empty(t, desc)
+	})
+
+	t.Run("invalid default branch name", func(t *testing.T) {
+		callCount := 0
+		mockExec := &mocks.GitExecutorMock{
+			CommandFunc: func(name string, args ...string) *exec.Cmd {
+				return exec.Command("echo", "test")
+			},
+			CommandOutputFunc: func(cmd *exec.Cmd) ([]byte, error) {
+				callCount++
+				if callCount == 1 {
+					// getCurrentBranch
+					return []byte("feature-branch\n"), nil
+				}
+				// getDefaultBranch returns invalid name
+				return []byte("branch$with$dollar\n"), nil
+			},
+			CommandRunFunc: func(cmd *exec.Cmd) error {
+				// isValidGitRef for feature-branch succeeds
+				if len(cmd.Args) >= 5 && strings.Contains(cmd.Args[4], "feature-branch") {
+					return nil
+				}
+				return errors.New("invalid branch")
+			},
+		}
+
+		executor = mockExec
+		differ := newGitDiffer()
+		tempFile, desc, err := differ.TryBranchDiff()
+		require.NoError(t, err)
+		assert.Empty(t, tempFile)
+		assert.Empty(t, desc)
+	})
+}
+
+func TestGitDiffer_ProcessGitDiff_ErrorPaths(t *testing.T) {
+	origExecutor := executor
+	defer func() { executor = origExecutor }()
+
+	t.Run("git not found", func(t *testing.T) {
+		mockExec := &mocks.GitExecutorMock{
+			LookPathFunc: func(file string) (string, error) {
+				return "", errors.New("git not found")
+			},
+		}
+
+		executor = mockExec
+		differ := newGitDiffer()
+		_, _, err := differ.ProcessGitDiff(true, "")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "git executable not found")
+	})
+
+	t.Run("git command fails", func(t *testing.T) {
+		mockExec := &mocks.GitExecutorMock{
+			LookPathFunc: func(file string) (string, error) {
+				return "/usr/bin/git", nil
+			},
+			CommandFunc: func(name string, args ...string) *exec.Cmd {
+				return exec.Command("echo", "test")
+			},
+			CommandOutputFunc: func(cmd *exec.Cmd) ([]byte, error) {
+				return nil, errors.New("git command failed")
+			},
+		}
+
+		executor = mockExec
+		differ := newGitDiffer()
+		_, _, err := differ.ProcessGitDiff(true, "")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "git command failed")
+	})
+
+	t.Run("invalid branch name for branch diff", func(t *testing.T) {
+		mockExec := &mocks.GitExecutorMock{
+			LookPathFunc: func(file string) (string, error) {
+				return "/usr/bin/git", nil
+			},
+			CommandFunc: func(name string, args ...string) *exec.Cmd {
+				return exec.Command("echo", "test")
+			},
+			CommandOutputFunc: func(cmd *exec.Cmd) ([]byte, error) {
+				// getDefaultBranch
+				return []byte(""), errors.New("no config")
+			},
+			CommandRunFunc: func(cmd *exec.Cmd) error {
+				// checkBranchExists for main
+				if len(cmd.Args) >= 4 && cmd.Args[3] == "main" {
+					return nil
+				}
+				return errors.New("branch not found")
+			},
+		}
+
+		executor = mockExec
+		differ := newGitDiffer()
+		// try with invalid branch name
+		_, _, err := differ.ProcessGitDiff(false, "branch;with;injection")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid branch name")
+	})
+
+	t.Run("write file error", func(t *testing.T) {
+		mockExec := &mocks.GitExecutorMock{
+			LookPathFunc: func(file string) (string, error) {
+				return "/usr/bin/git", nil
+			},
+			CommandFunc: func(name string, args ...string) *exec.Cmd {
+				return exec.Command("echo", "test")
+			},
+			CommandOutputFunc: func(cmd *exec.Cmd) ([]byte, error) {
+				return []byte("mock diff output"), nil
+			},
+		}
+
+		executor = mockExec
+		// create differ with invalid temp directory
+		differ := &gitDiffer{
+			executor: mockExec,
+			tempDir:  "/invalid/path/that/does/not/exist",
+		}
+		_, _, err := differ.ProcessGitDiff(true, "")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to write git diff to temporary file")
+	})
+}
+
+func TestGitDiffer_SanitizeBranchName_EdgeCases(t *testing.T) {
+	origExecutor := executor
+	defer func() { executor = origExecutor }()
+
+	testCases := []struct {
+		name     string
+		branch   string
+		expected string
+	}{
+		{
+			name:     "command injection attempt",
+			branch:   "branch$(rm -rf /)",
+			expected: "",
+		},
+		{
+			name:     "pipe character",
+			branch:   "branch|echo hack",
+			expected: "",
+		},
+		{
+			name:     "backticks",
+			branch:   "branch`whoami`",
+			expected: "",
+		},
+		{
+			name:     "quotes",
+			branch:   "branch\"with\"quotes",
+			expected: "",
+		},
+		{
+			name:     "valid branch with slash",
+			branch:   "feature/new-feature",
+			expected: "feature/new-feature",
+		},
+		{
+			name:     "valid branch with dots",
+			branch:   "release-1.2.3",
+			expected: "release-1.2.3",
+		},
+		{
+			name:     "branch exists but not valid git ref",
+			branch:   "validchars",
+			expected: "",
+		},
+	}
+
+	mockExec := &mocks.GitExecutorMock{
+		LookPathFunc: func(file string) (string, error) {
+			return "/usr/bin/git", nil
+		},
+		CommandFunc: func(name string, args ...string) *exec.Cmd {
+			cmd := exec.Command("echo", "test")
+			cmd.Path = name
+			cmd.Args = append([]string{name}, args...)
+			return cmd
+		},
+		CommandRunFunc: func(cmd *exec.Cmd) error {
+			// only feature/new-feature and release-1.2.3 are valid git refs
+			if len(cmd.Args) >= 5 && cmd.Args[1] == "show-ref" {
+				// extract the ref from the last argument (refs/heads/branch or refs/remotes/branch)
+				lastArg := cmd.Args[len(cmd.Args)-1]
+				if lastArg == "refs/heads/feature/new-feature" || lastArg == "refs/remotes/feature/new-feature" ||
+					lastArg == "refs/heads/release-1.2.3" || lastArg == "refs/remotes/release-1.2.3" {
+					return nil
+				}
+			}
+			return errors.New("invalid ref")
+		},
+	}
+
+	executor = mockExec
+	differ := newGitDiffer()
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := differ.sanitizeBranchName(tc.branch)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestGitDiffer_Cleanup_ErrorHandling(t *testing.T) {
+	t.Run("cleanup with permission error", func(t *testing.T) {
+		// create a temporary directory
+		tempDir, err := os.MkdirTemp("", "mpt-test-cleanup-*")
+		require.NoError(t, err)
+		defer os.RemoveAll(tempDir) // ensure cleanup even if test fails
+
+		// create a file in the directory
+		testFile := filepath.Join(tempDir, "test.txt")
+		require.NoError(t, os.WriteFile(testFile, []byte("test"), 0o600))
+
+		// remove write permission from directory (on Unix-like systems)
+		// this will cause RemoveAll to fail
+		if err := os.Chmod(tempDir, 0o500); err == nil {
+			// create differ with our test directory
+			differ := &gitDiffer{
+				executor: executor,
+				tempDir:  tempDir,
+			}
+
+			// cleanup should handle the error gracefully
+			differ.Cleanup()
+
+			// restore permissions for cleanup
+			os.Chmod(tempDir, 0o700)
+
+			// verify directory still exists (cleanup failed)
+			_, err = os.Stat(tempDir)
+			assert.NoError(t, err, "Directory should still exist after failed cleanup")
+		}
 	})
 }
