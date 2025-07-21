@@ -200,11 +200,10 @@ func TestCustomOpenAI_Generate_APIError(t *testing.T) {
 	// test the Generate method
 	_, err := provider.Generate(context.Background(), "test prompt")
 	require.Error(t, err)
-	// should contain API error mention
-	assert.Contains(t, err.Error(), "API error", "Error should mention API error")
-	// should contain provider name
-	assert.Contains(t, err.Error(), "LocalLLM", "Error should mention the provider name")
-	// should mention 'redacted' for sensitive information
-	assert.Contains(t, err.Error(), "redacted", "Error should mention redaction")
+	// should contain provider name and api error
+	assert.Contains(t, err.Error(), "LocalLLM api error", "Error should mention provider and API error")
+	// should contain the actual error details (no longer redacted)
+	assert.Contains(t, err.Error(), "401", "Error should contain actual status code")
+	assert.Contains(t, err.Error(), "Invalid API key", "Error should contain actual error message")
 
 }

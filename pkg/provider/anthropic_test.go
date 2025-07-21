@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -198,11 +197,10 @@ func TestAnthropic_Generate_APIError(t *testing.T) {
 	// test the Generate method - should return an error for API error
 	_, err := provider.Generate(context.Background(), "test prompt")
 	require.Error(t, err)
-	// should contain API error mention
-	assert.Contains(t, err.Error(), "API error", "Error should mention API error")
-	// should contain provider name in some form
-	assert.Contains(t, strings.ToLower(err.Error()), "anthropic", "Error should mention the provider")
-	// should mention 'redacted' for sensitive information
-	assert.Contains(t, err.Error(), "redacted", "Error should mention redaction")
+	// should contain provider name and api error
+	assert.Contains(t, err.Error(), "anthropic api error", "Error should mention provider and API error")
+	// should contain the actual error details (no longer redacted)
+	assert.Contains(t, err.Error(), "401 Unauthorized", "Error should contain actual status")
+	assert.Contains(t, err.Error(), "Invalid API key", "Error should contain actual error message")
 
 }

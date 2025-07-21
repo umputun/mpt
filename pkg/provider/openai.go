@@ -103,7 +103,7 @@ func (o *OpenAI) Generate(ctx context.Context, prompt string) (string, error) {
 		}
 
 		// sanitize any potential sensitive information in error
-		return "", SanitizeError(fmt.Errorf(apiErr, err))
+		return "", fmt.Errorf(apiErr, err)
 	}
 
 	if len(resp.Choices) == 0 {

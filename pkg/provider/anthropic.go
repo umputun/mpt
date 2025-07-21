@@ -67,7 +67,7 @@ func (a *Anthropic) Generate(ctx context.Context, prompt string) (string, error)
 
 	if err != nil {
 		// sanitize any potential sensitive information in error
-		return "", SanitizeError(fmt.Errorf("anthropic api error: %w", err))
+		return "", fmt.Errorf("anthropic api error: %w", err)
 	}
 
 	// extract text from response

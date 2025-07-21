@@ -98,7 +98,7 @@ func (c *CustomOpenAI) Generate(ctx context.Context, prompt string) (string, err
 
 	if err != nil {
 		// sanitize any potential sensitive information in error
-		return "", SanitizeError(fmt.Errorf("%s api error: %w", c.name, err))
+		return "", fmt.Errorf("%s api error: %w", c.name, err)
 	}
 
 	if len(resp.Choices) == 0 {

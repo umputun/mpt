@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/google/generative-ai-go/genai"
@@ -356,15 +355,6 @@ func TestGoogle_Generate_EmptyCandidateContent(t *testing.T) {
 	_, err := provider.Generate(context.Background(), "test prompt")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty response")
-}
-
-func TestGoogle_Generate_SanitizedError(t *testing.T) {
-	// test that the SanitizeError function is used correctly
-	// simulate the error handling from the real Generate method
-	err := SanitizeError(fmt.Errorf("google api error: %w", errors.New("invalid api_key=sk-12345678")))
-	assert.Contains(t, err.Error(), "redacted")
-	assert.Contains(t, err.Error(), "authentication")
-	assert.Contains(t, err.Error(), "google API error")
 }
 
 func TestGoogle_NewGoogle_DefaultMaxTokens(t *testing.T) {

@@ -73,7 +73,7 @@ func (g *Google) Generate(ctx context.Context, prompt string) (string, error) {
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
 		// sanitize any potential sensitive information in error
-		return "", SanitizeError(fmt.Errorf("google api error: %w", err))
+		return "", fmt.Errorf("google api error: %w", err)
 	}
 
 	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {

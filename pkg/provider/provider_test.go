@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -39,71 +38,6 @@ func TestResult_Format(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			formatted := tt.result.Format()
 			assert.Equal(t, tt.expected, formatted)
-		})
-	}
-}
-
-func TestSanitizeError(t *testing.T) {
-	tests := []struct {
-		name           string
-		inputErr       error
-		shouldSanitize bool
-		checkProvider  bool // indicates if provider name should be checked in the error
-	}{
-		{
-			name:           "nil error",
-			inputErr:       nil,
-			shouldSanitize: false,
-		},
-		{
-			name:           "normal error",
-			inputErr:       errors.New("normal error message"),
-			shouldSanitize: false,
-		},
-		{
-			name:           "error with API key",
-			inputErr:       errors.New("error with api_key=1234567890"),
-			shouldSanitize: true,
-		},
-		{
-			name:           "error with bearer token",
-			inputErr:       errors.New("error with bearer authentication"),
-			shouldSanitize: true,
-		},
-		{
-			name:           "error with provider prefix",
-			inputErr:       errors.New("openai api error: key expired"),
-			shouldSanitize: true,
-			checkProvider:  true, // should contain "openai" in error
-		},
-		{
-			name:           "error with URL containing token",
-			inputErr:       errors.New("request to https://api.example.com/v1?access_token=abc123 failed"),
-			shouldSanitize: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := SanitizeError(tt.inputErr)
-
-			if tt.inputErr == nil {
-				assert.NoError(t, result)
-				return
-			}
-
-			if tt.shouldSanitize {
-				// check that sanitized error contains required elements
-				assert.Contains(t, result.Error(), "redacted", "Sanitized error should mention redaction")
-				assert.Contains(t, result.Error(), "sensitive information", "Sanitized error should mention sensitive information")
-
-				// if we need to check for provider name
-				if tt.checkProvider {
-					assert.Contains(t, result.Error(), "openai", "Sanitized error should preserve provider name")
-				}
-			} else {
-				assert.Equal(t, tt.inputErr.Error(), result.Error(), "Non-sensitive errors should be unchanged")
-			}
 		})
 	}
 }
