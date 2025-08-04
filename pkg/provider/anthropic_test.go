@@ -505,7 +505,7 @@ func TestAnthropic_Generate_MaxTokensEdgeCases(t *testing.T) {
 	tests := []struct {
 		name              string
 		maxTokens         int
-		expectedMaxTokens int64 // Anthropic uses int64
+		expectedMaxTokens int64 // anthropic uses int64
 	}{
 		{
 			name:              "zero max tokens passes zero",
@@ -520,7 +520,7 @@ func TestAnthropic_Generate_MaxTokensEdgeCases(t *testing.T) {
 		{
 			name:              "negative max tokens passes negative",
 			maxTokens:         -100,
-			expectedMaxTokens: -100, // Anthropic passes negative values directly
+			expectedMaxTokens: -100, // anthropic passes negative values directly
 		},
 		{
 			name:              "very large max tokens",
@@ -548,7 +548,7 @@ func TestAnthropic_Generate_MaxTokensEdgeCases(t *testing.T) {
 				// check max_tokens in the request
 				maxTokens, ok := reqBody["max_tokens"].(float64)
 				assert.True(t, ok, "max_tokens not found in request")
-				assert.InEpsilon(t, float64(tt.expectedMaxTokens), maxTokens, 0.0001)
+				assert.InDelta(t, float64(tt.expectedMaxTokens), maxTokens, 0)
 
 				// return successful response
 				response := `{

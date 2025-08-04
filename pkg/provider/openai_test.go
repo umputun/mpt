@@ -405,7 +405,7 @@ func TestOpenAI_Generate_MaxTokensEdgeCases(t *testing.T) {
 		{
 			name:              "zero max tokens passes zero",
 			maxTokens:         0,
-			expectedMaxTokens: 0, // OpenAI passes 0 directly, unlike Google
+			expectedMaxTokens: 0, // openAI passes 0 directly, unlike Google
 		},
 		{
 			name:              "positive max tokens",
@@ -415,7 +415,7 @@ func TestOpenAI_Generate_MaxTokensEdgeCases(t *testing.T) {
 		{
 			name:              "negative max tokens passes negative",
 			maxTokens:         -100,
-			expectedMaxTokens: -100, // OpenAI passes negative values directly
+			expectedMaxTokens: -100, // openAI passes negative values directly
 		},
 		{
 			name:              "very large max tokens",
