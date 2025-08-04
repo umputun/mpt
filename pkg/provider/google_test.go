@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -240,8 +241,31 @@ func TestGoogle_Generate_MaxTokensEdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
-				// check if max_output_tokens is in the request
-				// note: this is a simplified check - actual API structure may differ
+				// decode the request body to check maxOutputTokens
+				body, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
+
+				var reqBody map[string]interface{}
+				err = json.Unmarshal(body, &reqBody)
+				assert.NoError(t, err)
+
+				// check if generationConfig exists in the request
+				genConfig, ok := reqBody["generationConfig"].(map[string]interface{})
+				assert.True(t, ok, "generationConfig not found in request")
+
+				if tt.expectedMaxTokens > 0 {
+					// when expectedMaxTokens > 0, we expect maxOutputTokens to be set
+					maxOutput, ok := genConfig["maxOutputTokens"].(float64) // JSON numbers are float64
+					assert.True(t, ok, "maxOutputTokens not found in generationConfig")
+
+					assert.InEpsilon(t, float64(tt.expectedMaxTokens), maxOutput, 0.0001)
+				} else {
+					// when expectedMaxTokens is 0, maxOutputTokens should not be set
+					_, hasMaxOutput := genConfig["maxOutputTokens"]
+					assert.False(t, hasMaxOutput, "maxOutputTokens should not be set when maxTokens is 0")
+				}
+
+				// return successful response
 				response := map[string]interface{}{
 					"candidates": []map[string]interface{}{
 						{
@@ -257,7 +281,7 @@ func TestGoogle_Generate_MaxTokensEdgeCases(t *testing.T) {
 				}
 
 				w.Header().Set("Content-Type", "application/json")
-				err := json.NewEncoder(w).Encode(response)
+				err = json.NewEncoder(w).Encode(response)
 				assert.NoError(t, err)
 			})
 			defer server.Close()

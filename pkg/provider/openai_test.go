@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -394,68 +396,97 @@ func TestOpenAI_Generate_ContextCancellation(t *testing.T) {
 	assert.Contains(t, err.Error(), "context canceled")
 }
 
-func TestOpenAI_Generate_ZeroMaxTokens(t *testing.T) {
-	// test that zero max tokens means use model's maximum
-	jsonResponse := `
-{
-  "choices": [
-    {
-      "message": {
-        "role": "assistant",
-        "content": "Response with zero max tokens"
-      },
-      "finish_reason": "stop",
-      "index": 0
-    }
-  ]
-}
-`
-
-	client, server := mockOpenAIClient(t, jsonResponse)
-	defer server.Close()
-
-	provider := &OpenAI{
-		client:    client,
-		model:     "gpt-4",
-		enabled:   true,
-		maxTokens: 0, // 0 means use model's maximum
+func TestOpenAI_Generate_MaxTokensEdgeCases(t *testing.T) {
+	tests := []struct {
+		name              string
+		maxTokens         int
+		expectedMaxTokens int // what should be sent to the API
+	}{
+		{
+			name:              "zero max tokens passes zero",
+			maxTokens:         0,
+			expectedMaxTokens: 0, // OpenAI passes 0 directly, unlike Google
+		},
+		{
+			name:              "positive max tokens",
+			maxTokens:         500,
+			expectedMaxTokens: 500,
+		},
+		{
+			name:              "negative max tokens passes negative",
+			maxTokens:         -100,
+			expectedMaxTokens: -100, // OpenAI passes negative values directly
+		},
+		{
+			name:              "very large max tokens",
+			maxTokens:         1000000,
+			expectedMaxTokens: 1000000,
+		},
 	}
 
-	resp, err := provider.Generate(context.Background(), "test prompt")
-	require.NoError(t, err)
-	assert.Equal(t, "Response with zero max tokens", resp)
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// create a mock server that validates the request
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// decode and verify the request body
+				body, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
 
-func TestOpenAI_Generate_NonZeroMaxTokens(t *testing.T) {
-	// test specific max tokens value
-	jsonResponse := `
-{
-  "choices": [
-    {
-      "message": {
-        "role": "assistant",
-        "content": "Response with specific max tokens"
-      },
-      "finish_reason": "stop",
-      "index": 0
-    }
-  ]
-}
-`
+				var reqBody map[string]interface{}
+				err = json.Unmarshal(body, &reqBody)
+				assert.NoError(t, err)
 
-	client, server := mockOpenAIClient(t, jsonResponse)
-	defer server.Close()
+				// check max_tokens in the request
+				if tt.expectedMaxTokens == 0 {
+					// when maxTokens is 0, OpenAI SDK might omit it from the request
+					maxTokens, hasMaxTokens := reqBody["max_tokens"]
+					if hasMaxTokens {
+						// if it's present, it should be 0
+						assert.InEpsilon(t, float64(0), maxTokens.(float64), 0.0001)
+					}
+					// either way is acceptable for zero
+				} else {
+					// for non-zero values, max_tokens must be present
+					maxTokens, ok := reqBody["max_tokens"].(float64)
+					assert.True(t, ok, "max_tokens not found in request")
+					assert.InEpsilon(t, float64(tt.expectedMaxTokens), maxTokens, 0.0001)
+				}
 
-	provider := &OpenAI{
-		client:    client,
-		model:     "gpt-4",
-		enabled:   true,
-		maxTokens: 500,
+				// return successful response
+				response := `{
+					"choices": [{
+						"message": {
+							"role": "assistant",
+							"content": "Response with max tokens"
+						},
+						"finish_reason": "stop",
+						"index": 0
+					}]
+				}`
+
+				w.Header().Set("Content-Type", "application/json")
+				_, err = w.Write([]byte(response))
+				assert.NoError(t, err)
+			}))
+			defer server.Close()
+
+			// create client with custom server
+			config := openai.DefaultConfig("test-key")
+			config.BaseURL = server.URL
+			client := openai.NewClientWithConfig(config)
+
+			provider := &OpenAI{
+				client:    client,
+				model:     "gpt-4",
+				enabled:   true,
+				maxTokens: tt.maxTokens,
+			}
+
+			resp, err := provider.Generate(context.Background(), "test prompt")
+			require.NoError(t, err)
+			assert.Equal(t, "Response with max tokens", resp)
+		})
 	}
-
-	resp, err := provider.Generate(context.Background(), "test prompt")
-	require.NoError(t, err)
-	assert.Equal(t, "Response with specific max tokens", resp)
 }
 
 func TestOpenAI_NewOpenAI_EdgeCases(t *testing.T) {

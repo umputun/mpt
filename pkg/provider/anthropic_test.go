@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -499,42 +501,94 @@ func TestAnthropic_Generate_EmptyPrompt(t *testing.T) {
 	assert.Equal(t, "Response to empty prompt", response)
 }
 
-func TestAnthropic_Generate_LargeMaxTokens(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		response := `{
-			"id": "msg_123",
-			"type": "message",
-			"role": "assistant",
-			"content": [
-				{
-					"type": "text",
-					"text": "Response with large max tokens"
-				}
-			],
-			"model": "claude-3-sonnet-20240229"
-		}`
-		_, _ = w.Write([]byte(response))
-	}))
-	defer server.Close()
-
-	client := anthropic.NewClient(
-		option.WithAPIKey("test-key"),
-		option.WithBaseURL(server.URL),
-		option.WithHTTPClient(server.Client()),
-	)
-
-	provider := &Anthropic{
-		client:    client,
-		model:     "claude-3-sonnet-20240229",
-		enabled:   true,
-		maxTokens: 100000, // very large value to test int64 conversion
+func TestAnthropic_Generate_MaxTokensEdgeCases(t *testing.T) {
+	tests := []struct {
+		name              string
+		maxTokens         int
+		expectedMaxTokens int64 // Anthropic uses int64
+	}{
+		{
+			name:              "zero max tokens passes zero",
+			maxTokens:         0,
+			expectedMaxTokens: 0,
+		},
+		{
+			name:              "positive max tokens",
+			maxTokens:         1000,
+			expectedMaxTokens: 1000,
+		},
+		{
+			name:              "negative max tokens passes negative",
+			maxTokens:         -100,
+			expectedMaxTokens: -100, // Anthropic passes negative values directly
+		},
+		{
+			name:              "very large max tokens",
+			maxTokens:         100000,
+			expectedMaxTokens: 100000,
+		},
+		{
+			name:              "max int32 value",
+			maxTokens:         2147483647,
+			expectedMaxTokens: 2147483647,
+		},
 	}
 
-	response, err := provider.Generate(context.Background(), "test prompt")
-	require.NoError(t, err)
-	assert.Equal(t, "Response with large max tokens", response)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// decode and verify the request body
+				body, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
+
+				var reqBody map[string]interface{}
+				err = json.Unmarshal(body, &reqBody)
+				assert.NoError(t, err)
+
+				// check max_tokens in the request
+				maxTokens, ok := reqBody["max_tokens"].(float64)
+				assert.True(t, ok, "max_tokens not found in request")
+				assert.InEpsilon(t, float64(tt.expectedMaxTokens), maxTokens, 0.0001)
+
+				// return successful response
+				response := `{
+					"id": "msg_123",
+					"type": "message",
+					"role": "assistant",
+					"content": [
+						{
+							"type": "text",
+							"text": "Response with max tokens"
+						}
+					],
+					"model": "claude-3-sonnet-20240229"
+				}`
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, err = w.Write([]byte(response))
+				assert.NoError(t, err)
+			}))
+			defer server.Close()
+
+			client := anthropic.NewClient(
+				option.WithAPIKey("test-key"),
+				option.WithBaseURL(server.URL),
+				option.WithHTTPClient(server.Client()),
+			)
+
+			provider := &Anthropic{
+				client:    client,
+				model:     "claude-3-sonnet-20240229",
+				enabled:   true,
+				maxTokens: tt.maxTokens,
+			}
+
+			response, err := provider.Generate(context.Background(), "test prompt")
+			require.NoError(t, err)
+			assert.Equal(t, "Response with max tokens", response)
+		})
+	}
 }
 
 func TestAnthropic_Generate_SpecialCharactersInResponse(t *testing.T) {
