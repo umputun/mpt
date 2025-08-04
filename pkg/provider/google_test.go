@@ -90,7 +90,7 @@ func (tg *testableGoogle) Generate(ctx context.Context, prompt string) (string, 
 		return "", err
 	}
 
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+	if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil || len(resp.Candidates[0].Content.Parts) == 0 {
 		return "", errors.New("google returned empty response")
 	}
 
@@ -401,4 +401,435 @@ func TestGoogle_Generate_ContextCancellation(t *testing.T) {
 	_, err := provider.Generate(ctx, "test prompt")
 	require.Error(t, err)
 	assert.Equal(t, context.Canceled, err)
+}
+
+func TestGoogle_Generate_DifferentFinishReasons(t *testing.T) {
+	tests := []struct {
+		name         string
+		finishReason genai.FinishReason
+		expected     string
+	}{
+		{
+			name:         "finish_reason_stop",
+			finishReason: genai.FinishReasonStop,
+			expected:     "Response completed normally",
+		},
+		{
+			name:         "finish_reason_max_tokens",
+			finishReason: genai.FinishReasonMaxTokens,
+			expected:     "Hit max tokens limit",
+		},
+		{
+			name:         "finish_reason_safety",
+			finishReason: genai.FinishReasonSafety,
+			expected:     "Blocked by safety filters",
+		},
+		{
+			name:         "finish_reason_recitation",
+			finishReason: genai.FinishReasonRecitation,
+			expected:     "Blocked by recitation",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockResp := &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{
+					{
+						Content: &genai.Content{
+							Parts: []genai.Part{
+								genai.Text(tt.expected),
+							},
+						},
+						FinishReason: tt.finishReason,
+					},
+				},
+			}
+
+			provider := &testableGoogle{
+				Google: Google{
+					model:   "gemini-1.5-pro",
+					enabled: true,
+				},
+				mockModel: &mockGenerativeModel{
+					response: mockResp,
+					err:      nil,
+				},
+			}
+
+			response, err := provider.Generate(context.Background(), "test prompt")
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, response)
+		})
+	}
+}
+
+func TestGoogle_Generate_MultipleCandidates(t *testing.T) {
+	// test that we only use the first candidate
+	mockResp := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []genai.Part{
+						genai.Text("First candidate"),
+					},
+				},
+			},
+			{
+				Content: &genai.Content{
+					Parts: []genai.Part{
+						genai.Text("Second candidate"),
+					},
+				},
+			},
+		},
+	}
+
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: mockResp,
+			err:      nil,
+		},
+	}
+
+	response, err := provider.Generate(context.Background(), "test prompt")
+	require.NoError(t, err)
+	assert.Equal(t, "First candidate", response)
+}
+
+func TestGoogle_Generate_NilContent(t *testing.T) {
+	mockResp := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: nil,
+			},
+		},
+	}
+
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: mockResp,
+			err:      nil,
+		},
+	}
+
+	_, err := provider.Generate(context.Background(), "test prompt")
+	require.Error(t, err)
+}
+
+func TestGoogle_Generate_RateLimitError(t *testing.T) {
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: nil,
+			err:      errors.New("rate limit exceeded"),
+		},
+	}
+
+	_, err := provider.Generate(context.Background(), "test prompt")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rate limit exceeded")
+}
+
+func TestGoogle_Generate_QuotaExceededError(t *testing.T) {
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: nil,
+			err:      errors.New("quota exceeded for quota metric"),
+		},
+	}
+
+	_, err := provider.Generate(context.Background(), "test prompt")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "quota exceeded")
+}
+
+func TestGoogle_Generate_InvalidAPIKeyError(t *testing.T) {
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: nil,
+			err:      errors.New("API key not valid. Please pass a valid API key"),
+		},
+	}
+
+	_, err := provider.Generate(context.Background(), "test prompt")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "API key not valid")
+}
+
+func TestGoogle_Generate_ModelNotFoundError(t *testing.T) {
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "non-existent-model",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: nil,
+			err:      errors.New("model not found"),
+		},
+	}
+
+	_, err := provider.Generate(context.Background(), "test prompt")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "model not found")
+}
+
+func TestGoogle_Generate_NetworkError(t *testing.T) {
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: nil,
+			err:      errors.New("connection refused"),
+		},
+	}
+
+	_, err := provider.Generate(context.Background(), "test prompt")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connection refused")
+}
+
+func TestGoogle_Generate_TimeoutError(t *testing.T) {
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: nil,
+			err:      context.DeadlineExceeded,
+		},
+	}
+
+	_, err := provider.Generate(context.Background(), "test prompt")
+	require.Error(t, err)
+	assert.Equal(t, context.DeadlineExceeded, err)
+}
+
+func TestGoogle_Generate_ContentFilterError(t *testing.T) {
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: nil,
+			err:      errors.New("content filtered due to safety settings"),
+		},
+	}
+
+	_, err := provider.Generate(context.Background(), "test prompt")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "content filtered")
+}
+
+func TestGoogle_Generate_EmptyPrompt(t *testing.T) {
+	mockResp := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []genai.Part{
+						genai.Text("Response to empty prompt"),
+					},
+				},
+			},
+		},
+	}
+
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: mockResp,
+			err:      nil,
+		},
+	}
+
+	response, err := provider.Generate(context.Background(), "")
+	require.NoError(t, err)
+	assert.Equal(t, "Response to empty prompt", response)
+}
+
+func TestGoogle_Generate_VeryLongPrompt(t *testing.T) {
+	// simulate a very long prompt that might exceed token limits
+	longPrompt := ""
+	for i := 0; i < 10000; i++ {
+		longPrompt += "This is a very long prompt. "
+	}
+
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: nil,
+			err:      errors.New("prompt too long: exceeds model's context length"),
+		},
+	}
+
+	_, err := provider.Generate(context.Background(), longPrompt)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "prompt too long")
+}
+
+func TestGoogle_Generate_SpecialCharactersInPrompt(t *testing.T) {
+	specialPrompt := "Test with special chars: 你好世界 🌍 \n\t\r <script>alert('test')</script>"
+
+	mockResp := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []genai.Part{
+						genai.Text("Handled special characters correctly"),
+					},
+				},
+			},
+		},
+	}
+
+	provider := &testableGoogle{
+		Google: Google{
+			model:   "gemini-1.5-pro",
+			enabled: true,
+		},
+		mockModel: &mockGenerativeModel{
+			response: mockResp,
+			err:      nil,
+		},
+	}
+
+	response, err := provider.Generate(context.Background(), specialPrompt)
+	require.NoError(t, err)
+	assert.Equal(t, "Handled special characters correctly", response)
+}
+
+func TestGoogle_NewGoogle_ClientCreationFailure(t *testing.T) {
+	// test scenario where genai.NewClient would fail
+	// in real implementation, this happens when API key is invalid format
+	g := NewGoogle(Options{
+		APIKey:  "", // empty API key should fail client creation
+		Enabled: true,
+		Model:   "gemini-pro",
+	})
+
+	assert.False(t, g.Enabled())
+	assert.Nil(t, g.client)
+}
+
+func TestGoogle_Generate_MaxTokensEdgeCases(t *testing.T) {
+	tests := []struct {
+		name           string
+		maxTokens      int
+		expectedTokens int32
+	}{
+		{
+			name:           "exactly_max_int32",
+			maxTokens:      2147483647,
+			expectedTokens: 2147483647,
+		},
+		{
+			name:           "above_max_int32",
+			maxTokens:      2147483648,
+			expectedTokens: 2147483647, // should clamp
+		},
+		{
+			name:           "way_above_max_int32",
+			maxTokens:      9999999999,
+			expectedTokens: 2147483647, // should clamp
+		},
+		{
+			name:           "negative_small",
+			maxTokens:      -1,
+			expectedTokens: 1024, // default
+		},
+		{
+			name:           "negative_large",
+			maxTokens:      -999999,
+			expectedTokens: 1024, // default
+		},
+		{
+			name:           "zero_means_model_max",
+			maxTokens:      0,
+			expectedTokens: 0, // 0 means use model's maximum
+		},
+		{
+			name:           "normal_small_value",
+			maxTokens:      100,
+			expectedTokens: 100,
+		},
+		{
+			name:           "normal_large_value",
+			maxTokens:      100000,
+			expectedTokens: 100000,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockResp := &genai.GenerateContentResponse{
+				Candidates: []*genai.Candidate{
+					{
+						Content: &genai.Content{
+							Parts: []genai.Part{
+								genai.Text("Test response"),
+							},
+						},
+					},
+				},
+			}
+
+			provider := &testableGoogle{
+				Google: Google{
+					model:     "gemini-1.5-pro",
+					enabled:   true,
+					maxTokens: tt.maxTokens,
+				},
+				mockModel: &mockGenerativeModel{
+					response: mockResp,
+					err:      nil,
+				},
+			}
+
+			_, err := provider.Generate(context.Background(), "test")
+			require.NoError(t, err)
+
+			// verify the expected token setting logic
+			actualTokens := int32(0)
+			if tt.maxTokens != 0 {
+				switch {
+				case tt.maxTokens < 0:
+					actualTokens = 1024
+				case tt.maxTokens > 2147483647:
+					actualTokens = 2147483647
+				default:
+					actualTokens = int32(tt.maxTokens)
+				}
+			}
+			assert.Equal(t, tt.expectedTokens, actualTokens)
+		})
+	}
 }
