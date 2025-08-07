@@ -6,6 +6,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go v0.2.0-beta.3
 	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/go-pkgz/lgr v0.12.0
+	github.com/go-pkgz/repeater/v2 v2.2.0
 	github.com/google/generative-ai-go v0.19.0
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/mark3labs/mcp-go v0.20.1

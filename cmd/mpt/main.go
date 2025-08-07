@@ -31,8 +31,9 @@ type options struct {
 
 	Custom customOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
 
-	MCP mcpOpts `group:"mcp" namespace:"mcp" env-namespace:"MCP"`
-	Git gitOpts `group:"git" namespace:"git" env-namespace:"GIT"`
+	MCP   mcpOpts   `group:"mcp" namespace:"mcp" env-namespace:"MCP"`
+	Git   gitOpts   `group:"git" namespace:"git" env-namespace:"GIT"`
+	Retry retryOpts `group:"retry" namespace:"retry" env-namespace:"RETRY"`
 
 	Prompt      string        `short:"p" long:"prompt" description:"prompt text (if not provided, will be read from stdin)"`
 	Files       []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
@@ -99,6 +100,14 @@ type customOpenAIProvider struct {
 type gitOpts struct {
 	Diff   bool   `long:"diff" env:"DIFF" description:"include git diff as context (uncommitted changes)"`
 	Branch string `long:"branch" env:"BRANCH" description:"include git diff between given branch and master/main (for PR review)"`
+}
+
+// retryOpts defines options for retry behavior
+type retryOpts struct {
+	Attempts int           `long:"attempts" env:"ATTEMPTS" default:"1" description:"max attempts (1=no retry, 3=up to 2 retries)"`
+	Delay    time.Duration `long:"delay" env:"DELAY" default:"1s" description:"base delay between retries"`
+	MaxDelay time.Duration `long:"max-delay" env:"MAX_DELAY" default:"30s" description:"max delay between retries"`
+	Factor   float64       `long:"factor" env:"FACTOR" default:"2" description:"backoff multiplier"`
 }
 
 var revision = "unknown"
@@ -350,6 +359,18 @@ func initializeProviders(opts *options) ([]provider.Provider, error) {
 	// check if any providers were successfully initialized
 	if len(providers) == 0 {
 		return nil, fmt.Errorf("all enabled providers failed to initialize:\n%s", strings.Join(providerErrors, "\n"))
+	}
+
+	// wrap providers with retry logic if configured
+	if opts.Retry.Attempts > 1 {
+		retryOpts := provider.RetryOptions{
+			Attempts: opts.Retry.Attempts,
+			Delay:    opts.Retry.Delay,
+			MaxDelay: opts.Retry.MaxDelay,
+			Factor:   opts.Retry.Factor,
+		}
+		providers = provider.WrapProvidersWithRetry(providers, retryOpts)
+		lgr.Printf("[INFO] wrapped %d providers with retry logic (attempts=%d)", len(providers), opts.Retry.Attempts)
 	}
 
 	// if mix mode is enabled, validate the configuration

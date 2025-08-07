@@ -248,6 +248,10 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
 --mix                 Enable mix mode to combine results from all providers
 --mix.provider        Provider to use for mixing results (default: "openai")
 --mix.prompt          Prompt used for mixing results (default: "merge results from all providers")
+--retry.attempts      Max attempts for transient failures (1=no retry, 3=up to 2 retries) (default: 1)
+--retry.delay         Base delay between retries (default: 1s)
+--retry.max-delay     Maximum delay between retries (default: 30s)
+--retry.factor        Exponential backoff multiplier (default: 2)
 -v, --verbose         Verbose output, shows the complete prompt sent to models
 --json                Output results in JSON format for scripting and automation
 --dbg                 Enable debug mode

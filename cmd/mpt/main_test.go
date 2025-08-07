@@ -1400,20 +1400,20 @@ func TestOutputJSON(t *testing.T) {
 			assert.Contains(t, result, "timestamp", "JSON should contain 'timestamp' field")
 			assert.NotContains(t, result, "result", "JSON should not contain 'result' field")
 
-            // verify the responses array
-            responses, ok := result["responses"].([]interface{})
-            require.True(t, ok, "responses should be an array")
-            assert.Len(t, responses, len(tc.execResult.Results), "Number of responses should match input")
+			// verify the responses array
+			responses, ok := result["responses"].([]interface{})
+			require.True(t, ok, "responses should be an array")
+			assert.Len(t, responses, len(tc.execResult.Results), "Number of responses should match input")
 
-            // verify final field is present and matches execution result text
-            final, ok := result["final"].(string)
-            require.True(t, ok, "final should be present")
-            assert.Equal(t, tc.execResult.Text, final, "final should match execution result text")
+			// verify final field is present and matches execution result text
+			final, ok := result["final"].(string)
+			require.True(t, ok, "final should be present")
+			assert.Equal(t, tc.execResult.Text, final, "final should match execution result text")
 
-            // verify mix_used is consistent with exec result
-            mixUsed, ok := result["mix_used"].(bool)
-            require.True(t, ok, "mix_used should be present")
-            assert.Equal(t, tc.execResult.MixUsed, mixUsed, "mix_used should match execution result")
+			// verify mix_used is consistent with exec result
+			mixUsed, ok := result["mix_used"].(bool)
+			require.True(t, ok, "mix_used should be present")
+			assert.Equal(t, tc.execResult.MixUsed, mixUsed, "mix_used should match execution result")
 		})
 	}
 }
