@@ -70,8 +70,10 @@ func (b *Builder) WithForce(force bool) *Builder {
 // Build constructs the final prompt string by combining the base text with
 // content from the matched files. Returns an error if file loading fails.
 func (b *Builder) Build() (string, error) {
-	// ensure cleanup happens after build
-	defer b.gitDiffer.Cleanup()
+	// ensure cleanup happens after build if gitDiffer is not nil
+	if b.gitDiffer != nil {
+		defer b.gitDiffer.Cleanup()
+	}
 
 	finalPrompt := b.baseText
 
@@ -99,6 +101,10 @@ func (b *Builder) Build() (string, error) {
 // WithGitDiff adds uncommitted changes from git diff to the prompt
 // Creates a temporary file with the diff output and adds it to the files to process
 func (b *Builder) WithGitDiff() (*Builder, error) {
+	if b.gitDiffer == nil {
+		return b, fmt.Errorf("git diff requested but git differ not initialized")
+	}
+
 	// first try to get uncommitted changes
 	tempFile, description, err := b.gitDiffer.ProcessGitDiff(true, "")
 	if err != nil {
@@ -125,6 +131,10 @@ func (b *Builder) WithGitDiff() (*Builder, error) {
 
 // WithGitBranchDiff adds git diff between the specified branch and the default branch
 func (b *Builder) WithGitBranchDiff(branch string) (*Builder, error) {
+	if b.gitDiffer == nil {
+		return b, fmt.Errorf("git branch diff requested but git differ not initialized")
+	}
+
 	tempFile, description, err := b.gitDiffer.ProcessGitDiff(false, branch)
 	if err != nil {
 		return b, err

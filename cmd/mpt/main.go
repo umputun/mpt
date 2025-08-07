@@ -253,8 +253,11 @@ func processPrompt(opts *options) error {
 
 // buildFullPrompt loads content from specified files and builds the complete prompt
 func buildFullPrompt(opts *options) error {
-	// create git diff processor
-	gitDiffer := prompt.NewGitDiffer()
+	// only create git diff processor if git features are requested
+	var gitDiffer prompt.GitDiffProcessor
+	if opts.Git.Diff || opts.Git.Branch != "" {
+		gitDiffer = prompt.NewGitDiffer()
+	}
 
 	// use the prompt builder to handle file loading and prompt construction
 	builder := prompt.New(opts.Prompt, gitDiffer).
