@@ -825,7 +825,7 @@ func TestExecutePrompt_Verbose(t *testing.T) {
 
 	// execute the function
 	ctx := context.Background()
-	err = executePrompt(ctx, opts, providers)
+	result, err := executePrompt(ctx, opts, providers)
 
 	// restore stdout
 	w.Close()
@@ -838,9 +838,12 @@ func TestExecutePrompt_Verbose(t *testing.T) {
 
 	// check results
 	require.NoError(t, err, "executePrompt should not error")
+	require.NotNil(t, result, "result should not be nil")
 	assert.Contains(t, output, "=== Prompt sent to models ===", "Verbose output should include prompt header")
 	assert.Contains(t, output, "test prompt", "Verbose output should include the prompt text")
-	assert.Contains(t, output, "Test response for verbose test", "Output should contain the response")
+	assert.Equal(t, "Test response for verbose test", result.Text, "Result text should match expected response")
+	assert.False(t, result.MixUsed, "Mix should not be used")
+	assert.Empty(t, result.MixProvider, "Mix provider should be empty")
 }
 
 // TestExecutePrompt_Success tests the successful execution path
@@ -864,28 +867,17 @@ func TestExecutePrompt_Success(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	// redirect stdout
-	oldStdout := os.Stdout
-	rOut, wOut, err := os.Pipe()
-	require.NoError(t, err, "failed to create stdout pipe")
-	os.Stdout = wOut
-
 	// execute prompt
 	ctx := context.Background()
-	err = executePrompt(ctx, opts, providers)
+	result, err := executePrompt(ctx, opts, providers)
 	require.NoError(t, err, "executePrompt should not error")
+	require.NotNil(t, result, "result should not be nil")
 
-	// restore stdout
-	wOut.Close()
-	os.Stdout = oldStdout
-
-	// read output
-	var buf bytes.Buffer
-	io.Copy(&buf, rOut)
-	output := buf.String()
-
-	// verify output
-	assert.Contains(t, output, "Test response for: test prompt", "Output should contain the response")
+	// verify result
+	assert.Equal(t, "Test response for: test prompt", result.Text, "Result text should match expected response")
+	assert.False(t, result.MixUsed, "Mix should not be used")
+	assert.Empty(t, result.MixProvider, "Mix provider should be empty")
+	assert.Len(t, result.Results, 1, "Should have one result")
 }
 
 // TestExecutePrompt_DirectErrorHandlers tests the error handling code directly
@@ -963,7 +955,7 @@ func TestExecutePrompt_Error(t *testing.T) {
 		}
 
 		ctx := context.Background()
-		err = executePrompt(ctx, opts, providers)
+		result, err := executePrompt(ctx, opts, providers)
 
 		// restore stdout
 		w.Close()
@@ -976,6 +968,7 @@ func TestExecutePrompt_Error(t *testing.T) {
 		// with the updated runner behavior, executePrompt should return an error
 		// when a single provider fails
 		require.Error(t, err, "executePrompt should return an error with single provider failures")
+		assert.Nil(t, result, "result should be nil on error")
 		assert.Contains(t, err.Error(), "api error", "Error should contain the provider error message")
 	})
 
@@ -1021,7 +1014,7 @@ func TestExecutePrompt_Error(t *testing.T) {
 		}
 
 		ctx := context.Background()
-		err = executePrompt(ctx, opts, providers)
+		result, err := executePrompt(ctx, opts, providers)
 
 		// restore stdout
 		w.Close()
@@ -1030,14 +1023,14 @@ func TestExecutePrompt_Error(t *testing.T) {
 		// read the output
 		var buf bytes.Buffer
 		io.Copy(&buf, r)
-		output := buf.String()
 
 		// no error should be returned since at least one provider succeeded
 		require.NoError(t, err, "executePrompt should not return an error when some providers succeed")
+		require.NotNil(t, result, "result should not be nil")
 
-		// output should only show the successful result, not the error
-		assert.NotContains(t, output, "api error", "Output should not contain the failing provider's error message")
-		assert.Contains(t, output, "Success response", "Output should contain the successful provider's response")
+		// verify the result contains the successful response
+		assert.Contains(t, result.Text, "Success response", "Result should contain the successful provider's response")
+		assert.Len(t, result.Results, 2, "Should have results from both providers")
 	})
 }
 
@@ -1288,41 +1281,49 @@ func TestInitializeProviders(t *testing.T) {
 // TestOutputJSON tests the JSON output formatting functionality
 func TestOutputJSON(t *testing.T) {
 	testCases := []struct {
-		name           string
-		combinedResult string
-		results        []provider.Result
-		checkFields    []string
+		name        string
+		execResult  *ExecutionResult
+		checkFields []string
 	}{
 		{
-			name:           "single successful result",
-			combinedResult: "This is a test response",
-			results: []provider.Result{
-				{
-					Provider: "TestProvider",
-					Text:     "This is a test response",
-					Error:    nil,
+			name: "single successful result",
+			execResult: &ExecutionResult{
+				Text: "This is a test response",
+				Results: []provider.Result{
+					{
+						Provider: "TestProvider",
+						Text:     "This is a test response",
+						Error:    nil,
+					},
 				},
+				MixUsed:     false,
+				MixProvider: "",
 			},
 			checkFields: []string{
 				`"provider": "TestProvider"`,
 				`"text": "This is a test response"`,
+				`"mix_used": false`,
 				`"timestamp": "`,
 			},
 		},
 		{
-			name:           "multiple results with an error",
-			combinedResult: "== generated by Provider1 ==\nFirst response\n",
-			results: []provider.Result{
-				{
-					Provider: "Provider1",
-					Text:     "First response",
-					Error:    nil,
+			name: "multiple results with an error",
+			execResult: &ExecutionResult{
+				Text: "== generated by Provider1 ==\nFirst response\n",
+				Results: []provider.Result{
+					{
+						Provider: "Provider1",
+						Text:     "First response",
+						Error:    nil,
+					},
+					{
+						Provider: "Provider2",
+						Text:     "",
+						Error:    errors.New("test error"),
+					},
 				},
-				{
-					Provider: "Provider2",
-					Text:     "",
-					Error:    errors.New("test error"),
-				},
+				MixUsed:     false,
+				MixProvider: "",
 			},
 			checkFields: []string{
 				`"provider": "Provider1"`,
@@ -1333,18 +1334,31 @@ func TestOutputJSON(t *testing.T) {
 			},
 		},
 		{
-			name:           "empty combined result",
-			combinedResult: "",
-			results: []provider.Result{
-				{
-					Provider: "Provider",
-					Text:     "Some text",
-					Error:    nil,
+			name: "mixed results",
+			execResult: &ExecutionResult{
+				Text:      "== mixed results by MixProvider ==\nMixed content",
+				MixedText: "Mixed content",
+				Results: []provider.Result{
+					{
+						Provider: "Provider1",
+						Text:     "Text 1",
+						Error:    nil,
+					},
+					{
+						Provider: "Provider2",
+						Text:     "Text 2",
+						Error:    nil,
+					},
 				},
+				MixUsed:     true,
+				MixProvider: "MixProvider",
 			},
 			checkFields: []string{
-				`"provider": "Provider"`,
-				`"text": "Some text"`,
+				`"provider": "Provider1"`,
+				`"provider": "Provider2"`,
+				`"mixed": "Mixed content"`,
+				`"mix_used": true`,
+				`"mix_provider": "MixProvider"`,
 				`"timestamp": "`,
 			},
 		},
@@ -1359,7 +1373,7 @@ func TestOutputJSON(t *testing.T) {
 			os.Stdout = w
 
 			// call the function
-			err = outputJSON(tc.combinedResult, tc.results)
+			err = outputJSON(tc.execResult)
 			require.NoError(t, err, "outputJSON should not return an error")
 
 			// close the writer and restore stdout
@@ -1386,15 +1400,25 @@ func TestOutputJSON(t *testing.T) {
 			assert.Contains(t, result, "timestamp", "JSON should contain 'timestamp' field")
 			assert.NotContains(t, result, "result", "JSON should not contain 'result' field")
 
-			// verify the responses array
-			responses, ok := result["responses"].([]interface{})
-			require.True(t, ok, "responses should be an array")
-			assert.Len(t, responses, len(tc.results), "Number of responses should match input")
+            // verify the responses array
+            responses, ok := result["responses"].([]interface{})
+            require.True(t, ok, "responses should be an array")
+            assert.Len(t, responses, len(tc.execResult.Results), "Number of responses should match input")
+
+            // verify final field is present and matches execution result text
+            final, ok := result["final"].(string)
+            require.True(t, ok, "final should be present")
+            assert.Equal(t, tc.execResult.Text, final, "final should match execution result text")
+
+            // verify mix_used is consistent with exec result
+            mixUsed, ok := result["mix_used"].(bool)
+            require.True(t, ok, "mix_used should be present")
+            assert.Equal(t, tc.execResult.MixUsed, mixUsed, "mix_used should match execution result")
 		})
 	}
 }
 
-// TestExecutePrompt_JSON tests the JSON output path in executePrompt
+// TestExecutePrompt_JSON tests that executePrompt returns the correct ExecutionResult for JSON output
 func TestExecutePrompt_JSON(t *testing.T) {
 	// setup mock provider
 	mockProvider := &mocks.ProviderMock{
@@ -1411,12 +1435,6 @@ func TestExecutePrompt_JSON(t *testing.T) {
 
 	providers := []provider.Provider{mockProvider}
 
-	// create stdout capture
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
-
 	// create options with JSON flag
 	opts := &options{
 		Prompt:  "test prompt",
@@ -1426,39 +1444,19 @@ func TestExecutePrompt_JSON(t *testing.T) {
 
 	// execute the function
 	ctx := context.Background()
-	err = executePrompt(ctx, opts, providers)
-
-	// restore stdout
-	w.Close()
-	os.Stdout = oldStdout
-
-	// read the output
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	output := buf.String()
+	result, err := executePrompt(ctx, opts, providers)
 
 	// check results
 	require.NoError(t, err, "executePrompt should not error")
+	require.NotNil(t, result, "result should not be nil")
 
-	// verify that output is valid JSON
-	var result map[string]interface{}
-	err = json.Unmarshal([]byte(output), &result)
-	require.NoError(t, err, "Output should be valid JSON")
-
-	// check important fields
-	assert.Contains(t, result, "responses", "JSON should have responses field")
-	assert.Contains(t, result, "timestamp", "JSON should have timestamp field")
-	assert.NotContains(t, result, "result", "JSON should not have result field")
-
-	// check responses array
-	responses, ok := result["responses"].([]interface{})
-	require.True(t, ok, "responses should be an array")
-	require.Len(t, responses, 1, "Should have one response")
-
-	// verify response content
-	response := responses[0].(map[string]interface{})
-	assert.Equal(t, "MockProvider", response["provider"], "Provider name should match")
-	assert.Equal(t, "Test response for JSON test", response["text"], "Response text should match")
+	// verify ExecutionResult
+	assert.Equal(t, "Test response for JSON test", result.Text, "Result text should match")
+	assert.False(t, result.MixUsed, "Mix should not be used")
+	assert.Empty(t, result.MixProvider, "Mix provider should be empty")
+	assert.Len(t, result.Results, 1, "Should have one result")
+	assert.Equal(t, "MockProvider", result.Results[0].Provider)
+	assert.Equal(t, "Test response for JSON test", result.Results[0].Text)
 }
 
 // TestMixResults tests the mix functionality
@@ -1607,13 +1605,18 @@ func TestMixResults(t *testing.T) {
 	// run tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := mixResults(ctx, tt.opts, tt.providers, tt.results)
+			textWithHeader, rawText, mixProvider, err := mixResults(ctx, tt.opts, tt.providers, tt.results)
 
 			if tt.expectedError {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				assert.Contains(t, result, tt.expectedOutput)
+				assert.Contains(t, textWithHeader, tt.expectedOutput)
+				if !tt.expectedError && err == nil && textWithHeader != "" {
+					assert.NotEmpty(t, mixProvider, "Mix provider should be set when mixing succeeds")
+					assert.NotEmpty(t, rawText, "Raw text should be set when mixing succeeds")
+					assert.NotContains(t, rawText, "== mixed results by", "Raw text should not contain header")
+				}
 			}
 		})
 	}
@@ -1669,7 +1672,7 @@ func TestExecutePrompt_WithMix(t *testing.T) {
 
 	// execute the function
 	ctx := context.Background()
-	err = executePrompt(ctx, opts, providers)
+	result, err := executePrompt(ctx, opts, providers)
 
 	// restore stdout
 	w.Close()
@@ -1678,12 +1681,15 @@ func TestExecutePrompt_WithMix(t *testing.T) {
 	// read the output
 	var buf bytes.Buffer
 	io.Copy(&buf, r)
-	output := buf.String()
 
 	// check results
 	require.NoError(t, err, "executePrompt should not error")
-	assert.Contains(t, output, "mixed results by Provider1", "Output should contain the mixed results header")
-	assert.Contains(t, output, "Mixed result combining all inputs", "Output should contain the mixed result")
+	require.NotNil(t, result, "result should not be nil")
+	assert.True(t, result.MixUsed, "MixUsed should be true")
+	assert.Equal(t, "Provider1", result.MixProvider, "MixProvider should be Provider1")
+	assert.Contains(t, result.Text, "mixed results by Provider1", "Result text should contain the mixed results header")
+	assert.Contains(t, result.Text, "Mixed result combining all inputs", "Result text should contain the mixed result")
+	assert.Equal(t, "Mixed result combining all inputs", result.MixedText, "MixedText should contain raw result without header")
 }
 
 // TestExecutePrompt_WithMixJSON tests the mix functionality with JSON output
@@ -1719,12 +1725,6 @@ func TestExecutePrompt_WithMixJSON(t *testing.T) {
 
 	providers := []provider.Provider{mockProvider1, mockProvider2}
 
-	// create stdout capture
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
-
 	// create options with mix enabled and JSON output
 	opts := &options{
 		Prompt:      "test prompt",
@@ -1737,7 +1737,24 @@ func TestExecutePrompt_WithMixJSON(t *testing.T) {
 
 	// execute the function
 	ctx := context.Background()
-	err = executePrompt(ctx, opts, providers)
+	execResult, err := executePrompt(ctx, opts, providers)
+
+	// check execution result
+	require.NoError(t, err, "executePrompt should not error")
+	require.NotNil(t, execResult, "result should not be nil")
+	assert.True(t, execResult.MixUsed, "MixUsed should be true")
+	assert.Equal(t, "Provider1", execResult.MixProvider, "MixProvider should be Provider1")
+	assert.Equal(t, "Mixed result combining all inputs", execResult.MixedText, "MixedText should contain raw result")
+
+	// now test JSON output with our ExecutionResult
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+
+	// output the JSON
+	err = outputJSON(execResult)
+	require.NoError(t, err, "outputJSON should not error")
 
 	// restore stdout
 	w.Close()
@@ -1748,9 +1765,6 @@ func TestExecutePrompt_WithMixJSON(t *testing.T) {
 	io.Copy(&buf, r)
 	output := buf.String()
 
-	// check results
-	require.NoError(t, err, "executePrompt should not error")
-
 	// verify that output is valid JSON
 	var result map[string]interface{}
 	err = json.Unmarshal([]byte(output), &result)
@@ -1759,13 +1773,25 @@ func TestExecutePrompt_WithMixJSON(t *testing.T) {
 	// check important fields
 	assert.Contains(t, result, "responses", "JSON should have responses field")
 	assert.Contains(t, result, "mixed", "JSON should have mixed field")
+	assert.Contains(t, result, "mix_used", "JSON should have mix_used field")
+	assert.Contains(t, result, "mix_provider", "JSON should have mix_provider field")
 	assert.Contains(t, result, "timestamp", "JSON should have timestamp field")
 
-	// check mixed field
+	// check mix_used field
+	mixUsed, ok := result["mix_used"].(bool)
+	require.True(t, ok, "mix_used should be a boolean")
+	assert.True(t, mixUsed, "mix_used should be true")
+
+	// check mixed field - should NOT contain header
 	mixed, ok := result["mixed"].(string)
 	require.True(t, ok, "mixed should be a string")
-	assert.Contains(t, mixed, "mixed results by Provider1", "Mixed field should contain provider info")
-	assert.Contains(t, mixed, "Mixed result combining all inputs", "Mixed field should contain the mixed result")
+	assert.NotContains(t, mixed, "== mixed results by", "Mixed field should NOT contain header")
+	assert.Equal(t, "Mixed result combining all inputs", mixed, "Mixed field should contain raw result only")
+
+	// check mix_provider field
+	mixProvider, ok := result["mix_provider"].(string)
+	require.True(t, ok, "mix_provider should be a string")
+	assert.Equal(t, "Provider1", mixProvider, "mix_provider should be Provider1")
 
 	// check responses array
 	responses, ok := result["responses"].([]interface{})

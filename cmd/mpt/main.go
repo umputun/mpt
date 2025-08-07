@@ -152,7 +152,17 @@ func run(ctx context.Context, opts *options) error {
 		return err
 	}
 
-	return executePrompt(ctx, opts, providers)
+	result, err := executePrompt(ctx, opts, providers)
+	if err != nil {
+		return err
+	}
+
+	// output results
+	if opts.JSON {
+		return outputJSON(result)
+	}
+	fmt.Println(strings.TrimSpace(result.Text))
+	return nil
 }
 
 // runMCPServer starts MPT in MCP server mode
@@ -422,8 +432,17 @@ func initializeCustomProvider(opts *options) (provider.Provider, error) {
 	return nil, fmt.Errorf("custom provider %s failed to initialize", opts.Custom.Name)
 }
 
+// ExecutionResult holds the structured result of executing a prompt
+type ExecutionResult struct {
+	Text        string            // final text output (with headers for CLI display)
+	MixedText   string            // raw mixed text without headers (for JSON)
+	MixUsed     bool              // whether mix mode was used
+	MixProvider string            // provider that performed the mixing (if any)
+	Results     []provider.Result // individual provider results
+}
+
 // executePrompt runs the prompt against the configured providers
-func executePrompt(ctx context.Context, opts *options, providers []provider.Provider) error {
+func executePrompt(ctx context.Context, opts *options, providers []provider.Provider) (*ExecutionResult, error) {
 	// create runner with all providers
 	r := runner.New(providers...)
 
@@ -440,32 +459,36 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 	result, err := r.Run(timeoutCtx, opts.Prompt)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("operation timed out after %s, try increasing the timeout with -t flag", opts.Timeout)
+			return nil, fmt.Errorf("operation timed out after %s, try increasing the timeout with -t flag", opts.Timeout)
 		}
-		return err
+		return nil, err
+	}
+
+	// prepare execution result
+	execResult := &ExecutionResult{
+		Text:    result,
+		Results: r.GetResults(),
 	}
 
 	// handle mix mode if enabled
 	if opts.MixEnabled && len(providers) > 1 {
-		mixedResult, err := processMixMode(timeoutCtx, opts, providers, r.GetResults())
+		mixedText, mixedRaw, mixProvider, err := processMixMode(timeoutCtx, opts, providers, r.GetResults())
 		if err != nil {
-			return fmt.Errorf("failed to mix results: %w", err)
+			return nil, fmt.Errorf("failed to mix results: %w", err)
 		}
-		if mixedResult != "" {
-			result = mixedResult
+		if mixedText != "" {
+			execResult.Text = mixedText
+			execResult.MixedText = mixedRaw
+			execResult.MixUsed = true
+			execResult.MixProvider = mixProvider
 		}
 	}
 
-	// output results
-	if opts.JSON {
-		return outputJSON(result, r.GetResults())
-	}
-	fmt.Println(strings.TrimSpace(result))
-	return nil
+	return execResult, nil
 }
 
 // processMixMode handles mixing results from multiple providers
-func processMixMode(ctx context.Context, opts *options, providers []provider.Provider, rawResults []provider.Result) (string, error) {
+func processMixMode(ctx context.Context, opts *options, providers []provider.Provider, rawResults []provider.Result) (textWithHeader, rawText, mixProvider string, err error) {
 	// filter successful results
 	var successfulResults []provider.Result
 	for _, res := range rawResults {
@@ -476,7 +499,7 @@ func processMixMode(ctx context.Context, opts *options, providers []provider.Pro
 
 	// need at least 2 successful results to mix
 	if len(successfulResults) < 2 {
-		return "", nil
+		return "", "", "", nil
 	}
 
 	return mixResults(ctx, opts, providers, successfulResults)
@@ -550,14 +573,14 @@ func readFromStdin() (string, error) {
 }
 
 // mixResults takes multiple provider results and uses a selected provider to mix them
-func mixResults(ctx context.Context, opts *options, providers []provider.Provider, results []provider.Result) (string, error) {
+func mixResults(ctx context.Context, opts *options, providers []provider.Provider, results []provider.Result) (textWithHeader, rawText, mixProviderName string, err error) {
 	// find the mix provider
 	var mixProvider provider.Provider
-	mixProviderName := strings.ToLower(opts.MixProvider)
+	mixProviderNameLower := strings.ToLower(opts.MixProvider)
 
 	// try to find the specified mix provider among the enabled providers
 	for _, p := range providers {
-		if strings.ToLower(p.Name()) == mixProviderName && p.Enabled() {
+		if strings.ToLower(p.Name()) == mixProviderNameLower && p.Enabled() {
 			mixProvider = p
 			break
 		}
@@ -576,7 +599,7 @@ func mixResults(ctx context.Context, opts *options, providers []provider.Provide
 	}
 
 	if mixProvider == nil {
-		return "", fmt.Errorf("no enabled provider found for mixing results")
+		return "", "", "", fmt.Errorf("no enabled provider found for mixing results")
 	}
 
 	// build a prompt with all results
@@ -596,13 +619,17 @@ func mixResults(ctx context.Context, opts *options, providers []provider.Provide
 	// generate the mixed result
 	mixedResult, err := mixProvider.Generate(ctx, mixPrompt.String())
 	if err != nil {
-		return "", fmt.Errorf("failed to generate mixed result using %s: %w", mixProvider.Name(), err)
+		return "", "", "", fmt.Errorf("failed to generate mixed result using %s: %w", mixProvider.Name(), err)
 	}
 
-	return fmt.Sprintf("== mixed results by %s ==\n%s", mixProvider.Name(), mixedResult), nil
+	// return both formatted (with header) and raw versions
+	textWithHeader = fmt.Sprintf("== mixed results by %s ==\n%s", mixProvider.Name(), mixedResult)
+	rawText = mixedResult
+	mixProviderName = mixProvider.Name()
+	return textWithHeader, rawText, mixProviderName, nil
 }
 
-func outputJSON(finalResult string, results []provider.Result) error {
+func outputJSON(result *ExecutionResult) error {
 	// create json output structure
 	type ProviderResponse struct {
 		Provider string `json:"provider"`
@@ -611,14 +638,17 @@ func outputJSON(finalResult string, results []provider.Result) error {
 	}
 
 	type JSONOutput struct {
-		Responses []ProviderResponse `json:"responses"`       // individual provider responses
-		Mixed     string             `json:"mixed,omitempty"` // mixed result if available
-		Timestamp string             `json:"timestamp"`
+		Final       string             `json:"final"`                  // final text shown in cli mode
+		Responses   []ProviderResponse `json:"responses"`              // individual provider responses
+		Mixed       string             `json:"mixed,omitempty"`        // raw mixed result without headers
+		MixUsed     bool               `json:"mix_used"`               // explicit flag for mix mode usage
+		MixProvider string             `json:"mix_provider,omitempty"` // provider that performed mixing
+		Timestamp   string             `json:"timestamp"`
 	}
 
 	// build responses array
-	responses := make([]ProviderResponse, 0, len(results))
-	for _, r := range results {
+	responses := make([]ProviderResponse, 0, len(result.Results))
+	for _, r := range result.Results {
 		resp := ProviderResponse{
 			Provider: r.Provider,
 			Text:     r.Text,
@@ -633,13 +663,16 @@ func outputJSON(finalResult string, results []provider.Result) error {
 
 	// create the output structure
 	output := JSONOutput{
+		Final:     result.Text,
 		Responses: responses,
+		MixUsed:   result.MixUsed,
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
-	// check if the finalResult is a mixed result (has the mixed header)
-	if strings.Contains(finalResult, "== mixed results by ") {
-		output.Mixed = finalResult
+	// add mixed result info if mixing was used
+	if result.MixUsed {
+		output.Mixed = result.MixedText // use raw text without headers
+		output.MixProvider = result.MixProvider
 	}
 
 	// encode to JSON
