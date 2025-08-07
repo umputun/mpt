@@ -134,10 +134,11 @@ github.com/mark3labs/mcp-go/server
 # github.com/pmezard/go-difflib v1.0.0
 ## explicit
 github.com/pmezard/go-difflib/difflib
-# github.com/sashabaranov/go-openai v1.38.1
+# github.com/sashabaranov/go-openai v1.40.5
 ## explicit; go 1.18
 github.com/sashabaranov/go-openai
 github.com/sashabaranov/go-openai/internal
+github.com/sashabaranov/go-openai/jsonschema
 # github.com/stretchr/testify v1.10.0
 ## explicit; go 1.17
 github.com/stretchr/testify/assert

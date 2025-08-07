@@ -66,20 +66,34 @@ func (o *OpenAI) Generate(ctx context.Context, prompt string) (string, error) {
 		return "", errors.New("openai provider is not enabled")
 	}
 
-	resp, err := o.client.CreateChatCompletion(
-		ctx,
-		openai.ChatCompletionRequest{
-			Model: o.model,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: prompt,
-				},
+	// prepare request with common fields
+	req := openai.ChatCompletionRequest{
+		Model: o.model,
+		Messages: []openai.ChatCompletionMessage{
+			{
+				Role:    openai.ChatMessageRoleUser,
+				Content: prompt,
 			},
-			MaxTokens:   o.maxTokens,
-			Temperature: o.temperature,
 		},
-	)
+	}
+
+	// use MaxCompletionTokens for reasoning models (o1, o3, o4) and gpt-5 models
+	// these models require the new parameter instead of MaxTokens
+	// also, these models only support temperature=1 (default)
+	modelLower := strings.ToLower(o.model)
+	isReasoningModel := strings.HasPrefix(modelLower, "o1") || strings.HasPrefix(modelLower, "o3") ||
+		strings.HasPrefix(modelLower, "o4") || strings.Contains(modelLower, "gpt-5")
+
+	if isReasoningModel {
+		req.MaxCompletionTokens = o.maxTokens
+		// reasoning models only support temperature=1, don't set it explicitly
+		// the API will use the default value
+	} else {
+		req.MaxTokens = o.maxTokens
+		req.Temperature = o.temperature
+	}
+
+	resp, err := o.client.CreateChatCompletion(ctx, req)
 
 	if err != nil {
 		// add more context to the error before sanitizing
