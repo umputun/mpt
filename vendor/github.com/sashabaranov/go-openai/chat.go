@@ -248,13 +248,24 @@ func (r *ChatCompletionResponseFormatJSONSchema) UnmarshalJSON(data []byte) erro
 	return nil
 }
 
+// ChatCompletionRequestExtensions contains third-party OpenAI API extensions
+// (e.g., vendor-specific implementations like vLLM).
+type ChatCompletionRequestExtensions struct {
+	// GuidedChoice is a vLLM-specific extension that restricts the model's output
+	// to one of the predefined string choices provided in this field. This feature
+	// is used to constrain the model's responses to a controlled set of options,
+	// ensuring predictable and consistent outputs in scenarios where specific
+	// choices are required.
+	GuidedChoice []string `json:"guided_choice,omitempty"`
+}
+
 // ChatCompletionRequest represents a request structure for chat completion API.
 type ChatCompletionRequest struct {
 	Model    string                  `json:"model"`
 	Messages []ChatCompletionMessage `json:"messages"`
 	// MaxTokens The maximum number of tokens that can be generated in the chat completion.
 	// This value can be used to control costs for text generated via API.
-	// This value is now deprecated in favor of max_completion_tokens, and is not compatible with o1 series models.
+	// Deprecated: use MaxCompletionTokens. Not compatible with o1-series models.
 	// refs: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
 	MaxTokens int `json:"max_tokens,omitempty"`
 	// MaxCompletionTokens An upper bound for the number of tokens that can be generated for a completion,
@@ -309,6 +320,8 @@ type ChatCompletionRequest struct {
 	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 	// Specifies the latency tier to use for processing the request.
 	ServiceTier ServiceTier `json:"service_tier,omitempty"`
+	// Embedded struct for non-OpenAI extensions
+	ChatCompletionRequestExtensions
 }
 
 type StreamOptions struct {
