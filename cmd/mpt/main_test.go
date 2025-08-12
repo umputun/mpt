@@ -776,7 +776,13 @@ func TestInitializeProvider(t *testing.T) {
 			provType, err := enum.ParseProviderType(tt.providerType)
 			require.NoError(t, err, "Should parse provider type")
 
-			providerInstance, err := initializeProvider(provType, tt.apiKey, tt.model, tt.maxTokens, tt.temperature)
+			providerInstance, err := provider.CreateProvider(provType, provider.Options{
+			APIKey:      tt.apiKey,
+			Model:       tt.model,
+			Enabled:     true,
+			MaxTokens:   tt.maxTokens,
+			Temperature: tt.temperature,
+		})
 
 			if tt.expectNil {
 				assert.Nil(t, providerInstance, "Provider should be nil")
@@ -1675,17 +1681,25 @@ func TestMixResults(t *testing.T) {
 	// run tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			textWithHeader, rawText, mixProvider, err := mixResults(ctx, tt.opts, tt.providers, tt.results)
+			mixRequest := MixRequest{
+				MixPrompt:   tt.opts.MixPrompt,
+				MixProvider: tt.opts.MixProvider,
+				Providers:   tt.providers,
+				Results:     tt.results,
+			}
+			
+			response, err := mixResults(ctx, mixRequest)
 
 			if tt.expectedError {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				assert.Contains(t, textWithHeader, tt.expectedOutput)
-				if !tt.expectedError && err == nil && textWithHeader != "" {
-					assert.NotEmpty(t, mixProvider, "Mix provider should be set when mixing succeeds")
-					assert.NotEmpty(t, rawText, "Raw text should be set when mixing succeeds")
-					assert.NotContains(t, rawText, "== mixed results by", "Raw text should not contain header")
+				require.NotNil(t, response)
+				assert.Contains(t, response.TextWithHeader, tt.expectedOutput)
+				if !tt.expectedError && err == nil && response.TextWithHeader != "" {
+					assert.NotEmpty(t, response.MixProvider, "Mix provider should be set when mixing succeeds")
+					assert.NotEmpty(t, response.RawText, "Raw text should be set when mixing succeeds")
+					assert.NotContains(t, response.RawText, "== mixed results by", "Raw text should not contain header")
 				}
 			}
 		})
@@ -1870,225 +1884,6 @@ func TestExecutePrompt_WithMixJSON(t *testing.T) {
 }
 
 // TestIsConsensusReached tests the consensus detection logic
-func TestIsConsensusReached(t *testing.T) {
-	tests := []struct {
-		name     string
-		response string
-		expected bool
-	}{
-		{"explicit yes", "YES", true},
-		{"yes with punctuation", "Yes.", true},
-		{"yes with explanation", "Yes, they agree on the main points", true},
-		{"explicit no", "NO", false},
-		{"no with punctuation", "No.", false},
-		{"no with explanation", "No, they disagree", false},
-		{"contains disagree", "I disagree with that", false},
-		{"contains conflict", "There is a conflict", false},
-		{"contains different", "They have different opinions", false},
-		{"contains not", "They do not agree", false},
-		{"false positive avoid", "No, I don't agree", false},
-		{"contains agree", "I agree with the assessment", true},
-		{"contains consensus", "There is consensus", true},
-		{"affirmative", "Affirmative", true},
-		{"concur", "I concur", true},
-		{"ambiguous", "Maybe", false},
-		{"empty", "", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := isConsensusReached(tt.response)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-// TestBuildConsensusCheckPrompt tests the consensus check prompt builder
-func TestBuildConsensusCheckPrompt(t *testing.T) {
-	results := []provider.Result{
-		{Provider: "OpenAI", Text: "Response from OpenAI"},
-		{Provider: "Anthropic", Text: "Response from Anthropic"},
-		{Provider: "Google", Text: "Response from Google", Error: errors.New("failed")}, // should be skipped
-	}
-
-	prompt := buildConsensusCheckPrompt(results)
-
-	// check that prompt contains the expected parts
-	assert.Contains(t, prompt, "Do the following AI responses fundamentally agree")
-	assert.Contains(t, prompt, "Response 1 from OpenAI:")
-	assert.Contains(t, prompt, "Response from OpenAI")
-	assert.Contains(t, prompt, "Response 2 from Anthropic:")
-	assert.Contains(t, prompt, "Response from Anthropic")
-	assert.NotContains(t, prompt, "Google") // error result should be skipped
-	assert.Contains(t, prompt, "Answer:")
-}
-
-// TestBuildConsensusRerunPrompt tests the consensus rerun prompt builder
-func TestBuildConsensusRerunPrompt(t *testing.T) {
-	originalPrompt := "What is the capital of France?"
-	results := []provider.Result{
-		{Provider: "OpenAI", Text: "Paris is the capital"},
-		{Provider: "Anthropic", Text: "The capital is Paris"},
-		{Provider: "Google", Text: "", Error: errors.New("failed")}, // should be skipped
-	}
-
-	prompt := buildConsensusRerunPrompt(originalPrompt, results)
-
-	// check that prompt contains the expected parts
-	assert.Contains(t, prompt, "Original question:")
-	assert.Contains(t, prompt, originalPrompt)
-	assert.Contains(t, prompt, "Other AI models provided these different perspectives")
-	assert.Contains(t, prompt, "--- OpenAI's response ---")
-	assert.Contains(t, prompt, "Paris is the capital")
-	assert.Contains(t, prompt, "--- Anthropic's response ---")
-	assert.Contains(t, prompt, "The capital is Paris")
-	assert.NotContains(t, prompt, "Google") // error result should be skipped
-	assert.Contains(t, prompt, "Please reconsider your answer")
-}
-
-// TestFindMixProvider tests finding the mix provider
-func TestFindMixProvider(t *testing.T) {
-	mockProvider1 := &mocks.ProviderMock{
-		NameFunc:    func() string { return "OpenAI" },
-		EnabledFunc: func() bool { return true },
-	}
-	mockProvider2 := &mocks.ProviderMock{
-		NameFunc:    func() string { return "Anthropic" },
-		EnabledFunc: func() bool { return true },
-	}
-	mockProvider3 := &mocks.ProviderMock{
-		NameFunc:    func() string { return "Google" },
-		EnabledFunc: func() bool { return false }, // disabled
-	}
-
-	tests := []struct {
-		name         string
-		opts         *options
-		providers    []provider.Provider
-		expectedName string
-		expectNil    bool
-	}{
-		{
-			name:         "find specified provider",
-			opts:         &options{MixProvider: "Anthropic"},
-			providers:    []provider.Provider{mockProvider1, mockProvider2, mockProvider3},
-			expectedName: "Anthropic",
-		},
-		{
-			name:         "find specified provider case insensitive",
-			opts:         &options{MixProvider: "openai"},
-			providers:    []provider.Provider{mockProvider1, mockProvider2, mockProvider3},
-			expectedName: "OpenAI",
-		},
-		{
-			name:         "fallback to first enabled provider",
-			opts:         &options{MixProvider: "NonExistent"},
-			providers:    []provider.Provider{mockProvider1, mockProvider2, mockProvider3},
-			expectedName: "OpenAI",
-		},
-		{
-			name:      "no enabled providers",
-			opts:      &options{MixProvider: "OpenAI"},
-			providers: []provider.Provider{mockProvider3}, // only disabled provider
-			expectNil: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := findMixProvider(tt.opts, tt.providers)
-			if tt.expectNil {
-				assert.Nil(t, result)
-			} else {
-				require.NotNil(t, result)
-				assert.Equal(t, tt.expectedName, result.Name())
-			}
-		})
-	}
-}
-
-// TestAttemptConsensus tests the consensus attempt logic
-func TestAttemptConsensus(t *testing.T) {
-	// create mock provider for consensus checking
-	consensusCheckCount := 0
-	mockMixProvider := &mocks.ProviderMock{
-		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
-			consensusCheckCount++
-			if strings.Contains(prompt, "Do the following AI responses") {
-				// consensus check prompt
-				if consensusCheckCount == 1 {
-					return "NO", nil // first attempt: no consensus
-				}
-				return "YES", nil // second attempt: consensus reached
-			}
-			// rerun prompt for providers
-			return "Reconsidered response", nil
-		},
-		NameFunc:    func() string { return "OpenAI" },
-		EnabledFunc: func() bool { return true },
-	}
-
-	tests := []struct {
-		name             string
-		opts             *options
-		providers        []provider.Provider
-		initialResults   []provider.Result
-		expectedAttempts int
-		expectedAchieved bool
-	}{
-		{
-			name: "consensus reached after retry",
-			opts: &options{
-				MixProvider:       "OpenAI",
-				ConsensusAttempts: 3,
-			},
-			providers: []provider.Provider{mockMixProvider},
-			initialResults: []provider.Result{
-				{Provider: "OpenAI", Text: "Response 1"},
-				{Provider: "Anthropic", Text: "Response 2"},
-			},
-			expectedAttempts: 2,
-			expectedAchieved: true,
-		},
-		{
-			name: "consensus reached immediately",
-			opts: &options{
-				MixProvider:       "OpenAI",
-				ConsensusAttempts: 1,
-			},
-			providers: []provider.Provider{mockMixProvider},
-			initialResults: []provider.Result{
-				{Provider: "OpenAI", Text: "Response 1"},
-				{Provider: "Anthropic", Text: "Response 2"},
-			},
-			expectedAttempts: 1,
-			expectedAchieved: false, // only 1 attempt allowed, and it returned NO
-		},
-		{
-			name: "no mix provider available",
-			opts: &options{
-				MixProvider:       "NonExistent",
-				ConsensusAttempts: 2,
-			},
-			providers:        []provider.Provider{},
-			initialResults:   []provider.Result{{Provider: "OpenAI", Text: "Response"}},
-			expectedAttempts: 0,
-			expectedAchieved: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			consensusCheckCount = 0 // reset counter
-			ctx := context.Background()
-			results, attempts, achieved, _ := attemptConsensus(ctx, tt.opts, tt.providers, tt.initialResults)
-
-			assert.NotNil(t, results)
-			assert.Equal(t, tt.expectedAttempts, attempts)
-			assert.Equal(t, tt.expectedAchieved, achieved)
-		})
-	}
-}
 
 // TestProcessMixModeWithConsensus tests the mix mode with consensus enabled
 func TestProcessMixModeWithConsensus(t *testing.T) {
@@ -2121,7 +1916,17 @@ func TestProcessMixModeWithConsensus(t *testing.T) {
 		{Provider: "Anthropic", Text: "Response 2"},
 	}
 
-	result, err := processMixMode(ctx, opts, []provider.Provider{mockMixProvider}, rawResults)
+	processMixRequest := ProcessMixRequest{
+		Prompt:            "test prompt",
+		MixPrompt:         opts.MixPrompt,
+		MixProvider:       opts.MixProvider,
+		ConsensusEnabled:  opts.ConsensusEnabled,
+		ConsensusAttempts: opts.ConsensusAttempts,
+		Providers:         []provider.Provider{mockMixProvider},
+		Results:           rawResults,
+	}
+	
+	result, err := processMixMode(ctx, processMixRequest)
 
 	require.NoError(t, err)
 	assert.NotNil(t, result)

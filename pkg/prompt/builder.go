@@ -84,7 +84,12 @@ func (b *Builder) Build() (string, error) {
 			lgr.Printf("[DEBUG] excluding patterns: %v", b.excludes)
 		}
 
-		fileContent, err := files.LoadContent(b.files, b.excludes, b.maxFileSize, b.force)
+		fileContent, err := files.LoadContent(files.LoadRequest{
+			Patterns:        b.files,
+			ExcludePatterns: b.excludes,
+			MaxFileSize:     b.maxFileSize,
+			Force:           b.force,
+		})
 		if err != nil {
 			return "", fmt.Errorf("failed to load files: %w", err)
 		}
