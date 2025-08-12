@@ -47,6 +47,10 @@ type options struct {
 	MixProvider string `long:"mix.provider" env:"MIX_PROVIDER" default:"openai" description:"provider used to mix results"`
 	MixPrompt   string `long:"mix.prompt" env:"MIX_PROMPT" default:"merge results from all providers" description:"prompt used to mix results"`
 
+	// consensus options - works with mix mode
+	ConsensusEnabled  bool `long:"consensus" env:"CONSENSUS" description:"enable consensus checking when using mix"`
+	ConsensusAttempts int  `long:"consensus.attempts" env:"CONSENSUS_ATTEMPTS" default:"1" description:"max consensus attempts (1-5)"`
+
 	// common options
 	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
 	Verbose bool `short:"v" long:"verbose" description:"verbose output, shows prompt sent to models"`
@@ -141,8 +145,27 @@ func main() {
 	}
 }
 
+// validateOptions validates the command-line options
+func validateOptions(opts *options) error {
+	// validate consensus options
+	if opts.ConsensusEnabled {
+		if opts.ConsensusAttempts < 1 || opts.ConsensusAttempts > 5 {
+			return fmt.Errorf("consensus attempts must be between 1 and 5, got %d", opts.ConsensusAttempts)
+		}
+		// consensus requires mix mode
+		if !opts.MixEnabled {
+			return fmt.Errorf("consensus mode requires mix mode to be enabled (use --mix)")
+		}
+	}
+	return nil
+}
+
 // run executes the main program logic and returns an error if it fails
 func run(ctx context.Context, opts *options) error {
+	// validate options first
+	if err := validateOptions(opts); err != nil {
+		return err
+	}
 	// check if running in MCP server mode
 	if opts.MCP.Server {
 		return runMCPServer(ctx, opts)
@@ -463,6 +486,10 @@ type ExecutionResult struct {
 	MixUsed     bool              // whether mix mode was used
 	MixProvider string            // provider that performed the mixing (if any)
 	Results     []provider.Result // individual provider results
+	// consensus fields
+	ConsensusAttempted bool // whether consensus was attempted
+	ConsensusAchieved  bool // whether consensus was achieved
+	ConsensusAttempts  int  // number of consensus attempts made
 }
 
 // executePrompt runs the prompt against the configured providers
@@ -496,23 +523,38 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 
 	// handle mix mode if enabled
 	if opts.MixEnabled && len(providers) > 1 {
-		mixedText, mixedRaw, mixProvider, err := processMixMode(timeoutCtx, opts, providers, r.GetResults())
+		mixResult, err := processMixMode(timeoutCtx, opts, providers, r.GetResults())
 		if err != nil {
 			return nil, fmt.Errorf("failed to mix results: %w", err)
 		}
-		if mixedText != "" {
-			execResult.Text = mixedText
-			execResult.MixedText = mixedRaw
+		if mixResult.TextWithHeader != "" {
+			execResult.Text = mixResult.TextWithHeader
+			execResult.MixedText = mixResult.RawText
 			execResult.MixUsed = true
-			execResult.MixProvider = mixProvider
+			execResult.MixProvider = mixResult.MixProvider
+		}
+		// set consensus metadata
+		if opts.ConsensusEnabled {
+			execResult.ConsensusAttempted = true
+			execResult.ConsensusAchieved = mixResult.ConsensusAchieved
+			execResult.ConsensusAttempts = mixResult.ConsensusAttempts
 		}
 	}
 
 	return execResult, nil
 }
 
+// MixResult holds the result of mixing provider responses
+type MixResult struct {
+	TextWithHeader    string
+	RawText           string
+	MixProvider       string
+	ConsensusAchieved bool
+	ConsensusAttempts int
+}
+
 // processMixMode handles mixing results from multiple providers
-func processMixMode(ctx context.Context, opts *options, providers []provider.Provider, rawResults []provider.Result) (textWithHeader, rawText, mixProvider string, err error) {
+func processMixMode(ctx context.Context, opts *options, providers []provider.Provider, rawResults []provider.Result) (*MixResult, error) {
 	// filter successful results
 	var successfulResults []provider.Result
 	for _, res := range rawResults {
@@ -523,10 +565,206 @@ func processMixMode(ctx context.Context, opts *options, providers []provider.Pro
 
 	// need at least 2 successful results to mix
 	if len(successfulResults) < 2 {
-		return "", "", "", nil
+		return &MixResult{}, nil
 	}
 
-	return mixResults(ctx, opts, providers, successfulResults)
+	result := &MixResult{}
+
+	// if consensus enabled, check and attempt consensus
+	if opts.ConsensusEnabled && len(successfulResults) > 1 {
+		var consensusResults []provider.Result
+		var consensusErr error
+		consensusResults, result.ConsensusAttempts, result.ConsensusAchieved, consensusErr = attemptConsensus(ctx, opts, providers, successfulResults)
+		if consensusErr != nil {
+			// log the error but continue with mixing
+			lgr.Printf("[ERROR] consensus checking encountered errors: %v", consensusErr)
+		}
+		if consensusResults != nil {
+			successfulResults = consensusResults
+		}
+		// log consensus attempts for transparency
+		lgr.Printf("[INFO] consensus attempts made: %d, achieved: %v", result.ConsensusAttempts, result.ConsensusAchieved)
+	}
+
+	textWithHeader, rawText, mixProvider, err := mixResults(ctx, opts, providers, successfulResults)
+	if err != nil {
+		return nil, err
+	}
+
+	result.TextWithHeader = textWithHeader
+	result.RawText = rawText
+	result.MixProvider = mixProvider
+
+	return result, nil
+}
+
+// attemptConsensus tries to reach consensus among provider results
+func attemptConsensus(ctx context.Context, opts *options, providers []provider.Provider,
+	results []provider.Result) (consensusResults []provider.Result, attempts int, achieved bool, err error) {
+	// find the mix provider to use for consensus checking
+	mixProvider := findMixProvider(opts, providers)
+	if mixProvider == nil {
+		err = fmt.Errorf("no mix provider available for consensus checking")
+		lgr.Printf("[ERROR] %v", err)
+		return results, 0, false, err
+	}
+
+	var lastError error
+	for attempt := 1; attempt <= opts.ConsensusAttempts; attempt++ {
+		// step 1: check if results agree using mix model
+		checkPrompt := buildConsensusCheckPrompt(results)
+		agreement, err := mixProvider.Generate(ctx, checkPrompt)
+		if err != nil {
+			lastError = fmt.Errorf("consensus check failed on attempt %d: %w", attempt, err)
+			lgr.Printf("[WARN] %v", lastError)
+			continue
+		}
+
+		// log the consensus check response for debugging
+		lgr.Printf("[DEBUG] Consensus check response on attempt %d: %s", attempt, agreement)
+
+		// robust consensus detection
+		if isConsensusReached(agreement) {
+			lgr.Printf("[INFO] consensus reached on attempt %d", attempt)
+			return results, attempt, true, nil
+		}
+
+		// step 2: if no agreement and not last attempt, re-run all providers with context
+		if attempt < opts.ConsensusAttempts {
+			lgr.Printf("[INFO] no consensus on attempt %d, retrying with context", attempt)
+			rerunPrompt := buildConsensusRerunPrompt(opts.Prompt, results)
+			newResults := rerunProviders(ctx, providers, rerunPrompt)
+
+			if len(newResults) > 0 {
+				results = newResults
+			} else {
+				lgr.Printf("[WARN] failed to get new results on attempt %d", attempt)
+			}
+		}
+	}
+
+	lgr.Printf("[INFO] consensus not reached after %d attempts", opts.ConsensusAttempts)
+	// return the last error if all attempts failed due to errors
+	if lastError != nil && opts.ConsensusAttempts > 0 {
+		return results, opts.ConsensusAttempts, false, fmt.Errorf("consensus checking failed: %w", lastError)
+	}
+	return results, opts.ConsensusAttempts, false, nil
+}
+
+// isConsensusReached checks if the response indicates consensus was reached
+func isConsensusReached(response string) bool {
+	// normalize response: trim whitespace and convert to lowercase
+	response = strings.TrimSpace(strings.ToLower(response))
+	// remove common punctuation from the end
+	response = strings.Trim(response, ".,;:!?")
+
+	// check for explicit YES at the beginning (most reliable)
+	if strings.HasPrefix(response, "yes") {
+		return true
+	}
+
+	// check for explicit NO at the beginning (avoid false positives)
+	if strings.HasPrefix(response, "no") {
+		return false
+	}
+
+	// check for negative indicators to avoid false positives
+	// e.g., "No, I don't agree" should not be considered agreement
+	negativeIndicators := []string{"disagree", "conflict", "different", "not", "don't"}
+	for _, indicator := range negativeIndicators {
+		if strings.Contains(response, indicator) {
+			return false
+		}
+	}
+
+	// check for positive indicators as fallback
+	positiveIndicators := []string{"agree", "consensus", "affirmative", "concur"}
+	for _, indicator := range positiveIndicators {
+		if strings.Contains(response, indicator) {
+			return true
+		}
+	}
+
+	// default to no consensus if ambiguous
+	return false
+}
+
+// findMixProvider finds the provider to use for mixing/consensus
+func findMixProvider(opts *options, providers []provider.Provider) provider.Provider {
+	mixProviderNameLower := strings.ToLower(opts.MixProvider)
+
+	// try to find the specified mix provider
+	for _, p := range providers {
+		if strings.ToLower(p.Name()) == mixProviderNameLower && p.Enabled() {
+			return p
+		}
+	}
+
+	// warn about fallback and use first enabled provider
+	lgr.Printf("[WARN] Mix provider '%s' not found or disabled, falling back to first enabled provider", opts.MixProvider)
+
+	// fall back to first enabled provider
+	for _, p := range providers {
+		if p.Enabled() {
+			lgr.Printf("[INFO] Using %s as fallback mix provider", p.Name())
+			return p
+		}
+	}
+
+	return nil
+}
+
+// buildConsensusCheckPrompt creates a prompt to check if responses agree
+func buildConsensusCheckPrompt(results []provider.Result) string {
+	var sb strings.Builder
+	sb.WriteString("Do the following AI responses fundamentally agree on the main points? ")
+	sb.WriteString("Reply with ONLY 'YES' or 'NO' as the first word of your response.\n")
+	sb.WriteString("YES means they agree on the core answer, NO means they have significant disagreements.\n\n")
+
+	for i, r := range results {
+		if r.Error != nil {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("Response %d from %s:\n", i+1, r.Provider))
+		sb.WriteString(r.Text)
+		sb.WriteString("\n\n")
+	}
+
+	sb.WriteString("Answer: ")
+	return sb.String()
+}
+
+// buildConsensusRerunPrompt creates a prompt for providers to reconsider with context
+func buildConsensusRerunPrompt(originalPrompt string, conflictingResults []provider.Result) string {
+	var sb strings.Builder
+	sb.WriteString("Original question:\n")
+	sb.WriteString(originalPrompt)
+	sb.WriteString("\n\nOther AI models provided these different perspectives:\n\n")
+
+	for _, r := range conflictingResults {
+		if r.Error != nil {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("--- %s's response ---\n", r.Provider))
+		sb.WriteString(r.Text)
+		sb.WriteString("\n\n")
+	}
+
+	sb.WriteString("Please reconsider your answer taking these different perspectives into account. ")
+	sb.WriteString("Provide a thoughtful response that addresses the key points raised.")
+
+	return sb.String()
+}
+
+// rerunProviders runs all providers again with a new prompt
+func rerunProviders(ctx context.Context, providers []provider.Provider, promptText string) []provider.Result {
+	r := runner.New(providers...)
+	_, err := r.Run(ctx, promptText)
+	if err != nil {
+		lgr.Printf("[WARN] failed to rerun providers for consensus: %v", err)
+		return nil
+	}
+	return r.GetResults()
 }
 
 // showVerbosePrompt displays the prompt text that will be sent to the models
@@ -662,12 +900,15 @@ func outputJSON(result *ExecutionResult) error {
 	}
 
 	type JSONOutput struct {
-		Final       string             `json:"final"`                  // final text shown in cli mode
-		Responses   []ProviderResponse `json:"responses"`              // individual provider responses
-		Mixed       string             `json:"mixed,omitempty"`        // raw mixed result without headers
-		MixUsed     bool               `json:"mix_used"`               // explicit flag for mix mode usage
-		MixProvider string             `json:"mix_provider,omitempty"` // provider that performed mixing
-		Timestamp   string             `json:"timestamp"`
+		Final              string             `json:"final"`                         // final text shown in cli mode
+		Responses          []ProviderResponse `json:"responses"`                     // individual provider responses
+		Mixed              string             `json:"mixed,omitempty"`               // raw mixed result without headers
+		MixUsed            bool               `json:"mix_used"`                      // explicit flag for mix mode usage
+		MixProvider        string             `json:"mix_provider,omitempty"`        // provider that performed mixing
+		ConsensusAttempted bool               `json:"consensus_attempted,omitempty"` // whether consensus was attempted
+		ConsensusAchieved  bool               `json:"consensus_achieved,omitempty"`  // whether consensus was achieved
+		ConsensusAttempts  int                `json:"consensus_attempts,omitempty"`  // number of consensus attempts made
+		Timestamp          string             `json:"timestamp"`
 	}
 
 	// build responses array
@@ -687,10 +928,13 @@ func outputJSON(result *ExecutionResult) error {
 
 	// create the output structure
 	output := JSONOutput{
-		Final:     result.Text,
-		Responses: responses,
-		MixUsed:   result.MixUsed,
-		Timestamp: time.Now().Format(time.RFC3339),
+		Final:              result.Text,
+		Responses:          responses,
+		MixUsed:            result.MixUsed,
+		ConsensusAttempted: result.ConsensusAttempted,
+		ConsensusAchieved:  result.ConsensusAchieved,
+		ConsensusAttempts:  result.ConsensusAttempts,
+		Timestamp:          time.Now().Format(time.RFC3339),
 	}
 
 	// add mixed result info if mixing was used
