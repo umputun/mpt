@@ -26,3 +26,6 @@ coverage.out
 Thumbs.db
 
 **/.claude/settings.local.json
+
+# Development todos
+todo.md

@@ -4,63 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/umputun/mpt/pkg/provider/mocks"
 )
 
-// mockProvider for testing retry logic
-type mockProvider struct {
-	name          string
-	enabled       bool
-	callCount     int
-	failUntil     int
-	errorToReturn error
-	responses     []string
-}
-
-func (m *mockProvider) Name() string {
-	return m.name
-}
-
-func (m *mockProvider) Generate(ctx context.Context, prompt string) (string, error) {
-	m.callCount++
-
-	// if errorToReturn is set and we haven't reached the success point
-	if m.errorToReturn != nil {
-		// if failUntil is set, fail until that attempt
-		if m.failUntil > 0 && m.callCount <= m.failUntil {
-			return "", m.errorToReturn
-		}
-		// if failUntil is 0, always fail
-		if m.failUntil == 0 {
-			return "", m.errorToReturn
-		}
-	}
-
-	// return response based on call count
-	if len(m.responses) > 0 {
-		idx := m.callCount - 1
-		if idx >= len(m.responses) {
-			idx = len(m.responses) - 1
-		}
-		return m.responses[idx], nil
-	}
-
-	return fmt.Sprintf("response %d", m.callCount), nil
-}
-
-func (m *mockProvider) Enabled() bool {
-	return m.enabled
-}
-
 func TestRetryableProvider_NoRetry(t *testing.T) {
-	mock := &mockProvider{
-		name:      "test",
-		enabled:   true,
-		responses: []string{"success"},
+	mock := &mocks.ProviderMock{
+		NameFunc:    func() string { return "test" },
+		EnabledFunc: func() bool { return true },
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			return "success", nil
+		},
 	}
 
 	// with attempts=1, should return original provider
@@ -73,10 +33,14 @@ func TestRetryableProvider_NoRetry(t *testing.T) {
 }
 
 func TestRetryableProvider_SuccessOnFirstAttempt(t *testing.T) {
-	mock := &mockProvider{
-		name:      "test",
-		enabled:   true,
-		responses: []string{"success"},
+	callCount := 0
+	mock := &mocks.ProviderMock{
+		NameFunc:    func() string { return "test" },
+		EnabledFunc: func() bool { return true },
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			callCount++
+			return "success", nil
+		},
 	}
 
 	wrapped := NewRetryableProvider(mock, RetryOptions{
@@ -91,7 +55,7 @@ func TestRetryableProvider_SuccessOnFirstAttempt(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "success", result)
-	assert.Equal(t, 1, mock.callCount) // should only call once
+	assert.Equal(t, 1, callCount) // should only call once
 }
 
 func TestRetryableProvider_RetryOnTransientError(t *testing.T) {
@@ -141,12 +105,18 @@ func TestRetryableProvider_RetryOnTransientError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock := &mockProvider{
-				name:          "test",
-				enabled:       true,
-				failUntil:     2, // fail first 2 attempts
-				errorToReturn: errors.New(tt.errorMsg),
-				responses:     []string{"success"},
+			callCount := 0
+			mock := &mocks.ProviderMock{
+				NameFunc:    func() string { return "test" },
+				EnabledFunc: func() bool { return true },
+				GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+					callCount++
+					// fail first 2 attempts
+					if callCount <= 2 {
+						return "", errors.New(tt.errorMsg)
+					}
+					return "success", nil
+				},
 			}
 
 			wrapped := NewRetryableProvider(mock, RetryOptions{
@@ -169,16 +139,20 @@ func TestRetryableProvider_RetryOnTransientError(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.errorMsg)
 			}
 
-			assert.Equal(t, tt.expectedCalls, mock.callCount)
+			assert.Equal(t, tt.expectedCalls, callCount)
 		})
 	}
 }
 
 func TestRetryableProvider_ExhaustedRetries(t *testing.T) {
-	mock := &mockProvider{
-		name:          "test",
-		enabled:       true,
-		errorToReturn: errors.New("500 internal server error"),
+	callCount := 0
+	mock := &mocks.ProviderMock{
+		NameFunc:    func() string { return "test" },
+		EnabledFunc: func() bool { return true },
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			callCount++
+			return "", errors.New("500 internal server error")
+		},
 	}
 
 	wrapped := NewRetryableProvider(mock, RetryOptions{
@@ -194,14 +168,18 @@ func TestRetryableProvider_ExhaustedRetries(t *testing.T) {
 	require.Error(t, err)
 	assert.Empty(t, result)
 	assert.Contains(t, err.Error(), "500 internal server error")
-	assert.Equal(t, 3, mock.callCount) // should try all attempts
+	assert.Equal(t, 3, callCount) // should try all attempts
 }
 
 func TestRetryableProvider_ContextCancellation(t *testing.T) {
-	mock := &mockProvider{
-		name:          "test",
-		enabled:       true,
-		errorToReturn: errors.New("500 internal server error"),
+	callCount := 0
+	mock := &mocks.ProviderMock{
+		NameFunc:    func() string { return "test" },
+		EnabledFunc: func() bool { return true },
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			callCount++
+			return "", errors.New("500 internal server error")
+		},
 	}
 
 	wrapped := NewRetryableProvider(mock, RetryOptions{
@@ -219,8 +197,8 @@ func TestRetryableProvider_ContextCancellation(t *testing.T) {
 	require.Error(t, err)
 	assert.Empty(t, result)
 	// should have tried at least once but not all attempts
-	assert.GreaterOrEqual(t, mock.callCount, 1)
-	assert.Less(t, mock.callCount, 5)
+	assert.GreaterOrEqual(t, callCount, 1)
+	assert.Less(t, callCount, 5)
 }
 
 func TestIsRetryableError(t *testing.T) {
@@ -270,9 +248,9 @@ func TestIsRetryableError(t *testing.T) {
 }
 
 func TestWrapProviderWithRetry(t *testing.T) {
-	mock := &mockProvider{
-		name:    "test",
-		enabled: true,
+	mock := &mocks.ProviderMock{
+		NameFunc:    func() string { return "test" },
+		EnabledFunc: func() bool { return true },
 	}
 
 	// no retry when attempts <= 1
@@ -302,9 +280,18 @@ func TestWrapProviderWithRetry(t *testing.T) {
 
 func TestWrapProvidersWithRetry(t *testing.T) {
 	providers := []Provider{
-		&mockProvider{name: "provider1", enabled: true},
-		&mockProvider{name: "provider2", enabled: true},
-		&mockProvider{name: "provider3", enabled: false},
+		&mocks.ProviderMock{
+			NameFunc:    func() string { return "provider1" },
+			EnabledFunc: func() bool { return true },
+		},
+		&mocks.ProviderMock{
+			NameFunc:    func() string { return "provider2" },
+			EnabledFunc: func() bool { return true },
+		},
+		&mocks.ProviderMock{
+			NameFunc:    func() string { return "provider3" },
+			EnabledFunc: func() bool { return false },
+		},
 	}
 
 	// no wrapping when attempts <= 1
@@ -327,9 +314,10 @@ func TestWrapProvidersWithRetry(t *testing.T) {
 }
 
 func TestRetryableProvider_Properties(t *testing.T) {
-	mock := &mockProvider{
-		name:    "TestProvider",
-		enabled: true,
+	enabled := true
+	mock := &mocks.ProviderMock{
+		NameFunc:    func() string { return "TestProvider" },
+		EnabledFunc: func() bool { return enabled },
 	}
 
 	wrapped := NewRetryableProvider(mock, RetryOptions{
@@ -344,6 +332,86 @@ func TestRetryableProvider_Properties(t *testing.T) {
 	assert.True(t, wrapped.Enabled())
 
 	// test with disabled provider
-	mock.enabled = false
+	enabled = false
 	assert.False(t, wrapped.Enabled())
+}
+
+func TestRetryableProvider_MultipleResponses(t *testing.T) {
+	var mu sync.Mutex
+	callCount := 0
+	responses := []string{"response 1", "response 2", "response 3"}
+
+	mock := &mocks.ProviderMock{
+		NameFunc:    func() string { return "test" },
+		EnabledFunc: func() bool { return true },
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			mu.Lock()
+			idx := callCount
+			callCount++
+			mu.Unlock()
+			if idx >= len(responses) {
+				idx = len(responses) - 1
+			}
+			return responses[idx], nil
+		},
+	}
+
+	wrapped := NewRetryableProvider(mock, RetryOptions{
+		Attempts: 3,
+		Delay:    10 * time.Millisecond,
+		MaxDelay: 100 * time.Millisecond,
+		Factor:   2,
+	})
+
+	ctx := context.Background()
+
+	// first call
+	result, err := wrapped.Generate(ctx, "test prompt")
+	require.NoError(t, err)
+	assert.Equal(t, "response 1", result)
+
+	// second call
+	result, err = wrapped.Generate(ctx, "test prompt")
+	require.NoError(t, err)
+	assert.Equal(t, "response 2", result)
+
+	// third call
+	result, err = wrapped.Generate(ctx, "test prompt")
+	require.NoError(t, err)
+	assert.Equal(t, "response 3", result)
+
+	// fourth call (should use last response)
+	result, err = wrapped.Generate(ctx, "test prompt")
+	require.NoError(t, err)
+	assert.Equal(t, "response 3", result)
+}
+
+func TestRetryableProvider_FormattedError(t *testing.T) {
+	var mu sync.Mutex
+	callCount := 0
+	mock := &mocks.ProviderMock{
+		NameFunc:    func() string { return "test" },
+		EnabledFunc: func() bool { return true },
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			callCount++
+			return "", fmt.Errorf("500 error on attempt %d", callCount)
+		},
+	}
+
+	wrapped := NewRetryableProvider(mock, RetryOptions{
+		Attempts: 2,
+		Delay:    10 * time.Millisecond,
+		MaxDelay: 100 * time.Millisecond,
+		Factor:   2,
+	})
+
+	ctx := context.Background()
+	result, err := wrapped.Generate(ctx, "test prompt")
+
+	require.Error(t, err)
+	assert.Empty(t, result)
+	assert.Contains(t, err.Error(), "500 error on attempt 2") // should return last error
+	assert.Equal(t, 2, callCount)
 }

@@ -55,7 +55,12 @@ func TestGitIgnoreRespect(t *testing.T) {
 	}()
 
 	// test that .gitignore patterns are respected
-	result, err := LoadContent([]string{"**/*"}, nil, 64*1024, false)
+	result, err := LoadContent(LoadRequest{
+		Patterns:        []string{"**/*"},
+		ExcludePatterns: nil,
+		MaxFileSize:     64 * 1024,
+		Force:           false,
+	})
 	require.NoError(t, err)
 
 	// should include non-ignored files
@@ -73,7 +78,12 @@ func TestGitIgnoreRespect(t *testing.T) {
 	assert.NotContains(t, result, "important log content", "Should ignore negation patterns")
 
 	// test with explicit exclude patterns overriding .gitignore
-	result, err = LoadContent([]string{"**/*"}, []string{"**/*.go"}, 64*1024, false)
+	result, err = LoadContent(LoadRequest{
+		Patterns:        []string{"**/*"},
+		ExcludePatterns: []string{"**/*.go"},
+		MaxFileSize:     64 * 1024,
+		Force:           false,
+	})
 	require.NoError(t, err)
 
 	// should not include any go files (due to explicit exclude)
@@ -179,7 +189,12 @@ func TestCommonIgnorePatterns(t *testing.T) {
 	}()
 
 	// test with common ignore patterns (without .gitignore)
-	result, err := LoadContent([]string{"**/*"}, nil, 64*1024, false)
+	result, err := LoadContent(LoadRequest{
+		Patterns:        []string{"**/*"},
+		ExcludePatterns: nil,
+		MaxFileSize:     64 * 1024,
+		Force:           false,
+	})
 	require.NoError(t, err)
 
 	// should include regular files
@@ -213,7 +228,12 @@ func TestCommonIgnorePatterns(t *testing.T) {
 	err = os.WriteFile(tmpFilePath, []byte("temp file content"), 0o644)
 	require.NoError(t, err)
 
-	result, err = LoadContent([]string{"**/*"}, []string{"**/bin/**"}, 64*1024, false)
+	result, err = LoadContent(LoadRequest{
+		Patterns:        []string{"**/*"},
+		ExcludePatterns: []string{"**/bin/**"},
+		MaxFileSize:     64 * 1024,
+		Force:           false,
+	})
 	require.NoError(t, err)
 	assert.NotContains(t, result, "binary file", "Should exclude files matching explicit exclude pattern")
 	assert.Contains(t, result, "temp file content", "Should include files in tmp directory since it's not excluded by default")
@@ -227,10 +247,15 @@ func TestLoadContent(t *testing.T) {
 	defaultMaxFileSize := int64(64 * 1024)
 
 	t.Run("direct_paths", func(t *testing.T) {
-		result, err := LoadContent([]string{
-			filepath.Join(testDataDir, "test1.go"),
-			filepath.Join(testDataDir, "test2.txt"),
-		}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns: []string{
+				filepath.Join(testDataDir, "test1.go"),
+				filepath.Join(testDataDir, "test2.txt"),
+			},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package testdata")
@@ -239,9 +264,14 @@ func TestLoadContent(t *testing.T) {
 	})
 
 	t.Run("standard_glob", func(t *testing.T) {
-		result, err := LoadContent([]string{
-			filepath.Join(testDataDir, "*.go"),
-		}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns: []string{
+				filepath.Join(testDataDir, "*.go"),
+			},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "func TestFunc1")
@@ -249,9 +279,14 @@ func TestLoadContent(t *testing.T) {
 	})
 
 	t.Run("directory_recursive", func(t *testing.T) {
-		result, err := LoadContent([]string{
-			filepath.Join(testDataDir, "nested"),
-		}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns: []string{
+				filepath.Join(testDataDir, "nested"),
+			},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package nested")
@@ -262,7 +297,12 @@ func TestLoadContent(t *testing.T) {
 	t.Run("go_style_recursive_go_files", func(t *testing.T) {
 		// construct the path properly to avoid linter warnings about path separators
 		goStylePath := testDataDir + "/.../*.go"
-		result, err := LoadContent([]string{goStylePath}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns:        []string{goStylePath},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package testdata")
@@ -274,7 +314,12 @@ func TestLoadContent(t *testing.T) {
 	t.Run("go_style_recursive_all", func(t *testing.T) {
 		// construct the path properly to avoid linter warnings about path separators
 		goStylePath := testDataDir + "/..."
-		result, err := LoadContent([]string{goStylePath}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns:        []string{goStylePath},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package testdata")
@@ -293,9 +338,14 @@ func TestLoadContent(t *testing.T) {
 		err = os.Chdir(testDataDir)
 		require.NoError(t, err)
 
-		result, err := LoadContent([]string{
-			"**/*.go", // use relative pattern
-		}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns: []string{
+				"**/*.go", // use relative pattern
+			},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package testdata")
@@ -317,9 +367,14 @@ func TestLoadContent(t *testing.T) {
 		err = os.Chdir(testDataDir)
 		require.NoError(t, err)
 
-		result, err := LoadContent([]string{
-			"nested/**/*.go", // use relative pattern
-		}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns: []string{
+				"nested/**/*.go", // use relative pattern
+			},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		assert.NotContains(t, result, "package testdata") // should not include root level files
@@ -340,10 +395,15 @@ func TestLoadContent(t *testing.T) {
 		err = os.Chdir(testDataDir)
 		require.NoError(t, err)
 
-		result, err := LoadContent([]string{
-			"**/*.go",  // use relative pattern
-			"**/*.txt", // use relative pattern
-		}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns: []string{
+				"**/*.go",  // use relative pattern
+				"**/*.txt", // use relative pattern
+			},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		assert.Contains(t, result, "package testdata")
@@ -358,13 +418,23 @@ func TestLoadContent(t *testing.T) {
 	})
 
 	t.Run("empty_pattern", func(t *testing.T) {
-		result, err := LoadContent([]string{}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns:        []string{},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 		assert.Empty(t, result)
 	})
 
 	t.Run("non_existent_pattern", func(t *testing.T) {
-		_, err := LoadContent([]string{"non-existent-pattern-*.xyz"}, nil, defaultMaxFileSize, false)
+		_, err := LoadContent(LoadRequest{
+			Patterns:        []string{"non-existent-pattern-*.xyz"},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no files matched the provided patterns")
 	})
@@ -372,7 +442,12 @@ func TestLoadContent(t *testing.T) {
 	t.Run("invalid_directory", func(t *testing.T) {
 		// construct the path properly to avoid linter warnings about path separators
 		invalidPath := filepath.Join(testDataDir, "non-existent-dir") + "/..."
-		_, err := LoadContent([]string{invalidPath}, nil, defaultMaxFileSize, false)
+		_, err := LoadContent(LoadRequest{
+			Patterns:        []string{invalidPath},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.Error(t, err)
 	})
 
@@ -380,10 +455,15 @@ func TestLoadContent(t *testing.T) {
 		// construct go-style path properly
 		nestedPath := testDataDir + "/nested/..."
 
-		result, err := LoadContent([]string{
-			filepath.Join(testDataDir, "*.go"), // standard glob
-			nestedPath,                         // go-style recursive
-		}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns: []string{
+				filepath.Join(testDataDir, "*.go"), // standard glob
+				nestedPath,                         // go-style recursive
+			},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		// now change to testDataDir for the bash-style pattern
@@ -391,7 +471,12 @@ func TestLoadContent(t *testing.T) {
 		require.NoError(t, err)
 
 		// add content from bash-style pattern
-		txtContent, err := LoadContent([]string{"**/*.txt"}, nil, defaultMaxFileSize, false)
+		txtContent, err := LoadContent(LoadRequest{
+			Patterns:        []string{"**/*.txt"},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		// return to original directory
@@ -408,11 +493,16 @@ func TestLoadContent(t *testing.T) {
 
 	t.Run("exclude_patterns", func(t *testing.T) {
 		// test excluding specific files
-		result, err := LoadContent([]string{
-			testDataDir + "/...", // all files
-		}, []string{
-			"**/*.txt", // exclude all text files
-		}, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns: []string{
+				testDataDir + "/...", // all files
+			},
+			ExcludePatterns: []string{
+				"**/*.txt", // exclude all text files
+			},
+			MaxFileSize: defaultMaxFileSize,
+			Force:       false,
+		})
 		require.NoError(t, err)
 
 		// should contain go files but not txt files
@@ -423,11 +513,16 @@ func TestLoadContent(t *testing.T) {
 		assert.NotContains(t, result, "This is another text file for testing")
 
 		// test excluding directories
-		result, err = LoadContent([]string{
-			testDataDir + "/...", // all files
-		}, []string{
-			"**/nested/**", // exclude all files in nested directory and its subdirectories
-		}, defaultMaxFileSize, false)
+		result, err = LoadContent(LoadRequest{
+			Patterns: []string{
+				testDataDir + "/...", // all files
+			},
+			ExcludePatterns: []string{
+				"**/nested/**", // exclude all files in nested directory and its subdirectories
+			},
+			MaxFileSize: defaultMaxFileSize,
+			Force:       false,
+		})
 		require.NoError(t, err)
 
 		// should contain root level files but not nested directory files
@@ -438,12 +533,17 @@ func TestLoadContent(t *testing.T) {
 		assert.NotContains(t, result, "This is another text file for testing")
 
 		// test multiple exclude patterns
-		result, err = LoadContent([]string{
-			testDataDir + "/...", // all files
-		}, []string{
-			"**/*.txt",        // exclude text files
-			"**/deep/**/*.go", // exclude go files in deep directory
-		}, defaultMaxFileSize, false)
+		result, err = LoadContent(LoadRequest{
+			Patterns: []string{
+				testDataDir + "/...", // all files
+			},
+			ExcludePatterns: []string{
+				"**/*.txt",        // exclude text files
+				"**/deep/**/*.go", // exclude go files in deep directory
+			},
+			MaxFileSize: defaultMaxFileSize,
+			Force:       false,
+		})
 		require.NoError(t, err)
 
 		// should contain some go files but not txt files or deep go files
@@ -482,7 +582,7 @@ func TestProcessPatterns(t *testing.T) {
 		}()
 
 		matchedFiles := make(map[string]struct{})
-		err = processBashStylePattern("**/*.go", matchedFiles, defaultMaxFileSize)
+		err = processBashStylePattern(PatternRequest{Pattern: "**/*.go", MatchedFiles: matchedFiles, MaxFileSize: defaultMaxFileSize})
 		require.NoError(t, err)
 
 		// we should have matched at least 3 go files: test1.go, nested/test3.go, nested/deep/test4.go
@@ -490,13 +590,13 @@ func TestProcessPatterns(t *testing.T) {
 
 		// test a non-existent pattern
 		matchedFiles = make(map[string]struct{})
-		err = processBashStylePattern("**/nonexistent*.abc", matchedFiles, defaultMaxFileSize)
+		err = processBashStylePattern(PatternRequest{Pattern: "**/nonexistent*.abc", MatchedFiles: matchedFiles, MaxFileSize: defaultMaxFileSize})
 		require.NoError(t, err) // matching zero files is not an error
 		assert.Empty(t, matchedFiles)
 
 		// test with an invalid pattern
 		matchedFiles = make(map[string]struct{})
-		err = processBashStylePattern("**/*[", matchedFiles, defaultMaxFileSize) // invalid pattern
+		err = processBashStylePattern(PatternRequest{Pattern: "**/*[", MatchedFiles: matchedFiles, MaxFileSize: defaultMaxFileSize}) // invalid pattern
 		require.Error(t, err)
 	})
 
@@ -507,7 +607,7 @@ func TestProcessPatterns(t *testing.T) {
 
 		// test go-style recursive pattern with .go extension filter
 		pattern := testDataDir + "/.../*.go"
-		err := processGoStylePattern(pattern, matchedFiles, defaultMaxFileSize)
+		err := processGoStylePattern(PatternRequest{Pattern: pattern, MatchedFiles: matchedFiles, MaxFileSize: defaultMaxFileSize})
 		require.NoError(t, err)
 
 		// we should have matched at least 3 go files
@@ -516,7 +616,7 @@ func TestProcessPatterns(t *testing.T) {
 		// test recursive pattern without filter
 		matchedFiles = make(map[string]struct{})
 		pattern = testDataDir + "/..."
-		err = processGoStylePattern(pattern, matchedFiles, defaultMaxFileSize)
+		err = processGoStylePattern(PatternRequest{Pattern: pattern, MatchedFiles: matchedFiles, MaxFileSize: defaultMaxFileSize})
 		require.NoError(t, err)
 
 		// we should have matched all files, at least 5
@@ -525,7 +625,7 @@ func TestProcessPatterns(t *testing.T) {
 		// test with non-existent directory
 		matchedFiles = make(map[string]struct{})
 		pattern = filepath.Join(testDataDir, "nonexistent") + "/..."
-		err = processGoStylePattern(pattern, matchedFiles, defaultMaxFileSize)
+		err = processGoStylePattern(PatternRequest{Pattern: pattern, MatchedFiles: matchedFiles, MaxFileSize: defaultMaxFileSize})
 		require.NoError(t, err) // non-existent dir is handled gracefully
 		assert.Empty(t, matchedFiles)
 	})
@@ -537,7 +637,7 @@ func TestProcessPatterns(t *testing.T) {
 
 		// test standard glob with extension
 		pattern := filepath.Join(testDataDir, "*.go")
-		err := processStandardGlobPattern(pattern, matchedFiles, defaultMaxFileSize)
+		err := processStandardGlobPattern(PatternRequest{Pattern: pattern, MatchedFiles: matchedFiles, MaxFileSize: defaultMaxFileSize})
 		require.NoError(t, err)
 
 		// we should have matched 1 go file in the top level
@@ -546,7 +646,7 @@ func TestProcessPatterns(t *testing.T) {
 		// test with wildcard to match directory
 		matchedFiles = make(map[string]struct{})
 		pattern = filepath.Join(testDataDir, "n*") // should match "nested" directory
-		err = processStandardGlobPattern(pattern, matchedFiles, defaultMaxFileSize)
+		err = processStandardGlobPattern(PatternRequest{Pattern: pattern, MatchedFiles: matchedFiles, MaxFileSize: defaultMaxFileSize})
 		require.NoError(t, err)
 
 		// recursive traversal should match all files in nested, including subdirectories
@@ -555,7 +655,7 @@ func TestProcessPatterns(t *testing.T) {
 		// test with non-existent pattern
 		matchedFiles = make(map[string]struct{})
 		pattern = filepath.Join(testDataDir, "nonexistent*.xyz")
-		err = processStandardGlobPattern(pattern, matchedFiles, defaultMaxFileSize)
+		err = processStandardGlobPattern(PatternRequest{Pattern: pattern, MatchedFiles: matchedFiles, MaxFileSize: defaultMaxFileSize})
 		require.NoError(t, err) // non-matching pattern is not an error
 		assert.Empty(t, matchedFiles)
 	})
@@ -714,7 +814,12 @@ func TestProcessPatterns(t *testing.T) {
 
 		// set max file size to 1 byte to force exclusion of both files
 		tinySize := int64(1)
-		result, err := LoadContent([]string{file1, file2}, nil, tinySize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns:        []string{file1, file2},
+			ExcludePatterns: nil,
+			MaxFileSize:     tinySize,
+			Force:           false,
+		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "exceeds the size limit")
 		assert.Contains(t, err.Error(), "--max-file-size flag")
@@ -724,7 +829,12 @@ func TestProcessPatterns(t *testing.T) {
 
 		// set max file size to exclude just the larger file
 		mediumSize := int64(math.Min(float64(size1), float64(size2))) + 1
-		result, err = LoadContent([]string{file1, file2}, nil, mediumSize, false)
+		result, err = LoadContent(LoadRequest{
+			Patterns:        []string{file1, file2},
+			ExcludePatterns: nil,
+			MaxFileSize:     mediumSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		// only the smaller file should be included
@@ -738,7 +848,12 @@ func TestProcessPatterns(t *testing.T) {
 
 		// set max file size to include both files
 		largeSize := int64(math.Max(float64(size1), float64(size2))) + 1
-		result, err = LoadContent([]string{file1, file2}, nil, largeSize, false)
+		result, err = LoadContent(LoadRequest{
+			Patterns:        []string{file1, file2},
+			ExcludePatterns: nil,
+			MaxFileSize:     largeSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		// both files should be included
@@ -779,7 +894,12 @@ func TestProcessPatterns(t *testing.T) {
 		}()
 
 		// test without force - should exclude vendor and .gitignore patterns
-		result, err := LoadContent([]string{"**/*"}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns:        []string{"**/*"},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 		assert.Contains(t, result, "package main", "Should include normal files")
 		assert.NotContains(t, result, "package lib", "Should exclude vendor files")
@@ -787,7 +907,12 @@ func TestProcessPatterns(t *testing.T) {
 		assert.NotContains(t, result, "this should be ignored", "Should respect .gitignore")
 
 		// test with force - should include everything
-		result, err = LoadContent([]string{"**/*"}, nil, defaultMaxFileSize, true)
+		result, err = LoadContent(LoadRequest{
+			Patterns:        []string{"**/*"},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           true,
+		})
 		require.NoError(t, err)
 		assert.Contains(t, result, "package main", "Should include normal files")
 		assert.Contains(t, result, "package lib", "Should include vendor files with force")
@@ -819,21 +944,36 @@ func TestProcessPatterns(t *testing.T) {
 
 		// test single concrete path - should auto-enable force
 		vendorFile := filepath.Join(tmpDir, "vendor", "lib.go")
-		result, err := LoadContent([]string{vendorFile}, nil, defaultMaxFileSize, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns:        []string{vendorFile},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 		assert.Contains(t, result, "package lib", "Single concrete path should bypass exclusions")
 
 		// test multiple concrete paths - should auto-enable force
 		nodeFile := filepath.Join(tmpDir, "node_modules", "index.js")
 		ignoredFile := filepath.Join(tmpDir, "ignored.txt")
-		result, err = LoadContent([]string{vendorFile, nodeFile, ignoredFile}, nil, defaultMaxFileSize, false)
+		result, err = LoadContent(LoadRequest{
+			Patterns:        []string{vendorFile, nodeFile, ignoredFile},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 		assert.Contains(t, result, "package lib", "Multiple concrete paths should bypass vendor exclusion")
 		assert.Contains(t, result, "console.log", "Multiple concrete paths should bypass node_modules exclusion")
 		assert.Contains(t, result, "ignored content", "Multiple concrete paths should bypass .gitignore")
 
 		// test mix of concrete and pattern - should NOT auto-enable force
-		result, err = LoadContent([]string{vendorFile, filepath.Join(tmpDir, "*.go")}, nil, defaultMaxFileSize, false)
+		result, err = LoadContent(LoadRequest{
+			Patterns:        []string{vendorFile, filepath.Join(tmpDir, "*.go")},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.NoError(t, err)
 		assert.NotContains(t, result, "package lib", "Mix of concrete and pattern should not bypass exclusions")
 		assert.Contains(t, result, "package main", "Should still include non-excluded files")
@@ -869,7 +1009,12 @@ func TestProcessPatterns(t *testing.T) {
 		}()
 
 		// test with a pattern that will match files but all will be excluded
-		_, err = LoadContent([]string{"*.log", "vendor/**", "node_modules/**"}, nil, defaultMaxFileSize, false)
+		_, err = LoadContent(LoadRequest{
+			Patterns:        []string{"*.log", "vendor/**", "node_modules/**"},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.Error(t, err, "Expected error when all matched files are excluded")
 		if err != nil {
 			assert.Contains(t, err.Error(), "no files matched")
@@ -878,7 +1023,12 @@ func TestProcessPatterns(t *testing.T) {
 		}
 
 		// test error message for non-existent pattern
-		_, err = LoadContent([]string{"*.nonexistent"}, nil, defaultMaxFileSize, false)
+		_, err = LoadContent(LoadRequest{
+			Patterns:        []string{"*.nonexistent"},
+			ExcludePatterns: nil,
+			MaxFileSize:     defaultMaxFileSize,
+			Force:           false,
+		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no files matched the provided patterns")
 		assert.Contains(t, err.Error(), "Try a different pattern")
@@ -942,14 +1092,20 @@ func TestProcessPatterns(t *testing.T) {
 
 			// should exclude txt files with bash-style pattern
 			excludePatterns := []string{"**/*.txt"}
-			assert.True(t, shouldExcludeFile(
-				filepath.Join(testDataDir, "test2.txt"),
-				cwd, excludePatterns, patternExcludeCount))
+			assert.True(t, shouldExcludeFile(ExclusionRequest{
+				FilePath:        filepath.Join(testDataDir, "test2.txt"),
+				WorkingDir:      cwd,
+				ExcludePatterns: excludePatterns,
+				PatternCount:    patternExcludeCount,
+			}))
 
 			// should not exclude go files with txt pattern
-			assert.False(t, shouldExcludeFile(
-				filepath.Join(testDataDir, "test1.go"),
-				cwd, excludePatterns, patternExcludeCount))
+			assert.False(t, shouldExcludeFile(ExclusionRequest{
+				FilePath:        filepath.Join(testDataDir, "test1.go"),
+				WorkingDir:      cwd,
+				ExcludePatterns: excludePatterns,
+				PatternCount:    patternExcludeCount,
+			}))
 
 			// check that counts were incremented
 			assert.Equal(t, 1, patternExcludeCount["**/*.txt"])
@@ -959,9 +1115,12 @@ func TestProcessPatterns(t *testing.T) {
 
 			// test with multiple patterns
 			excludePatterns = []string{"**/*.txt", "**/deep/**"}
-			assert.True(t, shouldExcludeFile(
-				filepath.Join(testDataDir, "nested", "deep", "test4.go"),
-				cwd, excludePatterns, patternExcludeCount))
+			assert.True(t, shouldExcludeFile(ExclusionRequest{
+				FilePath:        filepath.Join(testDataDir, "nested", "deep", "test4.go"),
+				WorkingDir:      cwd,
+				ExcludePatterns: excludePatterns,
+				PatternCount:    patternExcludeCount,
+			}))
 
 			assert.Equal(t, 1, patternExcludeCount["**/deep/**"])
 		})
@@ -1029,7 +1188,12 @@ func TestProcessPatterns(t *testing.T) {
 		}
 
 		// load all files - should truncate output
-		result, err := LoadContent([]string{filepath.Join(tempDir, "*.txt")}, nil, 10*1024*1024, false)
+		result, err := LoadContent(LoadRequest{
+			Patterns:        []string{filepath.Join(tempDir, "*.txt")},
+			ExcludePatterns: nil,
+			MaxFileSize:     10 * 1024 * 1024,
+			Force:           false,
+		})
 		require.NoError(t, err)
 
 		// verify output was truncated

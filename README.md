@@ -85,6 +85,7 @@ This integrated approach is more efficient and convenient than the manual proces
 
 - **Multi-Provider Support**: Run prompts in parallel across OpenAI, Anthropic (Claude), Google (Gemini), and custom LLMs
 - **Mix Mode**: Combine results from multiple providers using a single provider for synthesis
+- **Consensus Mode**: Detect disagreements between AI models and iteratively refine responses to reach consensus
 - **File Context Inclusion**: Easily add files, directories, or patterns to provide context for your prompts
 - **Native Git Integration**: Include git diffs from uncommitted changes or between branches with simple flags
 - **Smart Pattern Matching**: Include files using standard glob patterns, directory paths, bash-style wildcards (`**/*.go`), or Go-style patterns (`pkg/...`)
@@ -248,6 +249,8 @@ mpt --custom.localai.name "LocalLLM" --custom.localai.url "http://localhost:1234
 --mix                 Enable mix mode to combine results from all providers
 --mix.provider        Provider to use for mixing results (default: "openai")
 --mix.prompt          Prompt used for mixing results (default: "merge results from all providers")
+--consensus           Enable consensus checking when using mix mode
+--consensus.attempts  Max attempts to reach consensus (1-5, default: 1)
 --retry.attempts      Max attempts for transient failures (1=no retry, 3=up to 2 retries) (default: 1)
 --retry.delay         Base delay between retries (default: 1s)
 --retry.max-delay     Maximum delay between retries (default: 30s)
@@ -581,6 +584,57 @@ function calculateTotal(items) {
 
 The model can then analyze the code while following your specific instructions.
 
+### Consensus Mode for Higher Quality Results
+
+When using mix mode, you can enable consensus checking to improve the reliability and quality of synthesized results. This feature helps identify when AI models disagree and attempts to reach consensus through iterative refinement.
+
+#### How Consensus Mode Works
+
+1. **Initial Response Collection**: All enabled providers generate their responses to your prompt
+2. **Agreement Check**: The mix provider evaluates whether the responses fundamentally agree
+3. **Iterative Refinement**: If disagreement is detected, all providers are given the context of other responses and asked to reconsider
+4. **Final Synthesis**: After consensus attempts (or when consensus is reached), results are mixed as usual
+
+#### Usage
+
+Consensus mode requires mix mode to be enabled:
+
+```bash
+# Basic consensus with default settings (1 attempt)
+mpt --openai.enabled --anthropic.enabled --google.enabled \
+    --mix --consensus \
+    --prompt "What are the security implications of this code?"
+
+# Multiple consensus attempts for complex topics
+mpt --openai.enabled --anthropic.enabled --google.enabled \
+    --mix --consensus --consensus.attempts=3 \
+    --prompt "Should we use microservices or a monolithic architecture for this project?"
+
+# Code review with consensus checking
+mpt --git.diff --openai.enabled --anthropic.enabled --google.enabled \
+    --mix --consensus --consensus.attempts=2 \
+    --prompt "Review this code for subtle bugs and race conditions"
+```
+
+#### Configuration Options
+
+- `--consensus`: Enable consensus checking (requires `--mix`)
+- `--consensus.attempts`: Maximum attempts to reach consensus (1-5, default: 1)
+
+#### Important Considerations
+
+- **API Usage**: Each consensus attempt re-runs all providers, multiplying API calls and costs
+- **Latency**: Additional rounds add to total response time
+- **Best Use Cases**: Most valuable for critical decisions, complex analysis, or when accuracy is paramount
+- **Not Always Necessary**: Simple factual queries rarely benefit from consensus checking
+
+#### Example Scenarios Where Consensus Helps
+
+1. **Architecture Decisions**: Different models may emphasize different trade-offs
+2. **Security Reviews**: Multiple perspectives can catch different vulnerability types
+3. **Complex Debugging**: Models might identify different root causes
+4. **Best Practices**: Opinions on idiomatic code may vary between models
+
 ### JSON Output Format
 
 When using the `--json` flag, MPT outputs results in a structured JSON format that's easy to parse in scripts or other programs:
@@ -636,6 +690,9 @@ The JSON output includes:
   - `text`: The response text
   - `error`: Error message if the provider failed (field only present for failed providers)
 - `mixed`: Combined result when mix mode is enabled (only present with `--mix`)
+- `consensus_attempted`: Whether consensus checking was attempted (only present with `--consensus`)
+- `consensus_achieved`: Whether consensus was reached (only present with `--consensus`)
+- `consensus_attempts`: Number of consensus attempts made (only present with `--consensus`)
 - `timestamp`: ISO-8601 timestamp when the response was generated
 
 This format is particularly useful for:

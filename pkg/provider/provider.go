@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/umputun/mpt/pkg/provider/enum"
 )
 
-//go:generate go run github.com/go-pkgz/enum@latest -type=providerType -lower -path=enum
+//go:generate go run github.com/go-pkgz/enum@latest -type=providerType -lower
+//go:generate moq -out mocks/provider.go -pkg mocks -skip-ensure -fmt goimports . Provider
 
 // Provider defines the interface for LLM providers
 type Provider interface {
@@ -17,12 +16,15 @@ type Provider interface {
 	Enabled() bool
 }
 
-// providerType is the base type for the generated enum
-// Used by go:generate - this type and constants are used by the enum generator
-// nolint:unused // These are used by the enum generator but not directly in the code
+// providerType is the private type for enum generation
+// The generator will create a public ProviderType in the enum package
+//
+//nolint:unused // used by enum generator
 type providerType uint8
 
-// nolint:unused // These constants are used by the enum generator but not directly in the code
+// Constants for enum generation - must be prefixed with type name
+//
+//nolint:unused // used by enum generator
 const (
 	providerTypeUnknown providerType = iota
 	providerTypeOpenAI
@@ -56,7 +58,7 @@ type Options struct {
 }
 
 // Validate checks if the provider options are valid
-func (o Options) Validate(providerType enum.ProviderType) error {
+func (o Options) Validate(providerType ProviderType) error {
 	providerName := providerType.String()
 
 	if !o.Enabled {
@@ -80,27 +82,27 @@ func (o Options) Validate(providerType enum.ProviderType) error {
 // CreateProvider creates a standard provider (OpenAI, Anthropic, Google)
 // based on the provider type and options. It validates required fields
 // and returns appropriate errors if validation fails.
-func CreateProvider(providerType enum.ProviderType, opts Options) (Provider, error) {
+func CreateProvider(providerType ProviderType, opts Options) (Provider, error) {
 	// validate options - adds detailed error context for each validation failure
 	if err := opts.Validate(providerType); err != nil {
 		return nil, fmt.Errorf("provider validation failed: %w", err)
 	}
 
 	switch providerType {
-	case enum.ProviderTypeOpenAI:
+	case ProviderTypeOpenAI:
 		// detailed context for each provider type
 		p := NewOpenAI(opts)
 		if !p.Enabled() {
 			return nil, fmt.Errorf("openai provider failed to initialize with model %q - check API key and model name", opts.Model)
 		}
 		return p, nil
-	case enum.ProviderTypeAnthropic:
+	case ProviderTypeAnthropic:
 		p := NewAnthropic(opts)
 		if !p.Enabled() {
 			return nil, fmt.Errorf("anthropic provider failed to initialize with model %q - check API key and model name", opts.Model)
 		}
 		return p, nil
-	case enum.ProviderTypeGoogle:
+	case ProviderTypeGoogle:
 		p := NewGoogle(opts)
 		if !p.Enabled() {
 			return nil, fmt.Errorf("google provider failed to initialize with model %q - check API key and model name", opts.Model)
@@ -109,4 +111,28 @@ func CreateProvider(providerType enum.ProviderType, opts Options) (Provider, err
 	default:
 		return nil, fmt.Errorf("unsupported provider type %q - valid types are 'openai', 'anthropic', or 'google'", providerType)
 	}
+}
+
+// FindProviderByName searches for a provider by name (case-insensitive partial match)
+// among the given providers. It returns the first enabled provider that matches.
+// If no match is found, it returns the first enabled provider as a fallback.
+// Returns nil if no enabled providers are available.
+func FindProviderByName(name string, providers []Provider) Provider {
+	nameLower := strings.ToLower(name)
+
+	// first try to find an exact or partial match
+	for _, p := range providers {
+		if p.Enabled() && strings.Contains(strings.ToLower(p.Name()), nameLower) {
+			return p
+		}
+	}
+
+	// if no match found, return first enabled provider
+	for _, p := range providers {
+		if p.Enabled() {
+			return p
+		}
+	}
+
+	return nil
 }

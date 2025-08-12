@@ -15,27 +15,49 @@ import (
 // DefaultMaxFileSize defines the default maximum size of individual files to process (64KB)
 const DefaultMaxFileSize = 64 * 1024
 
+// LoadRequest holds the parameters for loading file content
+type LoadRequest struct {
+	Patterns        []string // file patterns to include
+	ExcludePatterns []string // patterns to exclude from file matching
+	MaxFileSize     int64    // maximum size of individual files to process
+	Force           bool     // force loading files by skipping all exclusion patterns
+}
+
+// ExclusionRequest holds the parameters for checking if a file should be excluded
+type ExclusionRequest struct {
+	FilePath        string         // path of the file to check
+	WorkingDir      string         // current working directory for relative path calculation
+	ExcludePatterns []string       // patterns to exclude
+	PatternCount    map[string]int // map to track exclusion count per pattern
+}
+
+// PatternRequest holds the parameters for pattern processing functions
+type PatternRequest struct {
+	Pattern      string              // pattern to process
+	MatchedFiles map[string]struct{} // map to store matched file paths
+	MaxFileSize  int64               // maximum size of individual files to process
+}
+
 // LoadContent loads content from files matching the given patterns and returns a formatted string
 // with file names as comments and their contents. Supports recursive directory traversal.
 // Exclude patterns can be provided to filter out unwanted files.
-// The maxFileSize parameter controls the maximum size of individual files to process.
 // Git ignore patterns from .gitignore files are automatically respected.
 // If force is true, all exclusion patterns (including .gitignore and common patterns) are skipped.
-func LoadContent(patterns, excludePatterns []string, maxFileSize int64, force bool) (string, error) {
-	if len(patterns) == 0 {
+func LoadContent(req LoadRequest) (string, error) {
+	if len(req.Patterns) == 0 {
 		return "", nil
 	}
 
 	// check if all patterns are concrete file paths (no wildcards)
-	if !force && allConcretePaths(patterns) {
+	if !req.Force && allConcretePaths(req.Patterns) {
 		lgr.Printf("[DEBUG] all patterns are concrete file paths, enabling force mode automatically")
-		force = true
+		req.Force = true
 	}
 
 	// prepare all exclude patterns
 	var allExcludePatterns []string
-	if !force {
-		allExcludePatterns = prepareExcludePatterns(excludePatterns)
+	if !req.Force {
+		allExcludePatterns = prepareExcludePatterns(req.ExcludePatterns)
 	} else {
 		lgr.Printf("[DEBUG] force mode enabled, skipping all exclusion patterns")
 	}
@@ -44,22 +66,27 @@ func LoadContent(patterns, excludePatterns []string, maxFileSize int64, force bo
 	matchedFiles := make(map[string]struct{})
 
 	// expand all patterns and collect unique file paths
-	for _, pattern := range patterns {
+	for _, pattern := range req.Patterns {
 		// process different types of patterns
+		patternReq := PatternRequest{
+			Pattern:      pattern,
+			MatchedFiles: matchedFiles,
+			MaxFileSize:  req.MaxFileSize,
+		}
 		switch {
 		case strings.Contains(pattern, "**"):
 			// bash-style patterns with **
-			if err := processBashStylePattern(pattern, matchedFiles, maxFileSize); err != nil {
+			if err := processBashStylePattern(patternReq); err != nil {
 				return "", err
 			}
 		case strings.Contains(pattern, "/..."):
 			// go-style recursive pattern: dir/...
-			if err := processGoStylePattern(pattern, matchedFiles, maxFileSize); err != nil {
+			if err := processGoStylePattern(patternReq); err != nil {
 				return "", err
 			}
 		default:
 			// standard glob pattern
-			if err := processStandardGlobPattern(pattern, matchedFiles, maxFileSize); err != nil {
+			if err := processStandardGlobPattern(patternReq); err != nil {
 				return "", err
 			}
 		}
@@ -76,12 +103,12 @@ func LoadContent(patterns, excludePatterns []string, maxFileSize int64, force bo
 	sortedFiles := getSortedFiles(matchedFiles)
 	if len(sortedFiles) == 0 {
 		// check if we should report file size errors
-		if err := checkFileSizeErrors(patterns, excludePatterns, maxFileSize); err != nil {
+		if err := checkFileSizeErrors(req.Patterns, req.ExcludePatterns, req.MaxFileSize); err != nil {
 			return "", err
 		}
 
 		// provide helpful error message based on what happened
-		if excludedCount > 0 && !force {
+		if excludedCount > 0 && !req.Force {
 			return "", fmt.Errorf("no files matched after exclusions (excluded %d files). Files may be ignored by .gitignore or common patterns (vendor/**, node_modules/**, etc). Use --force to skip exclusions", excludedCount)
 		}
 		return "", fmt.Errorf("no files matched the provided patterns. Try a different pattern such as \"./.../*.go\" or \"./**/*.go\" for recursive matching")
@@ -113,15 +140,15 @@ func checkFileSizeErrors(patterns, excludePatterns []string, maxFileSize int64) 
 }
 
 // processBashStylePattern handles patterns with ** using the doublestar library
-func processBashStylePattern(pattern string, matchedFiles map[string]struct{}, maxFileSize int64) error {
+func processBashStylePattern(req PatternRequest) error {
 	fsys := os.DirFS(".")
-	matches, err := doublestar.Glob(fsys, pattern)
+	matches, err := doublestar.Glob(fsys, req.Pattern)
 	if err != nil {
-		return fmt.Errorf("failed to glob doublestar pattern %s: %w", pattern, err)
+		return fmt.Errorf("failed to glob doublestar pattern %s: %w", req.Pattern, err)
 	}
 
 	if len(matches) == 0 {
-		lgr.Printf("[WARN] no files matched pattern: %s", pattern)
+		lgr.Printf("[WARN] no files matched pattern: %s", req.Pattern)
 		return nil
 	}
 
@@ -138,33 +165,33 @@ func processBashStylePattern(pattern string, matchedFiles map[string]struct{}, m
 
 		if !info.IsDir() {
 			// skip files that exceed the size limit
-			if info.Size() > maxFileSize {
+			if info.Size() > req.MaxFileSize {
 				lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", absPath, info.Size())
 				continue
 			}
 
-			matchedFiles[absPath] = struct{}{}
+			req.MatchedFiles[absPath] = struct{}{}
 			matchCount++
 		}
 	}
 
 	if matchCount == 0 {
-		lgr.Printf("[WARN] no files matched after doublestar pattern: %s", pattern)
+		lgr.Printf("[WARN] no files matched after doublestar pattern: %s", req.Pattern)
 	} else {
-		lgr.Printf("[DEBUG] matched %d files for pattern: %s", matchCount, pattern)
+		lgr.Printf("[DEBUG] matched %d files for pattern: %s", matchCount, req.Pattern)
 	}
 
 	return nil
 }
 
 // processGoStylePattern handles patterns with /... using filepath.Walk
-func processGoStylePattern(pattern string, matchedFiles map[string]struct{}, maxFileSize int64) error {
-	basePath, filter := parseRecursivePattern(pattern)
+func processGoStylePattern(req PatternRequest) error {
+	basePath, filter := parseRecursivePattern(req.Pattern)
 
 	// check if base directory exists
 	info, err := os.Stat(basePath)
 	if err != nil || !info.IsDir() {
-		lgr.Printf("[WARN] invalid base directory for pattern %s: %v", pattern, err)
+		lgr.Printf("[WARN] invalid base directory for pattern %s: %v", req.Pattern, err)
 		return nil
 	}
 
@@ -175,48 +202,48 @@ func processGoStylePattern(pattern string, matchedFiles map[string]struct{}, max
 			return nil // skip files that can't be accessed
 		}
 
-		if info.IsDir() || info.Size() > maxFileSize {
-			if info.Size() > maxFileSize {
+		if info.IsDir() || info.Size() > req.MaxFileSize {
+			if info.Size() > req.MaxFileSize {
 				lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", path, info.Size())
 			}
 			return nil
 		}
 
 		if filter == "" || (strings.HasPrefix(filter, "*.") && strings.HasSuffix(path, filter[1:])) {
-			matchedFiles[path] = struct{}{}
+			req.MatchedFiles[path] = struct{}{}
 			matchCount++
 			return nil
 		}
 
 		if matched, _ := filepath.Match(filter, filepath.Base(path)); matched {
-			matchedFiles[path] = struct{}{}
+			req.MatchedFiles[path] = struct{}{}
 			matchCount++
 		}
 		return nil
 	})
 
 	if err != nil {
-		lgr.Printf("[WARN] failed to walk directory for pattern %s: %v", pattern, err)
+		lgr.Printf("[WARN] failed to walk directory for pattern %s: %v", req.Pattern, err)
 	}
 
 	if matchCount == 0 {
-		lgr.Printf("[WARN] no files matched pattern: %s", pattern)
+		lgr.Printf("[WARN] no files matched pattern: %s", req.Pattern)
 	} else {
-		lgr.Printf("[DEBUG] matched %d files for pattern: %s", matchCount, pattern)
+		lgr.Printf("[DEBUG] matched %d files for pattern: %s", matchCount, req.Pattern)
 	}
 
 	return nil
 }
 
 // processStandardGlobPattern handles standard glob patterns using filepath.Glob
-func processStandardGlobPattern(pattern string, matchedFiles map[string]struct{}, maxFileSize int64) error {
-	matches, err := filepath.Glob(pattern)
+func processStandardGlobPattern(req PatternRequest) error {
+	matches, err := filepath.Glob(req.Pattern)
 	if err != nil {
-		return fmt.Errorf("failed to glob pattern %s: %w", pattern, err)
+		return fmt.Errorf("failed to glob pattern %s: %w", req.Pattern, err)
 	}
 
 	if len(matches) == 0 {
-		lgr.Printf("[WARN] no files matched pattern: %s", pattern)
+		lgr.Printf("[WARN] no files matched pattern: %s", req.Pattern)
 		return nil
 	}
 
@@ -231,13 +258,13 @@ func processStandardGlobPattern(pattern string, matchedFiles map[string]struct{}
 			// handle directories by walking them recursively
 			dirMatchCount := 0
 			err := filepath.Walk(match, func(path string, info os.FileInfo, err error) error {
-				if err != nil || info.IsDir() || info.Size() > maxFileSize {
-					if err == nil && info.Size() > maxFileSize {
+				if err != nil || info.IsDir() || info.Size() > req.MaxFileSize {
+					if err == nil && info.Size() > req.MaxFileSize {
 						lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", path, info.Size())
 					}
 					return nil
 				}
-				matchedFiles[path] = struct{}{}
+				req.MatchedFiles[path] = struct{}{}
 				dirMatchCount++
 				return nil
 			})
@@ -250,19 +277,19 @@ func processStandardGlobPattern(pattern string, matchedFiles map[string]struct{}
 		}
 
 		// skip files that exceed the size limit
-		if info.Size() > maxFileSize {
+		if info.Size() > req.MaxFileSize {
 			lgr.Printf("[WARN] file %s exceeds size limit (%d bytes), skipping", match, info.Size())
 			continue
 		}
 
-		matchedFiles[match] = struct{}{}
+		req.MatchedFiles[match] = struct{}{}
 		matchCount++
 	}
 
 	if matchCount == 0 {
-		lgr.Printf("[WARN] no files matched after directory traversal: %s", pattern)
+		lgr.Printf("[WARN] no files matched after directory traversal: %s", req.Pattern)
 	} else {
-		lgr.Printf("[DEBUG] matched %d files for pattern: %s", matchCount, pattern)
+		lgr.Printf("[DEBUG] matched %d files for pattern: %s", matchCount, req.Pattern)
 	}
 
 	return nil
@@ -387,7 +414,12 @@ func applyExcludePatterns(matchedFiles map[string]struct{}, excludePatterns []st
 
 	// process each file and check if it should be excluded
 	for filePath := range matchedFiles {
-		if shouldExcludeFile(filePath, cwd, excludePatterns, patternExcludeCount) {
+		if shouldExcludeFile(ExclusionRequest{
+			FilePath:        filePath,
+			WorkingDir:      cwd,
+			ExcludePatterns: excludePatterns,
+			PatternCount:    patternExcludeCount,
+		}) {
 			continue
 		}
 		// file didn't match any exclude pattern, keep it
@@ -399,17 +431,17 @@ func applyExcludePatterns(matchedFiles map[string]struct{}, excludePatterns []st
 }
 
 // shouldExcludeFile checks if a file should be excluded based on the exclude patterns
-func shouldExcludeFile(filePath, cwd string, excludePatterns []string, patternExcludeCount map[string]int) bool {
+func shouldExcludeFile(req ExclusionRequest) bool {
 	// get the relative path for pattern matching
-	relPath, err := filepath.Rel(cwd, filePath)
+	relPath, err := filepath.Rel(req.WorkingDir, req.FilePath)
 	if err != nil {
 		// if we can't get a relative path, use the absolute path
-		relPath = filePath
+		relPath = req.FilePath
 	}
 
-	for _, pattern := range excludePatterns {
-		if matchesPattern(pattern, filePath, relPath) {
-			patternExcludeCount[pattern]++
+	for _, pattern := range req.ExcludePatterns {
+		if matchesPattern(pattern, req.FilePath, relPath) {
+			req.PatternCount[pattern]++
 			return true
 		}
 	}

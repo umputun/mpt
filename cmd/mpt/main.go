@@ -17,9 +17,9 @@ import (
 	"github.com/jessevdk/go-flags"
 
 	"github.com/umputun/mpt/pkg/mcp"
+	"github.com/umputun/mpt/pkg/mix"
 	"github.com/umputun/mpt/pkg/prompt"
 	"github.com/umputun/mpt/pkg/provider"
-	"github.com/umputun/mpt/pkg/provider/enum"
 	"github.com/umputun/mpt/pkg/runner"
 )
 
@@ -46,6 +46,10 @@ type options struct {
 	MixEnabled  bool   `long:"mix" env:"MIX" description:"enable mix (merge) results from all providers"`
 	MixProvider string `long:"mix.provider" env:"MIX_PROVIDER" default:"openai" description:"provider used to mix results"`
 	MixPrompt   string `long:"mix.prompt" env:"MIX_PROMPT" default:"merge results from all providers" description:"prompt used to mix results"`
+
+	// consensus options - works with mix mode
+	ConsensusEnabled  bool `long:"consensus" env:"CONSENSUS" description:"enable consensus checking when using mix"`
+	ConsensusAttempts int  `long:"consensus.attempts" env:"CONSENSUS_ATTEMPTS" default:"1" description:"max consensus attempts (1-5)"`
 
 	// common options
 	Debug   bool `long:"dbg" env:"DEBUG" description:"debug mode"`
@@ -141,8 +145,27 @@ func main() {
 	}
 }
 
+// validateOptions validates the command-line options
+func validateOptions(opts *options) error {
+	// validate consensus options
+	if opts.ConsensusEnabled {
+		if opts.ConsensusAttempts < 1 || opts.ConsensusAttempts > 5 {
+			return fmt.Errorf("consensus attempts must be between 1 and 5, got %d", opts.ConsensusAttempts)
+		}
+		// consensus requires mix mode
+		if !opts.MixEnabled {
+			return fmt.Errorf("consensus mode requires mix mode to be enabled (use --mix)")
+		}
+	}
+	return nil
+}
+
 // run executes the main program logic and returns an error if it fails
 func run(ctx context.Context, opts *options) error {
+	// validate options first
+	if err := validateOptions(opts); err != nil {
+		return err
+	}
 	// check if running in MCP server mode
 	if opts.MCP.Server {
 		return runMCPServer(ctx, opts)
@@ -293,26 +316,10 @@ func buildFullPrompt(opts *options) error {
 	return nil
 }
 
-// initializeProvider creates a provider instance for a given provider type
-func initializeProvider(provType enum.ProviderType, apiKey, model string, maxTokens int, temperature float32) (provider.Provider, error) {
-	p, err := provider.CreateProvider(provType, provider.Options{
-		APIKey:      apiKey,
-		Model:       model,
-		Enabled:     true,
-		MaxTokens:   maxTokens,
-		Temperature: temperature,
-	})
-
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
-}
-
 // providerConfig holds configuration for a provider
 type providerConfig struct {
 	enabled   bool
-	provType  enum.ProviderType
+	provType  provider.ProviderType
 	name      string
 	apiKey    string
 	model     string
@@ -337,7 +344,13 @@ func initializeProviders(opts *options) ([]provider.Provider, error) {
 			continue
 		}
 
-		p, err := initializeProvider(config.provType, config.apiKey, config.model, config.maxTokens, config.temp)
+		p, err := provider.CreateProvider(config.provType, provider.Options{
+			APIKey:      config.apiKey,
+			Model:       config.model,
+			Enabled:     true,
+			MaxTokens:   config.maxTokens,
+			Temperature: config.temp,
+		})
 		if err != nil {
 			lgr.Printf("[WARN] %s provider failed to initialize: %v", config.name, err)
 			providerErrors = append(providerErrors, fmt.Sprintf("%s: %v", config.name, err))
@@ -389,7 +402,7 @@ func getStandardProviderConfigs(opts *options) []providerConfig {
 	return []providerConfig{
 		{
 			enabled:   opts.OpenAI.Enabled,
-			provType:  enum.ProviderTypeOpenAI,
+			provType:  provider.ProviderTypeOpenAI,
 			name:      "OpenAI",
 			apiKey:    opts.OpenAI.APIKey,
 			model:     opts.OpenAI.Model,
@@ -398,7 +411,7 @@ func getStandardProviderConfigs(opts *options) []providerConfig {
 		},
 		{
 			enabled:   opts.Anthropic.Enabled,
-			provType:  enum.ProviderTypeAnthropic,
+			provType:  provider.ProviderTypeAnthropic,
 			name:      "Anthropic",
 			apiKey:    opts.Anthropic.APIKey,
 			model:     opts.Anthropic.Model,
@@ -407,7 +420,7 @@ func getStandardProviderConfigs(opts *options) []providerConfig {
 		},
 		{
 			enabled:   opts.Google.Enabled,
-			provType:  enum.ProviderTypeGoogle,
+			provType:  provider.ProviderTypeGoogle,
 			name:      "Google",
 			apiKey:    opts.Google.APIKey,
 			model:     opts.Google.Model,
@@ -463,6 +476,10 @@ type ExecutionResult struct {
 	MixUsed     bool              // whether mix mode was used
 	MixProvider string            // provider that performed the mixing (if any)
 	Results     []provider.Result // individual provider results
+	// consensus fields
+	ConsensusAttempted bool // whether consensus was attempted
+	ConsensusAchieved  bool // whether consensus was achieved
+	ConsensusAttempts  int  // number of consensus attempts made
 }
 
 // executePrompt runs the prompt against the configured providers
@@ -496,15 +513,31 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 
 	// handle mix mode if enabled
 	if opts.MixEnabled && len(providers) > 1 {
-		mixedText, mixedRaw, mixProvider, err := processMixMode(timeoutCtx, opts, providers, r.GetResults())
+		mixRequest := mix.Request{
+			Prompt:            opts.Prompt,
+			MixPrompt:         opts.MixPrompt,
+			MixProvider:       opts.MixProvider,
+			ConsensusEnabled:  opts.ConsensusEnabled,
+			ConsensusAttempts: opts.ConsensusAttempts,
+			Providers:         providers,
+			Results:           r.GetResults(),
+		}
+
+		mixResult, err := processMixMode(timeoutCtx, mixRequest)
 		if err != nil {
 			return nil, fmt.Errorf("failed to mix results: %w", err)
 		}
-		if mixedText != "" {
-			execResult.Text = mixedText
-			execResult.MixedText = mixedRaw
+		if mixResult.TextWithHeader != "" {
+			execResult.Text = mixResult.TextWithHeader
+			execResult.MixedText = mixResult.RawText
 			execResult.MixUsed = true
-			execResult.MixProvider = mixProvider
+			execResult.MixProvider = mixResult.MixProvider
+		}
+		// set consensus metadata
+		if opts.ConsensusEnabled {
+			execResult.ConsensusAttempted = true
+			execResult.ConsensusAchieved = mixResult.ConsensusAchieved
+			execResult.ConsensusAttempts = mixResult.ConsensusAttempts
 		}
 	}
 
@@ -512,21 +545,12 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 }
 
 // processMixMode handles mixing results from multiple providers
-func processMixMode(ctx context.Context, opts *options, providers []provider.Provider, rawResults []provider.Result) (textWithHeader, rawText, mixProvider string, err error) {
-	// filter successful results
-	var successfulResults []provider.Result
-	for _, res := range rawResults {
-		if res.Error == nil {
-			successfulResults = append(successfulResults, res)
-		}
-	}
+func processMixMode(ctx context.Context, req mix.Request) (*mix.Response, error) {
+	// create mix manager
+	mixer := mix.New(lgr.Default())
 
-	// need at least 2 successful results to mix
-	if len(successfulResults) < 2 {
-		return "", "", "", nil
-	}
-
-	return mixResults(ctx, opts, providers, successfulResults)
+	// process the mix request
+	return mixer.Process(ctx, req)
 }
 
 // showVerbosePrompt displays the prompt text that will be sent to the models
@@ -596,63 +620,6 @@ func readFromStdin() (string, error) {
 	return strings.TrimSpace(sb.String()), nil
 }
 
-// mixResults takes multiple provider results and uses a selected provider to mix them
-func mixResults(ctx context.Context, opts *options, providers []provider.Provider, results []provider.Result) (textWithHeader, rawText, mixProviderName string, err error) {
-	// find the mix provider
-	var mixProvider provider.Provider
-	mixProviderNameLower := strings.ToLower(opts.MixProvider)
-
-	// try to find the specified mix provider among the enabled providers
-	for _, p := range providers {
-		if strings.ToLower(p.Name()) == mixProviderNameLower && p.Enabled() {
-			mixProvider = p
-			break
-		}
-	}
-
-	// if the specified mix provider isn't found, fall back to the first enabled provider
-	if mixProvider == nil {
-		for _, p := range providers {
-			if p.Enabled() {
-				mixProvider = p
-				lgr.Printf("[INFO] specified mix provider '%s' not enabled, falling back to '%s'",
-					opts.MixProvider, p.Name())
-				break
-			}
-		}
-	}
-
-	if mixProvider == nil {
-		return "", "", "", fmt.Errorf("no enabled provider found for mixing results")
-	}
-
-	// build a prompt with all results
-	var mixPrompt strings.Builder
-	mixPrompt.WriteString(opts.MixPrompt)
-	mixPrompt.WriteString("\n\n")
-
-	for i, result := range results {
-		if result.Error != nil {
-			continue
-		}
-		mixPrompt.WriteString(fmt.Sprintf("=== Result %d from %s ===\n", i+1, result.Provider))
-		mixPrompt.WriteString(result.Text)
-		mixPrompt.WriteString("\n\n")
-	}
-
-	// generate the mixed result
-	mixedResult, err := mixProvider.Generate(ctx, mixPrompt.String())
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to generate mixed result using %s: %w", mixProvider.Name(), err)
-	}
-
-	// return both formatted (with header) and raw versions
-	textWithHeader = fmt.Sprintf("== mixed results by %s ==\n%s", mixProvider.Name(), mixedResult)
-	rawText = mixedResult
-	mixProviderName = mixProvider.Name()
-	return textWithHeader, rawText, mixProviderName, nil
-}
-
 func outputJSON(result *ExecutionResult) error {
 	// create json output structure
 	type ProviderResponse struct {
@@ -662,12 +629,15 @@ func outputJSON(result *ExecutionResult) error {
 	}
 
 	type JSONOutput struct {
-		Final       string             `json:"final"`                  // final text shown in cli mode
-		Responses   []ProviderResponse `json:"responses"`              // individual provider responses
-		Mixed       string             `json:"mixed,omitempty"`        // raw mixed result without headers
-		MixUsed     bool               `json:"mix_used"`               // explicit flag for mix mode usage
-		MixProvider string             `json:"mix_provider,omitempty"` // provider that performed mixing
-		Timestamp   string             `json:"timestamp"`
+		Final              string             `json:"final"`                         // final text shown in cli mode
+		Responses          []ProviderResponse `json:"responses"`                     // individual provider responses
+		Mixed              string             `json:"mixed,omitempty"`               // raw mixed result without headers
+		MixUsed            bool               `json:"mix_used"`                      // explicit flag for mix mode usage
+		MixProvider        string             `json:"mix_provider,omitempty"`        // provider that performed mixing
+		ConsensusAttempted bool               `json:"consensus_attempted,omitempty"` // whether consensus was attempted
+		ConsensusAchieved  bool               `json:"consensus_achieved,omitempty"`  // whether consensus was achieved
+		ConsensusAttempts  int                `json:"consensus_attempts,omitempty"`  // number of consensus attempts made
+		Timestamp          string             `json:"timestamp"`
 	}
 
 	// build responses array
@@ -687,10 +657,13 @@ func outputJSON(result *ExecutionResult) error {
 
 	// create the output structure
 	output := JSONOutput{
-		Final:     result.Text,
-		Responses: responses,
-		MixUsed:   result.MixUsed,
-		Timestamp: time.Now().Format(time.RFC3339),
+		Final:              result.Text,
+		Responses:          responses,
+		MixUsed:            result.MixUsed,
+		ConsensusAttempted: result.ConsensusAttempted,
+		ConsensusAchieved:  result.ConsensusAchieved,
+		ConsensusAttempts:  result.ConsensusAttempts,
+		Timestamp:          time.Now().Format(time.RFC3339),
 	}
 
 	// add mixed result info if mixing was used

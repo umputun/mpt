@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/mpt/pkg/mix"
 	"github.com/umputun/mpt/pkg/provider"
-	"github.com/umputun/mpt/pkg/provider/enum"
 	"github.com/umputun/mpt/pkg/runner"
 	"github.com/umputun/mpt/pkg/runner/mocks"
 )
@@ -29,6 +29,76 @@ func TestSetupLog(t *testing.T) {
 	setupLog(true)
 	setupLog(false)
 	setupLog(true, "secret1", "secret2")
+}
+
+func TestValidateOptions(t *testing.T) {
+	tests := []struct {
+		name      string
+		opts      *options
+		wantError bool
+		errorMsg  string
+	}{
+		{
+			name: "valid consensus options",
+			opts: &options{
+				ConsensusEnabled:  true,
+				ConsensusAttempts: 3,
+				MixEnabled:        true,
+			},
+			wantError: false,
+		},
+		{
+			name: "consensus attempts too low",
+			opts: &options{
+				ConsensusEnabled:  true,
+				ConsensusAttempts: 0,
+				MixEnabled:        true,
+			},
+			wantError: true,
+			errorMsg:  "consensus attempts must be between 1 and 5, got 0",
+		},
+		{
+			name: "consensus attempts too high",
+			opts: &options{
+				ConsensusEnabled:  true,
+				ConsensusAttempts: 6,
+				MixEnabled:        true,
+			},
+			wantError: true,
+			errorMsg:  "consensus attempts must be between 1 and 5, got 6",
+		},
+		{
+			name: "consensus without mix mode",
+			opts: &options{
+				ConsensusEnabled:  true,
+				ConsensusAttempts: 2,
+				MixEnabled:        false,
+			},
+			wantError: true,
+			errorMsg:  "consensus mode requires mix mode to be enabled",
+		},
+		{
+			name: "no consensus enabled",
+			opts: &options{
+				ConsensusEnabled:  false,
+				ConsensusAttempts: 10, // should be ignored
+				MixEnabled:        false,
+			},
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateOptions(tt.opts)
+			if tt.wantError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestSizeValue_UnmarshalFlag(t *testing.T) {
@@ -697,16 +767,22 @@ func TestInitializeProvider(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// for testing "unknown provider" we use parse error checking
 			if tt.name == "unknown provider" {
-				_, err := enum.ParseProviderType("not-a-real-provider-type")
+				_, err := provider.ParseProviderType("not-a-real-provider-type")
 				assert.Error(t, err, "Should get error for unknown provider type")
 				return
 			}
 
 			// for valid provider types, test initialization
-			provType, err := enum.ParseProviderType(tt.providerType)
+			provType, err := provider.ParseProviderType(tt.providerType)
 			require.NoError(t, err, "Should parse provider type")
 
-			providerInstance, err := initializeProvider(provType, tt.apiKey, tt.model, tt.maxTokens, tt.temperature)
+			providerInstance, err := provider.CreateProvider(provType, provider.Options{
+				APIKey:      tt.apiKey,
+				Model:       tt.model,
+				Enabled:     true,
+				MaxTokens:   tt.maxTokens,
+				Temperature: tt.temperature,
+			})
 
 			if tt.expectNil {
 				assert.Nil(t, providerInstance, "Provider should be nil")
@@ -1605,17 +1681,29 @@ func TestMixResults(t *testing.T) {
 	// run tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			textWithHeader, rawText, mixProvider, err := mixResults(ctx, tt.opts, tt.providers, tt.results)
+			// create mix manager and request
+			mixer := mix.New(nil)
+			req := mix.Request{
+				Prompt:            "test prompt",
+				MixPrompt:         tt.opts.MixPrompt,
+				MixProvider:       tt.opts.MixProvider,
+				ConsensusEnabled:  false,
+				ConsensusAttempts: 0,
+				Providers:         tt.providers,
+				Results:           tt.results,
+			}
+
+			resp, err := mixer.Process(ctx, req)
 
 			if tt.expectedError {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				assert.Contains(t, textWithHeader, tt.expectedOutput)
-				if !tt.expectedError && err == nil && textWithHeader != "" {
-					assert.NotEmpty(t, mixProvider, "Mix provider should be set when mixing succeeds")
-					assert.NotEmpty(t, rawText, "Raw text should be set when mixing succeeds")
-					assert.NotContains(t, rawText, "== mixed results by", "Raw text should not contain header")
+				assert.Contains(t, resp.TextWithHeader, tt.expectedOutput)
+				if !tt.expectedError && err == nil && resp.TextWithHeader != "" {
+					assert.NotEmpty(t, resp.MixProvider, "Mix provider should be set when mixing succeeds")
+					assert.NotEmpty(t, resp.RawText, "Raw text should be set when mixing succeeds")
+					assert.NotContains(t, resp.RawText, "== mixed results by", "Raw text should not contain header")
 				}
 			}
 		})
@@ -1797,4 +1885,105 @@ func TestExecutePrompt_WithMixJSON(t *testing.T) {
 	responses, ok := result["responses"].([]interface{})
 	require.True(t, ok, "responses should be an array")
 	require.Len(t, responses, 2, "Should have two responses")
+}
+
+// TestIsConsensusReached tests the consensus detection logic
+
+// TestProcessMixModeWithConsensus tests the mix mode with consensus enabled
+func TestProcessMixModeWithConsensus(t *testing.T) {
+	// create mock provider for consensus checking
+	mockMixProvider := &mocks.ProviderMock{
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			if strings.Contains(prompt, "Do the following AI responses") {
+				return "YES", nil // consensus reached
+			}
+			if strings.Contains(prompt, "merge results") {
+				return "Mixed and consensus-checked result", nil
+			}
+			return "Response", nil
+		},
+		NameFunc:    func() string { return "OpenAI" },
+		EnabledFunc: func() bool { return true },
+	}
+
+	ctx := context.Background()
+	opts := &options{
+		MixEnabled:        true,
+		MixProvider:       "OpenAI",
+		MixPrompt:         "merge results",
+		ConsensusEnabled:  true,
+		ConsensusAttempts: 2,
+	}
+
+	rawResults := []provider.Result{
+		{Provider: "OpenAI", Text: "Response 1"},
+		{Provider: "Anthropic", Text: "Response 2"},
+	}
+
+	mixRequest := mix.Request{
+		Prompt:            "test prompt",
+		MixPrompt:         opts.MixPrompt,
+		MixProvider:       opts.MixProvider,
+		ConsensusEnabled:  opts.ConsensusEnabled,
+		ConsensusAttempts: opts.ConsensusAttempts,
+		Providers:         []provider.Provider{mockMixProvider},
+		Results:           rawResults,
+	}
+
+	result, err := processMixMode(ctx, mixRequest)
+
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Contains(t, result.TextWithHeader, "Mixed and consensus-checked result")
+	assert.Equal(t, "OpenAI", result.MixProvider)
+	assert.True(t, result.ConsensusAchieved)
+	assert.Equal(t, 1, result.ConsensusAttempts)
+}
+
+// TestExecutePromptWithConsensus tests the full execute prompt with consensus
+func TestExecutePromptWithConsensus(t *testing.T) {
+	// create mock providers
+	mockProvider1 := &mocks.ProviderMock{
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			if strings.Contains(prompt, "Do the following AI responses") {
+				return "YES", nil // consensus check
+			}
+			if strings.Contains(prompt, "merge results") {
+				return "Consensus-verified mixed result", nil
+			}
+			return "Provider1 response", nil
+		},
+		NameFunc:    func() string { return "Provider1" },
+		EnabledFunc: func() bool { return true },
+	}
+
+	mockProvider2 := &mocks.ProviderMock{
+		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			return "Provider2 response", nil
+		},
+		NameFunc:    func() string { return "Provider2" },
+		EnabledFunc: func() bool { return true },
+	}
+
+	opts := &options{
+		Prompt:            "Test prompt",
+		MixEnabled:        true,
+		MixProvider:       "Provider1",
+		MixPrompt:         "merge results",
+		ConsensusEnabled:  true,
+		ConsensusAttempts: 2,
+	}
+
+	providers := []provider.Provider{mockProvider1, mockProvider2}
+	ctx := context.Background()
+
+	result, err := executePrompt(ctx, opts, providers)
+
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.True(t, result.MixUsed)
+	assert.True(t, result.ConsensusAttempted)
+	assert.True(t, result.ConsensusAchieved)
+	assert.Equal(t, 1, result.ConsensusAttempts)
+	assert.Contains(t, result.Text, "Consensus-verified mixed result")
 }
