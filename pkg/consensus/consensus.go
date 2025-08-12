@@ -194,34 +194,62 @@ func (m *Manager) rerunProviders(ctx context.Context, providers []provider.Provi
 
 // isConsensusReached checks if the response indicates consensus was reached
 func (m *Manager) isConsensusReached(response string) bool {
-	// normalize the response
-	response = strings.TrimSpace(strings.ToLower(response))
-
-	// remove common punctuation at the end
-	response = strings.Trim(response, ".,;:!?")
-
-	// check for explicit "yes" at the beginning
-	if strings.HasPrefix(response, "yes") {
-		return true
+	normalized := m.normalizeResponse(response)
+	
+	// check for explicit yes/no first
+	if result, found := m.checkExplicitAnswer(normalized); found {
+		return result
 	}
-
-	// check for explicit "no" at the beginning
-	if strings.HasPrefix(response, "no") {
+	
+	// check for negative indicators (check these first to avoid false positives)
+	if m.containsNegativeIndicator(normalized) {
 		return false
 	}
+	
+	// check for positive indicators or patterns
+	if m.containsPositiveIndicator(normalized) {
+		return true
+	}
+	
+	// default to no consensus if uncertain
+	return false
+}
 
-	// check negative indicators first to avoid false positives
+// normalizeResponse normalizes the response for analysis
+func (m *Manager) normalizeResponse(response string) string {
+	normalized := strings.TrimSpace(strings.ToLower(response))
+	// remove common punctuation at the end
+	return strings.Trim(normalized, ".,;:!?")
+}
+
+// checkExplicitAnswer checks for explicit yes/no at the beginning
+func (m *Manager) checkExplicitAnswer(response string) (result, found bool) {
+	if strings.HasPrefix(response, "yes") {
+		return true, true
+	}
+	if strings.HasPrefix(response, "no") {
+		return false, true
+	}
+	return false, false
+}
+
+// containsNegativeIndicator checks if response contains negative consensus indicators
+func (m *Manager) containsNegativeIndicator(response string) bool {
 	negativeIndicators := []string{
 		"disagree", "conflict", "different", "not", "don't", "doesn't",
 		"diverge", "contradict", "oppose", "inconsistent", "vary", "differ",
 	}
 	for _, indicator := range negativeIndicators {
 		if strings.Contains(response, indicator) {
-			return false
+			return true
 		}
 	}
+	return false
+}
 
-	// check positive indicators
+// containsPositiveIndicator checks if response contains positive consensus indicators
+func (m *Manager) containsPositiveIndicator(response string) bool {
+	// check standalone positive indicators
 	positiveIndicators := []string{
 		"agree", "consensus", "same", "similar", "consistent", "align",
 		"concur", "unanimous", "accord", "harmony", "unified",
@@ -231,22 +259,17 @@ func (m *Manager) isConsensusReached(response string) bool {
 			return true
 		}
 	}
-
-	// look for patterns like "the responses agree" or "they agree"
+	
+	// check specific agreement patterns
 	agreePatterns := []string{
-		"responses agree",
-		"they agree",
-		"models agree",
-		"answers agree",
-		"providers agree",
-		"all agree",
+		"responses agree", "they agree", "models agree",
+		"answers agree", "providers agree", "all agree",
 	}
 	for _, pattern := range agreePatterns {
 		if strings.Contains(response, pattern) {
 			return true
 		}
 	}
-
-	// default to no consensus if uncertain
+	
 	return false
 }

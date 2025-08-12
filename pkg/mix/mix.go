@@ -46,10 +46,25 @@ type Response struct {
 	MixProvider       string
 	ConsensusAchieved bool
 	ConsensusAttempts int
+	ConsensusError    error // error from consensus checking, if any
 }
 
 // Process handles mixing results from multiple providers with optional consensus
 func (m *Manager) Process(ctx context.Context, req Request) (*Response, error) {
+	// validate input
+	if ctx == nil {
+		return nil, fmt.Errorf("context cannot be nil")
+	}
+	if len(req.Results) == 0 {
+		return nil, fmt.Errorf("no results provided to mix")
+	}
+	if len(req.Providers) == 0 {
+		return nil, fmt.Errorf("no providers available for mixing")
+	}
+	if req.MixPrompt == "" {
+		return nil, fmt.Errorf("mix prompt cannot be empty")
+	}
+	
 	// filter successful results
 	var successfulResults []provider.Result
 	for _, res := range req.Results {
@@ -85,6 +100,7 @@ func (m *Manager) Process(ctx context.Context, req Request) (*Response, error) {
 		if consensusErr != nil {
 			// log the error but continue with mixing
 			m.logger.Logf("[ERROR] consensus checking encountered errors: %v", consensusErr)
+			result.ConsensusError = consensusErr
 		}
 		if consensusResp != nil {
 			successfulResults = consensusResp.FinalResults

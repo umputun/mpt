@@ -58,10 +58,10 @@ func TestManager_Attempt(t *testing.T) {
 		}
 
 		resp, err := manager.Attempt(ctx, req)
-		require.NoError(t, err)
-		assert.Equal(t, 1, resp.Attempts)
-		assert.True(t, resp.Achieved)
-		assert.Equal(t, results, resp.FinalResults) // results unchanged when consensus reached
+		require.NoError(t, err, "consensus attempt should not fail")
+		assert.Equal(t, 1, resp.Attempts, "should reach consensus on first attempt")
+		assert.True(t, resp.Achieved, "consensus should be achieved when responses agree")
+		assert.Equal(t, results, resp.FinalResults, "results should be unchanged when consensus reached")
 	})
 
 	t.Run("consensus not reached", func(t *testing.T) {
@@ -105,10 +105,10 @@ func TestManager_Attempt(t *testing.T) {
 		}
 
 		resp, err := manager.Attempt(ctx, req)
-		require.NoError(t, err)
-		assert.Equal(t, 1, resp.Attempts)
-		assert.False(t, resp.Achieved)
-		assert.Equal(t, results, resp.FinalResults)
+		require.NoError(t, err, "consensus attempt should not fail even when no consensus reached")
+		assert.Equal(t, 1, resp.Attempts, "should make 1 attempt as configured")
+		assert.False(t, resp.Achieved, "consensus should not be achieved when responses disagree")
+		assert.Equal(t, results, resp.FinalResults, "results should be unchanged when no further attempts")
 	})
 
 	t.Run("consensus not reached with multiple attempts and rerun", func(t *testing.T) {

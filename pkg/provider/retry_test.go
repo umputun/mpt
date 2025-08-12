@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -336,6 +337,7 @@ func TestRetryableProvider_Properties(t *testing.T) {
 }
 
 func TestRetryableProvider_MultipleResponses(t *testing.T) {
+	var mu sync.Mutex
 	callCount := 0
 	responses := []string{"response 1", "response 2", "response 3"}
 
@@ -343,8 +345,10 @@ func TestRetryableProvider_MultipleResponses(t *testing.T) {
 		NameFunc:    func() string { return "test" },
 		EnabledFunc: func() bool { return true },
 		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			mu.Lock()
 			idx := callCount
 			callCount++
+			mu.Unlock()
 			if idx >= len(responses) {
 				idx = len(responses) - 1
 			}
@@ -383,11 +387,14 @@ func TestRetryableProvider_MultipleResponses(t *testing.T) {
 }
 
 func TestRetryableProvider_FormattedError(t *testing.T) {
+	var mu sync.Mutex
 	callCount := 0
 	mock := &mocks.ProviderMock{
 		NameFunc:    func() string { return "test" },
 		EnabledFunc: func() bool { return true },
 		GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+			mu.Lock()
+			defer mu.Unlock()
 			callCount++
 			return "", fmt.Errorf("500 error on attempt %d", callCount)
 		},

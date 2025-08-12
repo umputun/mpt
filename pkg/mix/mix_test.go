@@ -53,14 +53,14 @@ func TestManager_Process(t *testing.T) {
 		}
 
 		resp, err := manager.Process(ctx, req)
-		require.NoError(t, err)
-		assert.NotEmpty(t, resp.TextWithHeader)
-		assert.Contains(t, resp.TextWithHeader, "== mixed results by OpenAI ==")
-		assert.Contains(t, resp.TextWithHeader, "Here is the merged result")
-		assert.Equal(t, "Here is the merged result", resp.RawText)
-		assert.Equal(t, "OpenAI", resp.MixProvider)
-		assert.False(t, resp.ConsensusAchieved)
-		assert.Equal(t, 0, resp.ConsensusAttempts)
+		require.NoError(t, err, "mix processing should succeed with valid providers")
+		assert.NotEmpty(t, resp.TextWithHeader, "mixed results should have header")
+		assert.Contains(t, resp.TextWithHeader, "== mixed results by OpenAI ==", "should show mix provider in header")
+		assert.Contains(t, resp.TextWithHeader, "Here is the merged result", "should contain mixed content")
+		assert.Equal(t, "Here is the merged result", resp.RawText, "raw text should match generated result")
+		assert.Equal(t, "OpenAI", resp.MixProvider, "should use OpenAI as mix provider")
+		assert.False(t, resp.ConsensusAchieved, "consensus not enabled so should be false")
+		assert.Equal(t, 0, resp.ConsensusAttempts, "consensus not enabled so attempts should be 0")
 	})
 
 	t.Run("consensus error but continues with mixing", func(t *testing.T) {
