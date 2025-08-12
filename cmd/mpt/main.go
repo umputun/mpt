@@ -16,11 +16,10 @@ import (
 	"github.com/go-pkgz/lgr"
 	"github.com/jessevdk/go-flags"
 
-	"github.com/umputun/mpt/pkg/consensus"
 	"github.com/umputun/mpt/pkg/mcp"
+	"github.com/umputun/mpt/pkg/mix"
 	"github.com/umputun/mpt/pkg/prompt"
 	"github.com/umputun/mpt/pkg/provider"
-	"github.com/umputun/mpt/pkg/provider/enum"
 	"github.com/umputun/mpt/pkg/runner"
 )
 
@@ -317,11 +316,10 @@ func buildFullPrompt(opts *options) error {
 	return nil
 }
 
-
 // providerConfig holds configuration for a provider
 type providerConfig struct {
 	enabled   bool
-	provType  enum.ProviderType
+	provType  provider.ProviderType
 	name      string
 	apiKey    string
 	model     string
@@ -404,7 +402,7 @@ func getStandardProviderConfigs(opts *options) []providerConfig {
 	return []providerConfig{
 		{
 			enabled:   opts.OpenAI.Enabled,
-			provType:  enum.ProviderTypeOpenAI,
+			provType:  provider.ProviderTypeOpenAI,
 			name:      "OpenAI",
 			apiKey:    opts.OpenAI.APIKey,
 			model:     opts.OpenAI.Model,
@@ -413,7 +411,7 @@ func getStandardProviderConfigs(opts *options) []providerConfig {
 		},
 		{
 			enabled:   opts.Anthropic.Enabled,
-			provType:  enum.ProviderTypeAnthropic,
+			provType:  provider.ProviderTypeAnthropic,
 			name:      "Anthropic",
 			apiKey:    opts.Anthropic.APIKey,
 			model:     opts.Anthropic.Model,
@@ -422,7 +420,7 @@ func getStandardProviderConfigs(opts *options) []providerConfig {
 		},
 		{
 			enabled:   opts.Google.Enabled,
-			provType:  enum.ProviderTypeGoogle,
+			provType:  provider.ProviderTypeGoogle,
 			name:      "Google",
 			apiKey:    opts.Google.APIKey,
 			model:     opts.Google.Model,
@@ -515,7 +513,7 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 
 	// handle mix mode if enabled
 	if opts.MixEnabled && len(providers) > 1 {
-		processMixRequest := ProcessMixRequest{
+		mixRequest := mix.Request{
 			Prompt:            opts.Prompt,
 			MixPrompt:         opts.MixPrompt,
 			MixProvider:       opts.MixProvider,
@@ -524,8 +522,8 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 			Providers:         providers,
 			Results:           r.GetResults(),
 		}
-		
-		mixResult, err := processMixMode(timeoutCtx, processMixRequest)
+
+		mixResult, err := processMixMode(timeoutCtx, mixRequest)
 		if err != nil {
 			return nil, fmt.Errorf("failed to mix results: %w", err)
 		}
@@ -546,101 +544,14 @@ func executePrompt(ctx context.Context, opts *options, providers []provider.Prov
 	return execResult, nil
 }
 
-// ProcessMixRequest holds the parameters for processing mix mode
-type ProcessMixRequest struct {
-	Prompt            string
-	MixPrompt         string
-	MixProvider       string
-	ConsensusEnabled  bool
-	ConsensusAttempts int
-	Providers         []provider.Provider
-	Results           []provider.Result
-}
-
-// MixRequest holds the parameters for mixing provider responses
-type MixRequest struct {
-	MixPrompt   string
-	MixProvider string
-	Providers   []provider.Provider
-	Results     []provider.Result
-}
-
-// MixResponse holds the result of mixing provider responses
-type MixResponse struct {
-	TextWithHeader string
-	RawText        string
-	MixProvider    string
-}
-
-// MixResult holds the complete result including consensus information
-type MixResult struct {
-	TextWithHeader    string
-	RawText           string
-	MixProvider       string
-	ConsensusAchieved bool
-	ConsensusAttempts int
-}
-
 // processMixMode handles mixing results from multiple providers
-func processMixMode(ctx context.Context, req ProcessMixRequest) (*MixResult, error) {
-	// filter successful results
-	var successfulResults []provider.Result
-	for _, res := range req.Results {
-		if res.Error == nil {
-			successfulResults = append(successfulResults, res)
-		}
-	}
+func processMixMode(ctx context.Context, req mix.Request) (*mix.Response, error) {
+	// create mix manager
+	mixer := mix.New(lgr.Default())
 
-	// need at least 2 successful results to mix
-	if len(successfulResults) < 2 {
-		return &MixResult{}, nil
-	}
-
-	result := &MixResult{}
-
-	// if consensus enabled, check and attempt consensus
-	if req.ConsensusEnabled && len(successfulResults) > 1 {
-		cm := consensus.New(lgr.Default())
-		consensusOpts := consensus.Options{
-			Enabled:     true,
-			Attempts:    req.ConsensusAttempts,
-			Prompt:      req.Prompt,
-			MixProvider: req.MixProvider,
-		}
-		
-		var consensusResults []provider.Result
-		var consensusErr error
-		consensusResults, result.ConsensusAttempts, result.ConsensusAchieved, consensusErr = cm.Attempt(ctx, consensusOpts, req.Providers, successfulResults)
-		if consensusErr != nil {
-			// log the error but continue with mixing
-			lgr.Printf("[ERROR] consensus checking encountered errors: %v", consensusErr)
-		}
-		if consensusResults != nil {
-			successfulResults = consensusResults
-		}
-		// log consensus attempts for transparency
-		lgr.Printf("[INFO] consensus attempts made: %d, achieved: %v", result.ConsensusAttempts, result.ConsensusAchieved)
-	}
-
-	mixRequest := MixRequest{
-		MixPrompt:   req.MixPrompt,
-		MixProvider: req.MixProvider,
-		Providers:   req.Providers,
-		Results:     successfulResults,
-	}
-
-	mixResponse, err := mixResults(ctx, mixRequest)
-	if err != nil {
-		return nil, err
-	}
-
-	result.TextWithHeader = mixResponse.TextWithHeader
-	result.RawText = mixResponse.RawText
-	result.MixProvider = mixResponse.MixProvider
-
-	return result, nil
+	// process the mix request
+	return mixer.Process(ctx, req)
 }
-
 
 // showVerbosePrompt displays the prompt text that will be sent to the models
 func showVerbosePrompt(w io.Writer, opts options) {
@@ -707,64 +618,6 @@ func readFromStdin() (string, error) {
 		return "", fmt.Errorf("error reading from stdin: %w", err)
 	}
 	return strings.TrimSpace(sb.String()), nil
-}
-
-// mixResults takes multiple provider results and uses a selected provider to mix them
-func mixResults(ctx context.Context, req MixRequest) (*MixResponse, error) {
-	// find the mix provider
-	var mixProvider provider.Provider
-	mixProviderNameLower := strings.ToLower(req.MixProvider)
-
-	// try to find the specified mix provider among the enabled providers
-	for _, p := range req.Providers {
-		if strings.ToLower(p.Name()) == mixProviderNameLower && p.Enabled() {
-			mixProvider = p
-			break
-		}
-	}
-
-	// if the specified mix provider isn't found, fall back to the first enabled provider
-	if mixProvider == nil {
-		for _, p := range req.Providers {
-			if p.Enabled() {
-				mixProvider = p
-				lgr.Printf("[INFO] specified mix provider '%s' not enabled, falling back to '%s'",
-					req.MixProvider, p.Name())
-				break
-			}
-		}
-	}
-
-	if mixProvider == nil {
-		return nil, fmt.Errorf("no enabled provider found for mixing results")
-	}
-
-	// build a prompt with all results
-	var mixPrompt strings.Builder
-	mixPrompt.WriteString(req.MixPrompt)
-	mixPrompt.WriteString("\n\n")
-
-	for i, result := range req.Results {
-		if result.Error != nil {
-			continue
-		}
-		mixPrompt.WriteString(fmt.Sprintf("=== Result %d from %s ===\n", i+1, result.Provider))
-		mixPrompt.WriteString(result.Text)
-		mixPrompt.WriteString("\n\n")
-	}
-
-	// generate the mixed result
-	mixedResult, err := mixProvider.Generate(ctx, mixPrompt.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate mixed result using %s: %w", mixProvider.Name(), err)
-	}
-
-	// return structured response
-	return &MixResponse{
-		TextWithHeader: fmt.Sprintf("== mixed results by %s ==\n%s", mixProvider.Name(), mixedResult),
-		RawText:        mixedResult,
-		MixProvider:    mixProvider.Name(),
-	}, nil
 }
 
 func outputJSON(result *ExecutionResult) error {

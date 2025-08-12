@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/umputun/mpt/pkg/provider/enum"
 )
 
 func TestResult_Format(t *testing.T) {
@@ -46,7 +45,7 @@ func TestOptions_Validate(t *testing.T) {
 	tests := []struct {
 		name         string
 		opts         Options
-		providerType enum.ProviderType
+		providerType ProviderType
 		wantErr      bool
 		errContains  string
 	}{
@@ -57,7 +56,7 @@ func TestOptions_Validate(t *testing.T) {
 				Enabled: true,
 				Model:   "test-model",
 			},
-			providerType: enum.ProviderTypeOpenAI,
+			providerType: ProviderTypeOpenAI,
 			wantErr:      false,
 		},
 		{
@@ -67,7 +66,7 @@ func TestOptions_Validate(t *testing.T) {
 				Enabled: false,
 				Model:   "test-model",
 			},
-			providerType: enum.ProviderTypeOpenAI,
+			providerType: ProviderTypeOpenAI,
 			wantErr:      true,
 			errContains:  "is not enabled",
 		},
@@ -77,7 +76,7 @@ func TestOptions_Validate(t *testing.T) {
 				Enabled: true,
 				Model:   "test-model",
 			},
-			providerType: enum.ProviderTypeAnthropic,
+			providerType: ProviderTypeAnthropic,
 			wantErr:      true,
 			errContains:  "api key for anthropic provider is required",
 		},
@@ -87,7 +86,7 @@ func TestOptions_Validate(t *testing.T) {
 				APIKey:  "test-key",
 				Enabled: true,
 			},
-			providerType: enum.ProviderTypeGoogle,
+			providerType: ProviderTypeGoogle,
 			wantErr:      true,
 			errContains:  "model for google provider is required",
 		},
@@ -98,7 +97,7 @@ func TestOptions_Validate(t *testing.T) {
 				Enabled: true,
 				Model:   "test-model",
 			},
-			providerType: enum.ProviderTypeOpenAI,
+			providerType: ProviderTypeOpenAI,
 			wantErr:      true,
 			errContains:  "api key for openai provider is required",
 		},
@@ -109,7 +108,7 @@ func TestOptions_Validate(t *testing.T) {
 				Enabled: true,
 				Model:   "",
 			},
-			providerType: enum.ProviderTypeAnthropic,
+			providerType: ProviderTypeAnthropic,
 			wantErr:      true,
 			errContains:  "model for anthropic provider is required",
 		},
@@ -133,7 +132,7 @@ func TestOptions_Validate(t *testing.T) {
 func TestCreateProvider(t *testing.T) {
 	tests := []struct {
 		name         string
-		providerType enum.ProviderType
+		providerType ProviderType
 		opts         Options
 		wantErr      bool
 		errContains  string
@@ -141,7 +140,7 @@ func TestCreateProvider(t *testing.T) {
 	}{
 		{
 			name:         "create openai provider",
-			providerType: enum.ProviderTypeOpenAI,
+			providerType: ProviderTypeOpenAI,
 			opts: Options{
 				APIKey:      "test-openai-key",
 				Enabled:     true,
@@ -154,7 +153,7 @@ func TestCreateProvider(t *testing.T) {
 		},
 		{
 			name:         "create anthropic provider",
-			providerType: enum.ProviderTypeAnthropic,
+			providerType: ProviderTypeAnthropic,
 			opts: Options{
 				APIKey:    "test-anthropic-key",
 				Enabled:   true,
@@ -166,7 +165,7 @@ func TestCreateProvider(t *testing.T) {
 		},
 		{
 			name:         "create google provider",
-			providerType: enum.ProviderTypeGoogle,
+			providerType: ProviderTypeGoogle,
 			opts: Options{
 				APIKey:    "test-google-key",
 				Enabled:   true,
@@ -178,7 +177,7 @@ func TestCreateProvider(t *testing.T) {
 		},
 		{
 			name:         "unsupported provider type",
-			providerType: enum.ProviderTypeCustom,
+			providerType: ProviderTypeCustom,
 			opts: Options{
 				APIKey:  "test-key",
 				Enabled: true,
@@ -189,7 +188,7 @@ func TestCreateProvider(t *testing.T) {
 		},
 		{
 			name:         "validation failed - no api key",
-			providerType: enum.ProviderTypeOpenAI,
+			providerType: ProviderTypeOpenAI,
 			opts: Options{
 				Enabled: true,
 				Model:   "gpt-4",
@@ -199,7 +198,7 @@ func TestCreateProvider(t *testing.T) {
 		},
 		{
 			name:         "validation failed - not enabled",
-			providerType: enum.ProviderTypeAnthropic,
+			providerType: ProviderTypeAnthropic,
 			opts: Options{
 				APIKey:  "test-key",
 				Enabled: false,
@@ -210,7 +209,7 @@ func TestCreateProvider(t *testing.T) {
 		},
 		{
 			name:         "validation failed - no model",
-			providerType: enum.ProviderTypeGoogle,
+			providerType: ProviderTypeGoogle,
 			opts: Options{
 				APIKey:  "test-key",
 				Enabled: true,
@@ -220,7 +219,7 @@ func TestCreateProvider(t *testing.T) {
 		},
 		{
 			name:         "unknown provider type",
-			providerType: enum.ProviderTypeUnknown,
+			providerType: ProviderTypeUnknown,
 			opts: Options{
 				APIKey:  "test-key",
 				Enabled: true,

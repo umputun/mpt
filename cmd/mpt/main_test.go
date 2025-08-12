@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/mpt/pkg/mix"
 	"github.com/umputun/mpt/pkg/provider"
-	"github.com/umputun/mpt/pkg/provider/enum"
 	"github.com/umputun/mpt/pkg/runner"
 	"github.com/umputun/mpt/pkg/runner/mocks"
 )
@@ -767,22 +767,22 @@ func TestInitializeProvider(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// for testing "unknown provider" we use parse error checking
 			if tt.name == "unknown provider" {
-				_, err := enum.ParseProviderType("not-a-real-provider-type")
+				_, err := provider.ParseProviderType("not-a-real-provider-type")
 				assert.Error(t, err, "Should get error for unknown provider type")
 				return
 			}
 
 			// for valid provider types, test initialization
-			provType, err := enum.ParseProviderType(tt.providerType)
+			provType, err := provider.ParseProviderType(tt.providerType)
 			require.NoError(t, err, "Should parse provider type")
 
 			providerInstance, err := provider.CreateProvider(provType, provider.Options{
-			APIKey:      tt.apiKey,
-			Model:       tt.model,
-			Enabled:     true,
-			MaxTokens:   tt.maxTokens,
-			Temperature: tt.temperature,
-		})
+				APIKey:      tt.apiKey,
+				Model:       tt.model,
+				Enabled:     true,
+				MaxTokens:   tt.maxTokens,
+				Temperature: tt.temperature,
+			})
 
 			if tt.expectNil {
 				assert.Nil(t, providerInstance, "Provider should be nil")
@@ -1681,25 +1681,29 @@ func TestMixResults(t *testing.T) {
 	// run tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mixRequest := MixRequest{
-				MixPrompt:   tt.opts.MixPrompt,
-				MixProvider: tt.opts.MixProvider,
-				Providers:   tt.providers,
-				Results:     tt.results,
+			// create mix manager and request
+			mixer := mix.New(nil)
+			req := mix.Request{
+				Prompt:            "test prompt",
+				MixPrompt:         tt.opts.MixPrompt,
+				MixProvider:       tt.opts.MixProvider,
+				ConsensusEnabled:  false,
+				ConsensusAttempts: 0,
+				Providers:         tt.providers,
+				Results:           tt.results,
 			}
-			
-			response, err := mixResults(ctx, mixRequest)
+
+			resp, err := mixer.Process(ctx, req)
 
 			if tt.expectedError {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, response)
-				assert.Contains(t, response.TextWithHeader, tt.expectedOutput)
-				if !tt.expectedError && err == nil && response.TextWithHeader != "" {
-					assert.NotEmpty(t, response.MixProvider, "Mix provider should be set when mixing succeeds")
-					assert.NotEmpty(t, response.RawText, "Raw text should be set when mixing succeeds")
-					assert.NotContains(t, response.RawText, "== mixed results by", "Raw text should not contain header")
+				assert.Contains(t, resp.TextWithHeader, tt.expectedOutput)
+				if !tt.expectedError && err == nil && resp.TextWithHeader != "" {
+					assert.NotEmpty(t, resp.MixProvider, "Mix provider should be set when mixing succeeds")
+					assert.NotEmpty(t, resp.RawText, "Raw text should be set when mixing succeeds")
+					assert.NotContains(t, resp.RawText, "== mixed results by", "Raw text should not contain header")
 				}
 			}
 		})
@@ -1916,7 +1920,7 @@ func TestProcessMixModeWithConsensus(t *testing.T) {
 		{Provider: "Anthropic", Text: "Response 2"},
 	}
 
-	processMixRequest := ProcessMixRequest{
+	mixRequest := mix.Request{
 		Prompt:            "test prompt",
 		MixPrompt:         opts.MixPrompt,
 		MixProvider:       opts.MixProvider,
@@ -1925,8 +1929,8 @@ func TestProcessMixModeWithConsensus(t *testing.T) {
 		Providers:         []provider.Provider{mockMixProvider},
 		Results:           rawResults,
 	}
-	
-	result, err := processMixMode(ctx, processMixRequest)
+
+	result, err := processMixMode(ctx, mixRequest)
 
 	require.NoError(t, err)
 	assert.NotNil(t, result)

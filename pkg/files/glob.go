@@ -25,17 +25,17 @@ type LoadRequest struct {
 
 // ExclusionRequest holds the parameters for checking if a file should be excluded
 type ExclusionRequest struct {
-	FilePath        string              // path of the file to check
-	WorkingDir      string              // current working directory for relative path calculation
-	ExcludePatterns []string            // patterns to exclude
-	PatternCount    map[string]int      // map to track exclusion count per pattern
+	FilePath        string         // path of the file to check
+	WorkingDir      string         // current working directory for relative path calculation
+	ExcludePatterns []string       // patterns to exclude
+	PatternCount    map[string]int // map to track exclusion count per pattern
 }
 
 // PatternRequest holds the parameters for pattern processing functions
 type PatternRequest struct {
-	Pattern      string                 // pattern to process
-	MatchedFiles map[string]struct{}    // map to store matched file paths
-	MaxFileSize  int64                  // maximum size of individual files to process
+	Pattern      string              // pattern to process
+	MatchedFiles map[string]struct{} // map to store matched file paths
+	MaxFileSize  int64               // maximum size of individual files to process
 }
 
 // LoadContent loads content from files matching the given patterns and returns a formatted string

@@ -11,6 +11,8 @@ import (
 	"github.com/umputun/mpt/pkg/runner"
 )
 
+//go:generate moq -out mocks/provider.go -pkg mocks -skip-ensure -fmt goimports ../provider Provider
+
 // Manager handles consensus checking and attempts between multiple providers
 type Manager struct {
 	logger lgr.L
@@ -18,10 +20,24 @@ type Manager struct {
 
 // Options configures consensus checking behavior
 type Options struct {
-	Enabled   bool
-	Attempts  int
-	Prompt    string
+	Enabled     bool
+	Attempts    int
+	Prompt      string
 	MixProvider string
+}
+
+// AttemptRequest holds the parameters for consensus attempt
+type AttemptRequest struct {
+	Options   Options
+	Providers []provider.Provider
+	Results   []provider.Result
+}
+
+// AttemptResponse holds the result of consensus attempt
+type AttemptResponse struct {
+	FinalResults []provider.Result
+	Attempts     int
+	Achieved     bool
 }
 
 // New creates a new consensus manager
@@ -35,17 +51,21 @@ func New(logger lgr.L) *Manager {
 }
 
 // Attempt tries to reach consensus among provider results
-func (m *Manager) Attempt(ctx context.Context, opts Options, providers []provider.Provider, results []provider.Result) (finalResults []provider.Result, attempts int, achieved bool, err error) {
-	if !opts.Enabled || len(results) <= 1 {
-		return results, 0, false, nil
+func (m *Manager) Attempt(ctx context.Context, req AttemptRequest) (*AttemptResponse, error) {
+	if !req.Options.Enabled || len(req.Results) <= 1 {
+		return &AttemptResponse{
+			FinalResults: req.Results,
+			Attempts:     0,
+			Achieved:     false,
+		}, nil
 	}
 
 	// find the mix provider to use for consensus checking
-	mixProvider := m.findMixProvider(opts.MixProvider, providers)
+	mixProvider := m.findMixProvider(req.Options.MixProvider, req.Providers)
 	if mixProvider == nil {
 		m.logger.Logf("[WARN] no mix provider available for consensus checking, falling back to first enabled provider")
 		// fall back to first enabled provider
-		for _, p := range providers {
+		for _, p := range req.Providers {
 			if p.Enabled() {
 				mixProvider = p
 				m.logger.Logf("[INFO] using %s as fallback consensus provider", p.Name())
@@ -53,12 +73,17 @@ func (m *Manager) Attempt(ctx context.Context, opts Options, providers []provide
 			}
 		}
 		if mixProvider == nil {
-			return results, 0, false, fmt.Errorf("no enabled providers for consensus checking")
+			return &AttemptResponse{
+				FinalResults: req.Results,
+				Attempts:     0,
+				Achieved:     false,
+			}, fmt.Errorf("no enabled providers for consensus checking")
 		}
 	}
 
+	results := req.Results
 	var lastError error
-	for attempt := 1; attempt <= opts.Attempts; attempt++ {
+	for attempt := 1; attempt <= req.Options.Attempts; attempt++ {
 		// check if results agree using mix model
 		checkPrompt := m.buildConsensusCheckPrompt(results)
 		agreement, err := mixProvider.Generate(ctx, checkPrompt)
@@ -73,14 +98,18 @@ func (m *Manager) Attempt(ctx context.Context, opts Options, providers []provide
 		// check if consensus was reached
 		if m.isConsensusReached(agreement) {
 			m.logger.Logf("[INFO] consensus reached on attempt %d", attempt)
-			return results, attempt, true, nil
+			return &AttemptResponse{
+				FinalResults: results,
+				Attempts:     attempt,
+				Achieved:     true,
+			}, nil
 		}
 
 		// if no agreement and not last attempt, re-run all providers with context
-		if attempt < opts.Attempts {
+		if attempt < req.Options.Attempts {
 			m.logger.Logf("[INFO] no consensus on attempt %d, retrying with context", attempt)
-			rerunPrompt := m.buildConsensusRerunPrompt(opts.Prompt, results)
-			newResults := m.rerunProviders(ctx, providers, rerunPrompt)
+			rerunPrompt := m.buildConsensusRerunPrompt(req.Options.Prompt, results)
+			newResults := m.rerunProviders(ctx, req.Providers, rerunPrompt)
 
 			if len(newResults) > 0 {
 				results = newResults
@@ -90,34 +119,25 @@ func (m *Manager) Attempt(ctx context.Context, opts Options, providers []provide
 		}
 	}
 
-	m.logger.Logf("[INFO] consensus not reached after %d attempts", opts.Attempts)
+	m.logger.Logf("[INFO] consensus not reached after %d attempts", req.Options.Attempts)
 	// return the last error if all attempts failed due to errors
-	if lastError != nil && opts.Attempts > 0 {
-		return results, opts.Attempts, false, fmt.Errorf("consensus checking failed: %w", lastError)
+	if lastError != nil && req.Options.Attempts > 0 {
+		return &AttemptResponse{
+			FinalResults: results,
+			Attempts:     req.Options.Attempts,
+			Achieved:     false,
+		}, fmt.Errorf("consensus checking failed: %w", lastError)
 	}
-	return results, opts.Attempts, false, nil
+	return &AttemptResponse{
+		FinalResults: results,
+		Attempts:     req.Options.Attempts,
+		Achieved:     false,
+	}, nil
 }
 
 // findMixProvider finds the provider to use for mixing/consensus
 func (m *Manager) findMixProvider(mixProviderName string, providers []provider.Provider) provider.Provider {
-	mixProviderNameLower := strings.ToLower(mixProviderName)
-
-	// try to find the specified mix provider
-	for _, p := range providers {
-		if strings.ToLower(p.Name()) == mixProviderNameLower && p.Enabled() {
-			return p
-		}
-	}
-
-	// handle partial matches (e.g., "openai" matches "OpenAI (gpt-4o)")
-	for _, p := range providers {
-		providerNameLower := strings.ToLower(p.Name())
-		if p.Enabled() && strings.Contains(providerNameLower, mixProviderNameLower) {
-			return p
-		}
-	}
-
-	return nil
+	return provider.FindProviderByName(mixProviderName, providers)
 }
 
 // buildConsensusCheckPrompt creates a prompt to check if responses agree
@@ -176,11 +196,11 @@ func (m *Manager) rerunProviders(ctx context.Context, providers []provider.Provi
 func (m *Manager) isConsensusReached(response string) bool {
 	// normalize the response
 	response = strings.TrimSpace(strings.ToLower(response))
-	
+
 	// remove common punctuation at the end
 	response = strings.Trim(response, ".,;:!?")
 
-	// check for explicit "yes" at the beginning  
+	// check for explicit "yes" at the beginning
 	if strings.HasPrefix(response, "yes") {
 		return true
 	}
@@ -192,7 +212,7 @@ func (m *Manager) isConsensusReached(response string) bool {
 
 	// check negative indicators first to avoid false positives
 	negativeIndicators := []string{
-		"disagree", "conflict", "different", "not", "don't", "doesn't", 
+		"disagree", "conflict", "different", "not", "don't", "doesn't",
 		"diverge", "contradict", "oppose", "inconsistent", "vary", "differ",
 	}
 	for _, indicator := range negativeIndicators {

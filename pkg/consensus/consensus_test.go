@@ -9,49 +9,35 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/mpt/pkg/consensus/mocks"
 	"github.com/umputun/mpt/pkg/provider"
 )
-
-// mockProvider implements Provider interface for testing
-type mockProvider struct {
-	name      string
-	enabled   bool
-	responses map[string]string
-	err       error
-}
-
-func (m *mockProvider) Name() string { return m.name }
-func (m *mockProvider) Enabled() bool { return m.enabled }
-func (m *mockProvider) Generate(_ context.Context, prompt string) (string, error) {
-	if m.err != nil {
-		return "", m.err
-	}
-	// check responses map for exact matches
-	for key, resp := range m.responses {
-		if strings.Contains(prompt, key) {
-			return resp, nil
-		}
-	}
-	// default response for unknown prompts
-	return "default response", nil
-}
-
 
 func TestManager_Attempt(t *testing.T) {
 	ctx := context.Background()
 	manager := New(nil) // will use default logger
 
 	t.Run("consensus reached on first attempt", func(t *testing.T) {
-		providers := []provider.Provider{
-			&mockProvider{
-				name:    "OpenAI",
-				enabled: true,
-				responses: map[string]string{
-					"Do the following AI responses fundamentally agree": "YES",
-				},
+		mockOpenAI := &mocks.ProviderMock{
+			NameFunc:    func() string { return "OpenAI" },
+			EnabledFunc: func() bool { return true },
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				if strings.Contains(prompt, "Do the following AI responses fundamentally agree") {
+					return "YES", nil
+				}
+				return "default response", nil
 			},
-			&mockProvider{name: "Anthropic", enabled: true},
 		}
+
+		mockAnthropic := &mocks.ProviderMock{
+			NameFunc:    func() string { return "Anthropic" },
+			EnabledFunc: func() bool { return true },
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				return "default response", nil
+			},
+		}
+
+		providers := []provider.Provider{mockOpenAI, mockAnthropic}
 
 		results := []provider.Result{
 			{Provider: "OpenAI", Text: "Paris is the capital"},
@@ -65,24 +51,40 @@ func TestManager_Attempt(t *testing.T) {
 			MixProvider: "openai",
 		}
 
-		newResults, attempts, achieved, err := manager.Attempt(ctx, opts, providers, results)
+		req := AttemptRequest{
+			Options:   opts,
+			Providers: providers,
+			Results:   results,
+		}
+
+		resp, err := manager.Attempt(ctx, req)
 		require.NoError(t, err)
-		assert.Equal(t, 1, attempts)
-		assert.True(t, achieved)
-		assert.Equal(t, results, newResults) // results unchanged when consensus reached
+		assert.Equal(t, 1, resp.Attempts)
+		assert.True(t, resp.Achieved)
+		assert.Equal(t, results, resp.FinalResults) // results unchanged when consensus reached
 	})
 
 	t.Run("consensus not reached", func(t *testing.T) {
-		providers := []provider.Provider{
-			&mockProvider{
-				name:    "OpenAI",
-				enabled: true,
-				responses: map[string]string{
-					"Do the following AI responses fundamentally agree": "NO",
-				},
+		mockOpenAI := &mocks.ProviderMock{
+			NameFunc:    func() string { return "OpenAI" },
+			EnabledFunc: func() bool { return true },
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				if strings.Contains(prompt, "Do the following AI responses fundamentally agree") {
+					return "NO", nil
+				}
+				return "default response", nil
 			},
-			&mockProvider{name: "Anthropic", enabled: true},
 		}
+
+		mockAnthropic := &mocks.ProviderMock{
+			NameFunc:    func() string { return "Anthropic" },
+			EnabledFunc: func() bool { return true },
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				return "default response", nil
+			},
+		}
+
+		providers := []provider.Provider{mockOpenAI, mockAnthropic}
 
 		results := []provider.Result{
 			{Provider: "OpenAI", Text: "Go is the best"},
@@ -96,17 +98,143 @@ func TestManager_Attempt(t *testing.T) {
 			MixProvider: "openai",
 		}
 
-		newResults, attempts, achieved, err := manager.Attempt(ctx, opts, providers, results)
+		req := AttemptRequest{
+			Options:   opts,
+			Providers: providers,
+			Results:   results,
+		}
+
+		resp, err := manager.Attempt(ctx, req)
 		require.NoError(t, err)
-		assert.Equal(t, 1, attempts)
-		assert.False(t, achieved)
-		assert.Equal(t, results, newResults)
+		assert.Equal(t, 1, resp.Attempts)
+		assert.False(t, resp.Achieved)
+		assert.Equal(t, results, resp.FinalResults)
+	})
+
+	t.Run("consensus not reached with multiple attempts and rerun", func(t *testing.T) {
+		mockOpenAI := &mocks.ProviderMock{
+			NameFunc:    func() string { return "OpenAI" },
+			EnabledFunc: func() bool { return true },
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				if strings.Contains(prompt, "Do the following AI responses fundamentally agree") {
+					return "NO", nil
+				}
+				if strings.Contains(prompt, "Original question") {
+					return "Revised response after considering", nil
+				}
+				return "default response", nil
+			},
+		}
+
+		mockAnthropic := &mocks.ProviderMock{
+			NameFunc:    func() string { return "Anthropic" },
+			EnabledFunc: func() bool { return true },
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				if strings.Contains(prompt, "Original question") {
+					return "Also revised response", nil
+				}
+				return "default response", nil
+			},
+		}
+
+		providers := []provider.Provider{mockOpenAI, mockAnthropic}
+
+		results := []provider.Result{
+			{Provider: "OpenAI", Text: "Go is the best"},
+			{Provider: "Anthropic", Text: "Python is better"},
+		}
+
+		opts := Options{
+			Enabled:     true,
+			Attempts:    2, // multiple attempts to trigger rerun
+			Prompt:      "What is the best programming language?",
+			MixProvider: "openai",
+		}
+
+		req := AttemptRequest{
+			Options:   opts,
+			Providers: providers,
+			Results:   results,
+		}
+
+		resp, err := manager.Attempt(ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, 2, resp.Attempts)
+		assert.False(t, resp.Achieved)
+		// results should be updated with new responses
+		assert.NotEqual(t, results, resp.FinalResults)
+		assert.Len(t, resp.FinalResults, 2)
+		// check that providers were rerun with new prompt
+		assert.Contains(t, resp.FinalResults[0].Text, "Revised response")
+		assert.Contains(t, resp.FinalResults[1].Text, "revised response")
+	})
+
+	t.Run("consensus reached after rerun", func(t *testing.T) {
+		attemptNum := 0
+		mockOpenAI := &mocks.ProviderMock{
+			NameFunc:    func() string { return "OpenAI" },
+			EnabledFunc: func() bool { return true },
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				if strings.Contains(prompt, "Do the following AI responses fundamentally agree") {
+					attemptNum++
+					if attemptNum == 1 {
+						return "NO", nil
+					}
+					return "YES", nil
+				}
+				if strings.Contains(prompt, "Original question") {
+					return "Aligned response after reconsideration", nil
+				}
+				return "default response", nil
+			},
+		}
+
+		mockAnthropic := &mocks.ProviderMock{
+			NameFunc:    func() string { return "Anthropic" },
+			EnabledFunc: func() bool { return true },
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				if strings.Contains(prompt, "Original question") {
+					return "Also aligned response", nil
+				}
+				return "default response", nil
+			},
+		}
+
+		providers := []provider.Provider{mockOpenAI, mockAnthropic}
+
+		results := []provider.Result{
+			{Provider: "OpenAI", Text: "Initial disagreement"},
+			{Provider: "Anthropic", Text: "Different opinion"},
+		}
+
+		opts := Options{
+			Enabled:     true,
+			Attempts:    3,
+			Prompt:      "Test question",
+			MixProvider: "openai",
+		}
+
+		req := AttemptRequest{
+			Options:   opts,
+			Providers: providers,
+			Results:   results,
+		}
+
+		resp, err := manager.Attempt(ctx, req)
+		require.NoError(t, err)
+		assert.Equal(t, 2, resp.Attempts) // should succeed on second attempt
+		assert.True(t, resp.Achieved)
+		// results should be updated from rerun
+		assert.NotEqual(t, results, resp.FinalResults)
 	})
 
 	t.Run("disabled consensus", func(t *testing.T) {
-		providers := []provider.Provider{
-			&mockProvider{name: "OpenAI", enabled: true},
+		mockOpenAI := &mocks.ProviderMock{
+			NameFunc:    func() string { return "OpenAI" },
+			EnabledFunc: func() bool { return true },
 		}
+
+		providers := []provider.Provider{mockOpenAI}
 
 		results := []provider.Result{
 			{Provider: "OpenAI", Text: "Test response"},
@@ -117,17 +245,26 @@ func TestManager_Attempt(t *testing.T) {
 			Attempts: 2,
 		}
 
-		newResults, attempts, achieved, err := manager.Attempt(ctx, opts, providers, results)
+		req := AttemptRequest{
+			Options:   opts,
+			Providers: providers,
+			Results:   results,
+		}
+
+		resp, err := manager.Attempt(ctx, req)
 		require.NoError(t, err)
-		assert.Equal(t, 0, attempts)
-		assert.False(t, achieved)
-		assert.Equal(t, results, newResults)
+		assert.Equal(t, 0, resp.Attempts)
+		assert.False(t, resp.Achieved)
+		assert.Equal(t, results, resp.FinalResults)
 	})
 
 	t.Run("single result skips consensus", func(t *testing.T) {
-		providers := []provider.Provider{
-			&mockProvider{name: "OpenAI", enabled: true},
+		mockOpenAI := &mocks.ProviderMock{
+			NameFunc:    func() string { return "OpenAI" },
+			EnabledFunc: func() bool { return true },
 		}
+
+		providers := []provider.Provider{mockOpenAI}
 
 		results := []provider.Result{
 			{Provider: "OpenAI", Text: "Test response"},
@@ -138,18 +275,31 @@ func TestManager_Attempt(t *testing.T) {
 			Attempts: 2,
 		}
 
-		newResults, attempts, achieved, err := manager.Attempt(ctx, opts, providers, results)
+		req := AttemptRequest{
+			Options:   opts,
+			Providers: providers,
+			Results:   results,
+		}
+
+		resp, err := manager.Attempt(ctx, req)
 		require.NoError(t, err)
-		assert.Equal(t, 0, attempts)
-		assert.False(t, achieved)
-		assert.Equal(t, results, newResults)
+		assert.Equal(t, 0, resp.Attempts)
+		assert.False(t, resp.Achieved)
+		assert.Equal(t, results, resp.FinalResults)
 	})
 
 	t.Run("no enabled providers", func(t *testing.T) {
-		providers := []provider.Provider{
-			&mockProvider{name: "OpenAI", enabled: false},
-			&mockProvider{name: "Anthropic", enabled: false},
+		mockOpenAI := &mocks.ProviderMock{
+			NameFunc:    func() string { return "OpenAI" },
+			EnabledFunc: func() bool { return false },
 		}
+
+		mockAnthropic := &mocks.ProviderMock{
+			NameFunc:    func() string { return "Anthropic" },
+			EnabledFunc: func() bool { return false },
+		}
+
+		providers := []provider.Provider{mockOpenAI, mockAnthropic}
 
 		results := []provider.Result{
 			{Provider: "OpenAI", Text: "Test"},
@@ -162,19 +312,27 @@ func TestManager_Attempt(t *testing.T) {
 			MixProvider: "openai",
 		}
 
-		_, _, _, err := manager.Attempt(ctx, opts, providers, results)
+		req := AttemptRequest{
+			Options:   opts,
+			Providers: providers,
+			Results:   results,
+		}
+
+		_, err := manager.Attempt(ctx, req)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no enabled providers")
 	})
 
 	t.Run("consensus check error", func(t *testing.T) {
-		providers := []provider.Provider{
-			&mockProvider{
-				name:    "OpenAI",
-				enabled: true,
-				err:     errors.New("API error"),
+		mockOpenAI := &mocks.ProviderMock{
+			NameFunc:    func() string { return "OpenAI" },
+			EnabledFunc: func() bool { return true },
+			GenerateFunc: func(ctx context.Context, prompt string) (string, error) {
+				return "", errors.New("API error")
 			},
 		}
+
+		providers := []provider.Provider{mockOpenAI}
 
 		results := []provider.Result{
 			{Provider: "OpenAI", Text: "Test"},
@@ -187,23 +345,40 @@ func TestManager_Attempt(t *testing.T) {
 			MixProvider: "openai",
 		}
 
-		newResults, attempts, achieved, err := manager.Attempt(ctx, opts, providers, results)
+		req := AttemptRequest{
+			Options:   opts,
+			Providers: providers,
+			Results:   results,
+		}
+
+		resp, err := manager.Attempt(ctx, req)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "consensus checking failed")
-		assert.Equal(t, 1, attempts)
-		assert.False(t, achieved)
-		assert.Equal(t, results, newResults)
+		assert.Equal(t, 1, resp.Attempts)
+		assert.False(t, resp.Achieved)
+		assert.Equal(t, results, resp.FinalResults)
 	})
 }
 
 func TestManager_findMixProvider(t *testing.T) {
 	manager := New(nil)
 
-	providers := []provider.Provider{
-		&mockProvider{name: "OpenAI (gpt-4o)", enabled: true},
-		&mockProvider{name: "Anthropic", enabled: true},
-		&mockProvider{name: "Google", enabled: false},
+	mockOpenAI := &mocks.ProviderMock{
+		NameFunc:    func() string { return "OpenAI (gpt-4o)" },
+		EnabledFunc: func() bool { return true },
 	}
+
+	mockAnthropic := &mocks.ProviderMock{
+		NameFunc:    func() string { return "Anthropic" },
+		EnabledFunc: func() bool { return true },
+	}
+
+	mockGoogle := &mocks.ProviderMock{
+		NameFunc:    func() string { return "Google" },
+		EnabledFunc: func() bool { return false },
+	}
+
+	providers := []provider.Provider{mockOpenAI, mockAnthropic, mockGoogle}
 
 	t.Run("exact match", func(t *testing.T) {
 		p := manager.findMixProvider("Anthropic", providers)
@@ -219,12 +394,16 @@ func TestManager_findMixProvider(t *testing.T) {
 
 	t.Run("disabled provider not returned", func(t *testing.T) {
 		p := manager.findMixProvider("Google", providers)
-		assert.Nil(t, p)
+		// should return first enabled provider as fallback
+		require.NotNil(t, p)
+		assert.Equal(t, "OpenAI (gpt-4o)", p.Name())
 	})
 
-	t.Run("no match", func(t *testing.T) {
+	t.Run("no match returns fallback", func(t *testing.T) {
 		p := manager.findMixProvider("Claude", providers)
-		assert.Nil(t, p)
+		// should return first enabled provider as fallback
+		require.NotNil(t, p)
+		assert.Equal(t, "OpenAI (gpt-4o)", p.Name())
 	})
 }
 
