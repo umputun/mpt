@@ -6,8 +6,8 @@ MPT is a command-line utility that sends prompts to multiple AI language model p
 
 <div align="center">  
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="site/docs/logo-inverted.png">
-    <img class="logo" src="site/docs/logo.png" width="400px" alt="MPT">
+    <source media="(prefers-color-scheme: light)" srcset="logo-inverted.png">
+    <img class="logo" src="logo.png" width="400px" alt="MPT">
   </picture>
 </div>
 
