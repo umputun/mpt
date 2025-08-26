@@ -37,11 +37,11 @@ For example, when reviewing code changes:
 ```
 # Using native git integration
 mpt --git.diff --openai.enabled --anthropic.enabled --google.enabled \
-    --prompt "Review this code and identify potential bugs or security issues"
+    --prompt="Review this code and identify potential bugs or security issues"
 
 # Or using the traditional pipe approach
 git diff HEAD~1 | mpt --openai.enabled --anthropic.enabled --google.enabled \
-    --prompt "Review this code and identify potential bugs or security issues"
+    --prompt="Review this code and identify potential bugs or security issues"
 ```
 
 This will show you different perspectives on the same code, potentially catching issues that a single model might overlook.
@@ -53,15 +53,15 @@ You can create cascading workflows in two ways:
 # First gather multiple perspectives using the built-in git integration
 # (Shows uncommitted changes, or branch diff if no uncommitted changes exist)
 mpt --git.diff --openai.enabled --anthropic.enabled --google.enabled \
-    --prompt "Review these uncommitted changes thoroughly" > reviews.txt
+    --prompt="Review these uncommitted changes thoroughly" > reviews.txt
 
 # Or with a specific branch comparison
 mpt --git.branch=feature-branch --openai.enabled --anthropic.enabled --google.enabled \
-    --prompt "Review this pull request thoroughly" > reviews.txt
+    --prompt="Review this pull request thoroughly" > reviews.txt
 
 # Then have a single model summarize the key points
 cat reviews.txt | mpt --anthropic.enabled \
-    --prompt "Synthesize these reviews into a concise summary of the key issues and improvements"
+    --prompt="Synthesize these reviews into a concise summary of the key issues and improvements"
 ```
 
 The second command will produce clean output without any provider headers, since only one provider is enabled.
@@ -70,7 +70,7 @@ The second command will produce clean output without any provider headers, since
 ```
 # Use mix mode to automatically combine the results in a single command
 mpt --git.diff --openai.enabled --anthropic.enabled --google.enabled --mix \
-    --prompt "Review these uncommitted changes thoroughly"
+    --prompt="Review these uncommitted changes thoroughly"
 ```
 
 With the `--mix` flag enabled, MPT will:
@@ -270,27 +270,27 @@ export ANTHROPIC_API_KEY="your-anthropic-key"
 export GOOGLE_API_KEY="your-google-key"
 
 mpt --openai.enabled --anthropic.enabled --google.enabled \
-    --prompt "Explain the concept of recursion in programming"
+    --prompt="Explain the concept of recursion in programming"
 ```
 
 Combining prompt flag with piped input:
 ```
-git diff HEAD~1 | mpt --openai.enabled --prompt "Analyze this git diff and suggest improvements"
+git diff HEAD~1 | mpt --openai.enabled --prompt="Analyze this git diff and suggest improvements"
 ```
 
 Including files in the prompt context:
 ```
-mpt --anthropic.enabled --prompt "Explain this code" --file "*.go" --file "*.md"
+mpt --anthropic.enabled --prompt="Explain this code" --file="*.go" --file="*.md"
 ```
 
 Including entire directories recursively:
 ```
-mpt --openai.enabled --prompt "Explain the architecture of this project" --file "cmd/" --file "pkg/"
+mpt --openai.enabled --prompt="Explain the architecture of this project" --file="cmd/" --file="pkg/"
 ```
 
 Using Go-style recursive patterns:
 ```
-mpt --anthropic.enabled --prompt "Find bugs in my Go code" --file "pkg/..." --file "cmd/.../*.go"
+mpt --anthropic.enabled --prompt="Find bugs in my Go code" --file="pkg/..." --file="cmd/.../*.go"
 ```
 
 ### Git Integration
@@ -300,19 +300,19 @@ MPT provides built-in git integration, allowing you to easily incorporate git di
 ```bash
 # Include uncommitted changes in the prompt context
 # If no uncommitted changes exist, automatically shows diff between current branch and main/master
-mpt --git.diff --anthropic.enabled --prompt "Review my changes and suggest improvements"
+mpt --git.diff --anthropic.enabled --prompt="Review my changes and suggest improvements"
 
 # Include diff between a specific branch and the default branch (main or master)
-mpt --git.branch=feature-branch --openai.enabled --prompt "Review this PR"
+mpt --git.branch=feature-branch --openai.enabled --prompt="Review this PR"
 
 # Combine with other files for additional context
-mpt --git.diff --file "README.md" --prompt "Explain what these changes do"
+mpt --git.diff --file="README.md" --prompt="Explain what these changes do"
 
 # Automatic branch diff detection: if you're on a feature branch with no uncommitted changes,
 # --git.diff will automatically show the diff between your branch and main/master
 git checkout feature-branch
 git add . && git commit -m "all changes committed"
-mpt --git.diff --prompt "Review this branch"  # Shows diff between feature-branch and main/master
+mpt --git.diff --prompt="Review this branch"  # Shows diff between feature-branch and main/master
 ```
 
 This is more convenient than the traditional pipe approach (`git diff | mpt ...`) because:
@@ -344,36 +344,36 @@ Add relevant files to your prompt context using various pattern types:
 
 1. **Specific Files**
    ```
-   --file "README.md"              # Include a specific file
-   --file "Makefile"               # Include another specific file
+   --file="README.md"              # Include a specific file
+   --file="Makefile"               # Include another specific file
    ```
 
 2. **Standard Glob Patterns**
    ```
-   --file "*.go"                   # All Go files in current directory
-   --file "cmd/*.go"               # All Go files in the cmd directory
-   --file "pkg/*_test.go"          # All test files in the pkg directory
+   --file="*.go"                   # All Go files in current directory
+   --file="cmd/*.go"               # All Go files in the cmd directory
+   --file="pkg/*_test.go"          # All test files in the pkg directory
    ```
 
 3. **Directories (Recursive)**
    ```
-   --file "cmd/"                   # All files in cmd/ directory and subdirectories
-   --file "pkg/api/"               # All files in pkg/api/ directory and subdirectories
+   --file="cmd/"                   # All files in cmd/ directory and subdirectories
+   --file="pkg/api/"               # All files in pkg/api/ directory and subdirectories
    ```
 
 4. **Bash-style Recursive Patterns**
    ```
-   --file "**/*.go"                # All Go files in any directory recursively
-   --file "pkg/**/*.js"            # All JavaScript files in pkg/ recursively
-   --file "**/*_test.go"           # All test files in any directory recursively
+   --file="**/*.go"                # All Go files in any directory recursively
+   --file="pkg/**/*.js"            # All JavaScript files in pkg/ recursively
+   --file="**/*_test.go"           # All test files in any directory recursively
    ```
 
 5. **Go-style Recursive Patterns**
    ```
-   --file "pkg/..."                # All files in pkg/ directory and subdirectories
-   --file "./..."                  # All files in current directory and subdirectories
-   --file "cmd/.../*.go"           # All Go files in cmd/ directory and subdirectories
-   --file "pkg/.../*_test.go"      # All test files in pkg/ directory and subdirectories
+   --file="pkg/..."                # All files in pkg/ directory and subdirectories
+   --file="./..."                  # All files in current directory and subdirectories
+   --file="cmd/.../*.go"           # All Go files in cmd/ directory and subdirectories
+   --file="pkg/.../*_test.go"      # All test files in pkg/ directory and subdirectories
    ```
 
 #### Excluding Files with `--exclude`
@@ -382,16 +382,16 @@ Filter out unwanted files using the **same pattern syntax** as `--file`:
 
 ```
 # Exclude all test files
---exclude "**/*_test.go"
+--exclude="**/*_test.go"
 
 # Exclude all mock files
---exclude "**/mocks/**"
+--exclude="**/mocks/**"
 
 # Exclude vendor directory
---exclude "vendor/**"
+--exclude="vendor/**"
 
 # Exclude generated files
---exclude "**/*.gen.go"
+--exclude="**/*.gen.go"
 ```
 
 #### Built-in Smart Exclusions
@@ -420,43 +420,43 @@ Sometimes you need to include files that would normally be excluded by the smart
 
 ```bash
 # Force include all files, ignoring .gitignore and common patterns
-mpt --anthropic.enabled --prompt "Analyze this vendor code" \
-    --file "vendor/**/*.go" --force
+mpt --anthropic.enabled --prompt="Analyze this vendor code" \
+    --file="vendor/**/*.go" --force
 
 # Include files from normally ignored directories
-mpt --openai.enabled --prompt "Review build scripts" \
-    --file "build/**" --force
+mpt --openai.enabled --prompt="Review build scripts" \
+    --file="build/**" --force
 ```
 
 **Automatic Force Mode**: When you specify concrete file paths (without wildcards), force mode is automatically enabled:
 
 ```bash
 # These automatically bypass exclusions (no --force needed)
-mpt --prompt "Check this config" --file "./build/config.json"
-mpt --prompt "Review vendor lib" --file "vendor/lib.go" --file "node_modules/pkg/index.js"
+mpt --prompt="Check this config" --file="./build/config.json"
+mpt --prompt="Review vendor lib" --file="vendor/lib.go" --file="node_modules/pkg/index.js"
 
 # This will NOT auto-enable force (contains wildcards)
-mpt --prompt "Check configs" --file "./build/*.json"
+mpt --prompt="Check configs" --file="./build/*.json"
 ```
 
 #### Common Pattern Examples
 
 ```bash
 # Basic: Include Go files, exclude tests
-mpt --anthropic.enabled --prompt "Explain this code" \
-    --file "**/*.go" --exclude "**/*_test.go"
+mpt --anthropic.enabled --prompt="Explain this code" \
+    --file="**/*.go" --exclude="**/*_test.go"
 
 # Include code files from specific package, exclude mocks
-mpt --openai.enabled --prompt "Document this API" \
-    --file "pkg/api/..." --exclude "**/mocks/**"
+mpt --openai.enabled --prompt="Document this API" \
+    --file="pkg/api/..." --exclude="**/mocks/**"
 
 # Include all code but exclude tests and generated files
-mpt --google.enabled --prompt "Review code quality" \
-    --file "**/*.go" --exclude "**/*_test.go" --exclude "**/*.gen.go"
+mpt --google.enabled --prompt="Review code quality" \
+    --file="**/*.go" --exclude="**/*_test.go" --exclude="**/*.gen.go"
 
 # Include only model and controller files
-mpt --anthropic.enabled --prompt "Explain architecture" \
-    --file "**/*model.go" --file "**/*controller.go"
+mpt --anthropic.enabled --prompt="Explain architecture" \
+    --file="**/*model.go" --file="**/*controller.go"
 ```
 
 > **Tip:** You can use either bash-style patterns with `**` or Go-style patterns with `/...` for recursive matching—choose whichever syntax you prefer. The exclusion patterns use the same syntax as inclusion patterns.
@@ -489,8 +489,8 @@ This makes it easier for the LLM to understand where one file ends and another b
 Complex example with files and piped input:
 ```
 find . -name "*.go" -exec grep -l "TODO" {} \; | mpt --openai.enabled \
-    --prompt "Find TODOs in my codebase and prioritize them" \
-    --file "README.md" --file "CONTRIBUTING.md"
+    --prompt="Find TODOs in my codebase and prioritize them" \
+    --file="README.md" --file="CONTRIBUTING.md"
 ```
 
 ### Using MPT for Code Reviews
@@ -500,11 +500,11 @@ MPT is particularly effective for code reviews. You can use the built-in git int
 ```bash
 # Review uncommitted changes
 mpt --git.diff --openai.enabled --timeout=5m \
-    -p "Perform a comprehensive code review of these changes"
+    -p="Perform a comprehensive code review of these changes"
 
 # Review a pull request by comparing branches
 mpt --git.branch=feature-xyz --anthropic.enabled --timeout=5m \
-    -p "Perform a comprehensive code review of this PR"
+    -p="Perform a comprehensive code review of this PR"
 ```
 
 For more detailed reviews with multiple providers:
@@ -512,7 +512,7 @@ For more detailed reviews with multiple providers:
 ```bash
 # Review uncommitted changes with multiple providers
 mpt --git.diff --openai.enabled --google.enabled --anthropic.enabled --timeout=5m \
-    -p "Perform a comprehensive code review of these changes. Analyze the design patterns and architecture. Identify any security vulnerabilities or risks. Evaluate code readability, maintainability, and idiomatic usage. Suggest specific improvements where needed."
+    -p="Perform a comprehensive code review of these changes. Analyze the design patterns and architecture. Identify any security vulnerabilities or risks. Evaluate code readability, maintainability, and idiomatic usage. Suggest specific improvements where needed."
 ```
 
 The traditional approach also works by saving git diff output to a file:
@@ -522,8 +522,8 @@ The traditional approach also works by saving git diff output to a file:
 git diff > changes.diff
 
 # Run review with file input
-mpt -f changes.diff --openai.enabled --google.enabled --anthropic.enabled --timeout=5m \
-    -p "Perform a comprehensive code review of these changes. Analyze the design patterns and architecture. Identify any security vulnerabilities or risks. Evaluate code readability, maintainability, and idiomatic usage. Suggest specific improvements where needed."
+mpt -f=changes.diff --openai.enabled --google.enabled --anthropic.enabled --timeout=5m \
+    -p="Perform a comprehensive code review of these changes. Analyze the design patterns and architecture. Identify any security vulnerabilities or risks. Evaluate code readability, maintainability, and idiomatic usage. Suggest specific improvements where needed."
 ```
 
 See [CODE-REVIEW-GUIDE.md](CODE-REVIEW-GUIDE.md) for a detailed guide on using MPT for code reviews, including:
@@ -550,17 +550,17 @@ The two are always combined in this order with a newline separator. This automat
 
 2. **Code reviews**: Request detailed feedback on code changes by piping in the diff while using the prompt flag to specify what aspects to focus on:
    ```
-   git diff HEAD~1 | mpt --openai.enabled --prompt "Review this code change and focus on potential performance issues"
+   git diff HEAD~1 | mpt --openai.enabled --prompt="Review this code change and focus on potential performance issues"
    ```
 
 3. **Contextual analysis**: Provide both the content and the specific analysis instructions:
    ```
-   cat error_log.txt | mpt --anthropic.enabled --prompt "Identify the root cause of these errors and suggest solutions"
+   cat error_log.txt | mpt --anthropic.enabled --prompt="Identify the root cause of these errors and suggest solutions"
    ```
 
 4. **File transformation**: Transform content according to specific rules:
    ```
-   cat document.md | mpt --google.enabled --prompt "Reformat this markdown document to be more readable and fix any syntax issues"
+   cat document.md | mpt --google.enabled --prompt="Reformat this markdown document to be more readable and fix any syntax issues"
    ```
 
 This approach gives you much more flexibility than either using just stdin or just the prompt flag alone.
@@ -571,7 +571,7 @@ If you run:
 ```bash
 echo "function calculateTotal(items) {
   return items.reduce((sum, item) => sum + item.price, 0);
-}" | mpt --openai.enabled --prompt "Review this JavaScript function for potential bugs and edge cases"
+}" | mpt --openai.enabled --prompt="Review this JavaScript function for potential bugs and edge cases"
 ```
 
 MPT will send the following combined prompt to the AI model:
@@ -603,17 +603,17 @@ Consensus mode requires mix mode to be enabled:
 # Basic consensus with default settings (1 attempt)
 mpt --openai.enabled --anthropic.enabled --google.enabled \
     --mix --consensus \
-    --prompt "What are the security implications of this code?"
+    --prompt="What are the security implications of this code?"
 
 # Multiple consensus attempts for complex topics
 mpt --openai.enabled --anthropic.enabled --google.enabled \
     --mix --consensus --consensus.attempts=3 \
-    --prompt "Should we use microservices or a monolithic architecture for this project?"
+    --prompt="Should we use microservices or a monolithic architecture for this project?"
 
 # Code review with consensus checking
 mpt --git.diff --openai.enabled --anthropic.enabled --google.enabled \
     --mix --consensus --consensus.attempts=2 \
-    --prompt "Review this code for subtle bugs and race conditions"
+    --prompt="Review this code for subtle bugs and race conditions"
 ```
 
 #### Configuration Options
@@ -640,7 +640,7 @@ mpt --git.diff --openai.enabled --anthropic.enabled --google.enabled \
 When using the `--json` flag, MPT outputs results in a structured JSON format that's easy to parse in scripts or other programs:
 
 ```bash
-mpt --openai.enabled --anthropic.enabled --prompt "Explain quantum computing" --json
+mpt --openai.enabled --anthropic.enabled --prompt="Explain quantum computing" --json
 ```
 
 This produces JSON output like:
@@ -664,7 +664,7 @@ This produces JSON output like:
 When using mix mode with JSON output, an additional `mixed` field is included:
 
 ```bash
-mpt --openai.enabled --anthropic.enabled --mix --prompt "Explain quantum computing" --json
+mpt --openai.enabled --anthropic.enabled --mix --prompt="Explain quantum computing" --json
 ```
 
 ```json
