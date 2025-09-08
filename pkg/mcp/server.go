@@ -58,7 +58,13 @@ func (s *Server) handleGenerateTool(ctx context.Context, request mcp.CallToolReq
 	lgr.Printf("[DEBUG] MCP tool 'mpt_generate' called")
 
 	// extract the prompt from the request
-	promptArg, ok := request.Params.Arguments["prompt"]
+	args, ok := request.Params.Arguments.(map[string]interface{})
+	if !ok {
+		lgr.Printf("[WARN] MCP tool 'mpt_generate' arguments must be a map")
+		return nil, fmt.Errorf("arguments must be a map")
+	}
+
+	promptArg, ok := args["prompt"]
 	if !ok {
 		lgr.Printf("[WARN] MCP tool 'mpt_generate' missing required 'prompt' parameter")
 		return nil, fmt.Errorf("missing required 'prompt' parameter")

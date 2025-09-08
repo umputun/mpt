@@ -195,22 +195,22 @@ func (m *Manager) rerunProviders(ctx context.Context, providers []provider.Provi
 // isConsensusReached checks if the response indicates consensus was reached
 func (m *Manager) isConsensusReached(response string) bool {
 	normalized := m.normalizeResponse(response)
-	
+
 	// check for explicit yes/no first
 	if result, found := m.checkExplicitAnswer(normalized); found {
 		return result
 	}
-	
+
 	// check for negative indicators (check these first to avoid false positives)
 	if m.containsNegativeIndicator(normalized) {
 		return false
 	}
-	
+
 	// check for positive indicators or patterns
 	if m.containsPositiveIndicator(normalized) {
 		return true
 	}
-	
+
 	// default to no consensus if uncertain
 	return false
 }
@@ -259,7 +259,7 @@ func (m *Manager) containsPositiveIndicator(response string) bool {
 			return true
 		}
 	}
-	
+
 	// check specific agreement patterns
 	agreePatterns := []string{
 		"responses agree", "they agree", "models agree",
@@ -270,6 +270,6 @@ func (m *Manager) containsPositiveIndicator(response string) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }

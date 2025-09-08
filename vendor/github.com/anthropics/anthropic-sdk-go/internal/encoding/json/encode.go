@@ -177,7 +177,11 @@ func Marshal(v any) ([]byte, error) {
 	e := newEncodeState()
 	defer encodeStatePool.Put(e)
 
-	err := e.marshal(v, encOpts{escapeHTML: true})
+	// SHIM(begin): don't escape HTML by default
+	err := e.marshal(v, encOpts{escapeHTML: shims.EscapeHTMLByDefault})
+	// ORIGINAL:
+	//  err := e.marshal(v, encOpts{escapeHTML: true})
+	// SHIM(end)
 	if err != nil {
 		return nil, err
 	}
@@ -776,7 +780,7 @@ type mapEncoder struct {
 }
 
 func (me mapEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
-	if v.IsNil() {
+	if v.IsNil() /* EDIT(begin) */ || sentinel.IsValueNull(v) /* EDIT(end) */ {
 		e.WriteString("null")
 		return
 	}
@@ -855,7 +859,7 @@ type sliceEncoder struct {
 }
 
 func (se sliceEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
-	if v.IsNil() {
+	if v.IsNil() /* EDIT(begin) */ || sentinel.IsValueNull(v) /* EDIT(end) */ {
 		e.WriteString("null")
 		return
 	}
@@ -916,14 +920,7 @@ type ptrEncoder struct {
 }
 
 func (pe ptrEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
-	// EDIT(begin)
-	//
-	// if v.IsNil()  {
-	// 	e.WriteString("null")
-	// 	return
-	// }
-
-	if v.IsNil() || sentinel.IsValueNullPtr(v) || sentinel.IsValueNullSlice(v) {
+	if v.IsNil() {
 		e.WriteString("null")
 		return
 	}

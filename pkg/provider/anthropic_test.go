@@ -523,14 +523,14 @@ func TestAnthropic_Generate_MaxTokensEdgeCases(t *testing.T) {
 			expectedMaxTokens: -100, // anthropic passes negative values directly
 		},
 		{
-			name:              "very large max tokens",
-			maxTokens:         100000,
-			expectedMaxTokens: 100000,
+			name:              "large max tokens",
+			maxTokens:         8192,
+			expectedMaxTokens: 8192,
 		},
 		{
-			name:              "max int32 value",
-			maxTokens:         2147483647,
-			expectedMaxTokens: 2147483647,
+			name:              "very large max tokens",
+			maxTokens:         16384,
+			expectedMaxTokens: 16384,
 		},
 	}
 

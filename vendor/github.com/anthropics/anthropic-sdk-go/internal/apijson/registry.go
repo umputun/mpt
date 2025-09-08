@@ -8,16 +8,26 @@ import (
 
 type UnionVariant struct {
 	TypeFilter         gjson.Type
-	DiscriminatorValue interface{}
+	DiscriminatorValue any
 	Type               reflect.Type
 }
 
 var unionRegistry = map[reflect.Type]unionEntry{}
-var unionVariants = map[reflect.Type]interface{}{}
+var unionVariants = map[reflect.Type]any{}
+var customDecoderRegistry = map[reflect.Type]CustomDecoderFunc{}
 
 type unionEntry struct {
 	discriminatorKey string
 	variants         []UnionVariant
+}
+
+func Discriminator[T any](value any) UnionVariant {
+	var zero T
+	return UnionVariant{
+		TypeFilter:         gjson.JSON,
+		DiscriminatorValue: value,
+		Type:               reflect.TypeOf(zero),
+	}
 }
 
 func RegisterUnion[T any](discriminator string, variants ...UnionVariant) {
@@ -39,4 +49,11 @@ type UnionUnmarshaler[T any] struct {
 
 func (c *UnionUnmarshaler[T]) UnmarshalJSON(buf []byte) error {
 	return UnmarshalRoot(buf, &c.Value)
+}
+
+type CustomDecoderFunc func(node gjson.Result, value reflect.Value, defaultDecoder func(gjson.Result, reflect.Value) error) error
+
+func RegisterCustomDecoder[T any](decoder CustomDecoderFunc) {
+	typ := reflect.TypeOf((*T)(nil)).Elem()
+	customDecoderRegistry[typ] = decoder
 }

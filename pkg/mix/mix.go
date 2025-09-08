@@ -64,7 +64,7 @@ func (m *Manager) Process(ctx context.Context, req Request) (*Response, error) {
 	if req.MixPrompt == "" {
 		return nil, fmt.Errorf("mix prompt cannot be empty")
 	}
-	
+
 	// filter successful results
 	var successfulResults []provider.Result
 	for _, res := range req.Results {

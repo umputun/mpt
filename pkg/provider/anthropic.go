@@ -56,7 +56,7 @@ func (a *Anthropic) Generate(ctx context.Context, prompt string) (string, error)
 
 	// create a message request using the SDK
 	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     a.model,
+		Model:     anthropic.Model(a.model),
 		MaxTokens: int64(a.maxTokens), // convert to int64 for the API
 		Messages: []anthropic.MessageParam{
 			anthropic.NewUserMessage(
