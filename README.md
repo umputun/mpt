@@ -196,36 +196,74 @@ You can provide a prompt in the following ways:
 --google.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 ```
 
-#### Custom OpenAI-Compatible Provider
+#### Custom OpenAI-Compatible Providers
 
-You can add a single custom provider that implements the OpenAI-compatible API:
+MPT supports multiple custom providers that implement the OpenAI-compatible API. You can configure them through command-line flags, environment variables, or a combination of both.
+
+##### Multiple Custom Providers (New)
+
+You can add multiple custom providers using the `--customs` flag with a compact key-value format:
 
 ```
---custom.name         Name for the custom provider (required)
+--customs ID:key=value[,key=value,...]
+```
+
+Available keys:
+- `url` (or `base-url`) - Base URL for the provider API (required)
+- `model` - Model to use (required)
+- `api-key` - API key for authentication
+- `name` - Display name for the provider (defaults to ID)
+- `max-tokens` - Maximum tokens to generate (default: 16384)
+- `temperature` - Controls randomness 0-2 (default: 0.7)
+- `enabled` - Enable/disable provider (default: true)
+
+Examples:
+
+```bash
+# Multiple providers in one command
+mpt --customs openrouter:url=https://openrouter.ai/api/v1,model=claude-3.5-sonnet,api-key=$OPENROUTER_KEY \
+    --customs local:url=http://localhost:1234/v1,model=mixtral-8x7b \
+    --prompt "Explain quantum computing"
+
+# Using environment variables for custom providers
+export CUSTOM_OPENROUTER_URL=https://openrouter.ai/api/v1
+export CUSTOM_OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
+export CUSTOM_OPENROUTER_API_KEY=$OPENROUTER_KEY
+export CUSTOM_LOCAL_URL=http://localhost:1234/v1
+export CUSTOM_LOCAL_MODEL=mixtral-8x7b
+
+mpt --prompt "Analyze this code"  # Will use both configured providers
+```
+
+##### Single Custom Provider (Legacy)
+
+For backward compatibility, you can still configure a single custom provider using the `--custom.*` flags:
+
+```
+--custom.name         Name for the custom provider
 --custom.url          Base URL for the custom provider API (required)
 --custom.api-key      API key for the custom provider (if needed)
 --custom.model        Model to use (required)
 --custom.enabled      Enable this custom provider (default: true)
---custom.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
+--custom.max-tokens   Maximum number of tokens to generate (default: 16384)
 --custom.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
 ```
 
-Example for adding a local LLM server:
+Example:
 
 ```
 mpt --custom.enabled --custom.name="LocalLLM" --custom.url="http://localhost:1234/v1" \
     --custom.model="mixtral-8x7b" --prompt="Explain quantum computing"
 ```
 
-Example with OpenRouter:
+##### Configuration Precedence
 
-```
-mpt --custom.enabled --custom.name="OpenRouter" \
-    --custom.url="https://openrouter.ai/api/v1" \
-    --custom.api-key="$OPENROUTER_API_KEY" \
-    --custom.model="anthropic/claude-sonnet-4" \
-    --prompt="Analyze this code for improvements"
-```
+When the same provider is configured through multiple methods, the precedence order is:
+1. CLI `--customs` flag (highest priority)
+2. Legacy `--custom.*` flags
+3. Environment variables `CUSTOM_<ID>_*` (lowest priority)
+
+This allows you to set defaults in environment variables and override them via command-line when needed.
 
 
 ### General Options
@@ -900,13 +938,24 @@ GIT_BRANCH="feature-xyz" # Include diff between feature-xyz and main/master
 MCP_SERVER=true
 MCP_SERVER_NAME="My MPT MCP Server"
 
-# Custom OpenAI-compatible provider
+# Legacy single custom provider
 CUSTOM_NAME="LocalLLM"
 CUSTOM_URL="http://localhost:1234/v1"
 CUSTOM_MODEL="mixtral-8x7b"
 CUSTOM_ENABLED=true
 CUSTOM_MAX_TOKENS=16384
 CUSTOM_TEMPERATURE=0.7
+
+# Multiple custom providers (new)
+# Pattern: CUSTOM_<ID>_<FIELD>
+CUSTOM_OPENROUTER_URL="https://openrouter.ai/api/v1"
+CUSTOM_OPENROUTER_MODEL="anthropic/claude-3.5-sonnet"
+CUSTOM_OPENROUTER_API_KEY="your-openrouter-key"
+CUSTOM_OPENROUTER_NAME="OpenRouter"
+
+CUSTOM_LOCAL_URL="http://localhost:1234/v1"
+CUSTOM_LOCAL_MODEL="mixtral-8x7b"
+CUSTOM_LOCAL_NAME="Local LLM"
 
 # Mix options
 MIX=true                # Enable mix mode

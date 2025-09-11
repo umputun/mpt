@@ -103,7 +103,6 @@ type customOpenAIProvider struct {
 	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
 }
 
-
 // gitOpts defines options for Git integration
 type gitOpts struct {
 	Diff   bool   `long:"diff" env:"DIFF" description:"include git diff as context (uncommitted changes)"`
@@ -237,22 +236,31 @@ func runMCPServer(_ context.Context, opts *options) error {
 
 // collectSecrets extracts all API keys for secure logging
 func collectSecrets(opts *options) []string {
-	var secrets []string
+	secretsMap := make(map[string]bool) // use map to avoid duplicates
 
 	// add API keys from built-in providers
 	if opts.OpenAI.APIKey != "" {
-		secrets = append(secrets, opts.OpenAI.APIKey)
+		secretsMap[opts.OpenAI.APIKey] = true
 	}
 	if opts.Anthropic.APIKey != "" {
-		secrets = append(secrets, opts.Anthropic.APIKey)
+		secretsMap[opts.Anthropic.APIKey] = true
 	}
 	if opts.Google.APIKey != "" {
-		secrets = append(secrets, opts.Google.APIKey)
+		secretsMap[opts.Google.APIKey] = true
 	}
 
-	// add API key from custom provider
-	if opts.Custom.APIKey != "" {
-		secrets = append(secrets, opts.Custom.APIKey)
+	// add API keys from custom providers
+	customSecrets := collectCustomSecrets(opts)
+	for _, secret := range customSecrets {
+		if secret != "" {
+			secretsMap[secret] = true
+		}
+	}
+
+	// convert map to slice
+	secrets := make([]string, 0, len(secretsMap))
+	for secret := range secretsMap {
+		secrets = append(secrets, secret)
 	}
 
 	return secrets
@@ -365,16 +373,10 @@ func initializeProviders(opts *options) ([]provider.Provider, error) {
 		lgr.Printf("[DEBUG] added %s provider, model: %s", config.name, config.model)
 	}
 
-	// initialize custom provider if enabled
-	if opts.Custom.Enabled {
-		p, err := initializeCustomProvider(opts)
-		if err != nil {
-			lgr.Printf("[WARN] %s", err)
-			providerErrors = append(providerErrors, fmt.Sprintf("Custom (%s): %v", opts.Custom.Name, err))
-		} else if p != nil {
-			providers = append(providers, p)
-		}
-	}
+	// initialize multiple custom providers (handles legacy custom too)
+	customProviders, customErrors := initializeCustomProviders(opts)
+	providers = append(providers, customProviders...)
+	providerErrors = append(providerErrors, customErrors...)
 
 	// check if any providers were successfully initialized
 	if len(providers) == 0 {
@@ -436,41 +438,13 @@ func getStandardProviderConfigs(opts *options) []providerConfig {
 
 // anyProvidersEnabled checks if at least one provider is enabled in the options
 func anyProvidersEnabled(opts *options) bool {
-	return opts.OpenAI.Enabled || opts.Anthropic.Enabled ||
-		opts.Google.Enabled || opts.Custom.Enabled
-}
-
-// initializeCustomProvider initializes the custom provider
-func initializeCustomProvider(opts *options) (provider.Provider, error) {
-	// validate required fields
-	if opts.Custom.URL == "" {
-		return nil, fmt.Errorf("custom provider %s failed to initialize: URL is required", opts.Custom.Name)
+	// check standard providers
+	if opts.OpenAI.Enabled || opts.Anthropic.Enabled || opts.Google.Enabled {
+		return true
 	}
 
-	if opts.Custom.Model == "" {
-		return nil, fmt.Errorf("custom provider %s failed to initialize: model is required", opts.Custom.Name)
-	}
-
-	// create custom provider
-	customProvider := provider.NewCustomOpenAI(provider.CustomOptions{
-		Name:        opts.Custom.Name,
-		BaseURL:     opts.Custom.URL,
-		APIKey:      opts.Custom.APIKey,
-		Model:       opts.Custom.Model,
-		Enabled:     true,
-		MaxTokens:   int(opts.Custom.MaxTokens),
-		Temperature: opts.Custom.Temperature,
-	})
-
-	// check if the provider was enabled successfully
-	if customProvider.Enabled() {
-		lgr.Printf("[DEBUG] added custom provider: %s, URL: %s, model: %s, temperature: %.2f",
-			opts.Custom.Name, opts.Custom.URL, opts.Custom.Model, opts.Custom.Temperature)
-		return customProvider, nil
-	}
-
-	// provider failed to initialize
-	return nil, fmt.Errorf("custom provider %s failed to initialize", opts.Custom.Name)
+	// check if any custom providers are enabled
+	return anyCustomProvidersEnabled(opts)
 }
 
 // ExecutionResult holds the structured result of executing a prompt

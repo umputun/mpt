@@ -99,7 +99,7 @@ func validateProviderID(id string) error {
 
 	// check for valid characters
 	for _, r := range id {
-		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' && r != '_' {
 			return fmt.Errorf("provider ID '%s' contains invalid character '%c' (use only a-z, 0-9, -, _)", id, r)
 		}
 	}
@@ -113,10 +113,9 @@ func normalizeProviderID(id string) string {
 }
 
 // parseCustomProvidersFromEnv scans environment for CUSTOM_<ID>_<FIELD> patterns
-func parseCustomProvidersFromEnv() (map[string]customSpec, []string) {
-	providers := make(map[string]customSpec)
+func parseCustomProvidersFromEnv() (providers map[string]customSpec, warnings []string) {
+	providers = make(map[string]customSpec)
 	envMap := make(map[string]map[string]string) // id -> field -> value
-	var warnings []string
 
 	// legacy single custom env vars to skip
 	legacyVars := map[string]bool{
@@ -225,9 +224,9 @@ func parseCustomProvidersFromEnv() (map[string]customSpec, []string) {
 }
 
 // initializeCustomProviders initializes custom providers with proper precedence
-func initializeCustomProviders(opts *options) ([]provider.Provider, []string) {
-	var providers []provider.Provider
-	var errors []string
+func initializeCustomProviders(opts *options) (providers []provider.Provider, errors []string) {
+	providers = make([]provider.Provider, 0, 10)
+	errors = make([]string, 0, 5)
 
 	// build merged customs map with proper precedence
 	customs := make(map[string]customSpec)
@@ -276,7 +275,7 @@ func initializeCustomProviders(opts *options) ([]provider.Provider, []string) {
 	}
 
 	// sort IDs for deterministic processing
-	var ids []string
+	ids := make([]string, 0, len(customs))
 	for id := range customs {
 		ids = append(ids, id)
 	}
@@ -361,7 +360,7 @@ func collectCustomSecrets(opts *options) []string {
 	}
 
 	// convert to slice
-	var secrets []string
+	secrets := make([]string, 0, len(secretsMap))
 	for secret := range secretsMap {
 		secrets = append(secrets, secret)
 	}
@@ -383,9 +382,5 @@ func anyCustomProvidersEnabled(opts *options) bool {
 
 	// check environment custom providers
 	envProviders, _ := parseCustomProvidersFromEnv()
-	if len(envProviders) > 0 {
-		return true
-	}
-
-	return false
+	return len(envProviders) > 0
 }

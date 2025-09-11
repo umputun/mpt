@@ -1311,11 +1311,11 @@ func TestInitializeProviders(t *testing.T) {
 				return
 			case "custom provider without URL":
 				require.Error(t, err, "Should return error when custom provider URL is missing")
-				assert.Contains(t, err.Error(), "URL is required")
+				assert.Contains(t, err.Error(), "missing URL")
 				return
 			case "custom provider without model":
 				require.Error(t, err, "Should return error when custom provider model is missing")
-				assert.Contains(t, err.Error(), "model is required")
+				assert.Contains(t, err.Error(), "missing model")
 				return
 			case "mix enabled with single provider":
 				require.NoError(t, err, "Should initialize providers without error")

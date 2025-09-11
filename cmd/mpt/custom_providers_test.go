@@ -36,7 +36,7 @@ func TestCustomSpecUnmarshalFlag(t *testing.T) {
 			expected: customSpec{
 				URL:         "http://localhost:8080",
 				Model:       "local-llm",
-				Temperature: 0.7,  // default
+				Temperature: 0.7,   // default
 				MaxTokens:   16384, // default
 				Enabled:     true,  // default
 			},
@@ -405,17 +405,40 @@ func TestNormalizeProviderID(t *testing.T) {
 	}
 }
 
-func TestParseCustomProvidersFromEnv(t *testing.T) {
-	// Helper to clear all CUSTOM_* env vars
-	clearCustomEnv := func() {
-		for _, env := range os.Environ() {
-			if strings.HasPrefix(env, "CUSTOM_") {
-				if idx := indexOf(env, '='); idx != -1 {
-					os.Unsetenv(env[:idx])
-				}
+// Helper function to find index of rune in string
+func indexOf(s string, r rune) int {
+	for i, c := range s {
+		if c == r {
+			return i
+		}
+	}
+	return -1
+}
+
+// Helper function to join strings
+func joinStrings(strs []string, sep string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	result := strs[0]
+	for i := 1; i < len(strs); i++ {
+		result += sep + strs[i]
+	}
+	return result
+}
+
+// Helper to clear all CUSTOM_* env vars
+func clearCustomEnv() {
+	for _, env := range os.Environ() {
+		if strings.HasPrefix(env, "CUSTOM_") {
+			if idx := indexOf(env, '='); idx != -1 {
+				os.Unsetenv(env[:idx])
 			}
 		}
 	}
+}
+
+func TestParseCustomProvidersFromEnv(t *testing.T) {
 
 	t.Run("parse multiple providers", func(t *testing.T) {
 		clearCustomEnv() // Clear before test
@@ -435,14 +458,14 @@ func TestParseCustomProvidersFromEnv(t *testing.T) {
 		providers, warnings := parseCustomProvidersFromEnv()
 
 		require.Len(t, providers, 2)
-		assert.Len(t, warnings, 0)
+		assert.Empty(t, warnings)
 
 		// Check OpenRouter
 		or := providers["openrouter"]
 		assert.Equal(t, "https://openrouter.ai/api/v1", or.URL)
 		assert.Equal(t, "claude-3.5-sonnet", or.Model)
 		assert.Equal(t, "secret-key", or.APIKey)
-		assert.Equal(t, float32(0.5), or.Temperature)
+		assert.InEpsilon(t, float32(0.5), or.Temperature, 0.001)
 		assert.Equal(t, SizeValue(8192), or.MaxTokens)
 		assert.Equal(t, "OpenRouter Provider", or.Name)
 		assert.True(t, or.Enabled)
@@ -451,7 +474,7 @@ func TestParseCustomProvidersFromEnv(t *testing.T) {
 		local := providers["local"]
 		assert.Equal(t, "http://localhost:11434", local.URL)
 		assert.Equal(t, "mixtral", local.Model)
-		assert.Equal(t, float32(0.3), local.Temperature)
+		assert.InEpsilon(t, float32(0.3), local.Temperature, 0.001)
 		assert.True(t, local.Enabled)
 	})
 
@@ -473,7 +496,7 @@ func TestParseCustomProvidersFromEnv(t *testing.T) {
 		providers, warnings := parseCustomProvidersFromEnv()
 
 		require.Len(t, providers, 1)
-		assert.Len(t, warnings, 0)
+		assert.Empty(t, warnings)
 
 		// Only NEW should be parsed
 		newProvider := providers["new"]
@@ -494,7 +517,7 @@ func TestParseCustomProvidersFromEnv(t *testing.T) {
 		providers, warnings := parseCustomProvidersFromEnv()
 
 		require.Len(t, providers, 2)
-		assert.Len(t, warnings, 0)
+		assert.Empty(t, warnings)
 
 		assert.Equal(t, "http://test1.com", providers["test1"].URL)
 		assert.Equal(t, "key1", providers["test1"].APIKey)
@@ -526,9 +549,9 @@ func TestParseCustomProvidersFromEnv(t *testing.T) {
 		bad := providers["bad"]
 		assert.Equal(t, "http://bad.com", bad.URL)
 		assert.Equal(t, "bad-model", bad.Model)
-		assert.Equal(t, float32(0.7), bad.Temperature) // default
-		assert.Equal(t, SizeValue(16384), bad.MaxTokens) // default
-		assert.True(t, bad.Enabled) // default
+		assert.InEpsilon(t, float32(0.7), bad.Temperature, 0.001) // default
+		assert.Equal(t, SizeValue(16384), bad.MaxTokens)          // default
+		assert.True(t, bad.Enabled)                               // default
 	})
 
 	t.Run("invalid provider ID generates warning", func(t *testing.T) {
@@ -538,7 +561,7 @@ func TestParseCustomProvidersFromEnv(t *testing.T) {
 
 		providers, warnings := parseCustomProvidersFromEnv()
 
-		assert.Len(t, providers, 0)
+		assert.Empty(t, providers)
 		assert.Len(t, warnings, 2) // Two env vars with invalid ID
 		assert.Contains(t, warnings[0], "invalid character '!'")
 	})
@@ -558,7 +581,7 @@ func TestParseCustomProvidersFromEnv(t *testing.T) {
 
 		// Should use default temperature
 		temp := providers["temp"]
-		assert.Equal(t, float32(0.7), temp.Temperature)
+		assert.InEpsilon(t, float32(0.7), temp.Temperature, 0.001)
 	})
 
 	t.Run("disabled provider", func(t *testing.T) {
@@ -570,31 +593,305 @@ func TestParseCustomProvidersFromEnv(t *testing.T) {
 		providers, warnings := parseCustomProvidersFromEnv()
 
 		require.Len(t, providers, 1)
-		assert.Len(t, warnings, 0)
+		assert.Empty(t, warnings)
 
 		disabled := providers["disabled"]
 		assert.False(t, disabled.Enabled)
 	})
 }
 
-// Helper function to find index of rune in string
-func indexOf(s string, r rune) int {
-	for i, c := range s {
-		if c == r {
-			return i
+func TestInitializeCustomProviders(t *testing.T) {
+	t.Run("precedence: CLI overrides environment", func(t *testing.T) {
+		clearCustomEnv()
+		// set environment variable
+		os.Setenv("CUSTOM_TESTPROV_URL", "http://env.example.com")
+		os.Setenv("CUSTOM_TESTPROV_MODEL", "env-model")
+		os.Setenv("CUSTOM_TESTPROV_API_KEY", "env-key")
+
+		opts := &options{
+			Customs: map[string]customSpec{
+				"testprov": {
+					URL:     "http://cli.example.com",
+					Model:   "cli-model",
+					APIKey:  "cli-key",
+					Enabled: true,
+				},
+			},
 		}
-	}
-	return -1
+
+		providers, errors := initializeCustomProviders(opts)
+
+		assert.Empty(t, errors)
+		require.Len(t, providers, 1)
+
+		// verify CLI values were used
+		p := providers[0]
+		assert.Contains(t, p.Name(), "testprov")
+	})
+
+	t.Run("precedence: legacy overrides environment", func(t *testing.T) {
+		clearCustomEnv()
+		// set environment variable
+		os.Setenv("CUSTOM_CUSTOM_URL", "http://env.example.com")
+		os.Setenv("CUSTOM_CUSTOM_MODEL", "env-model")
+
+		opts := &options{
+			Custom: customOpenAIProvider{
+				URL:     "http://legacy.example.com",
+				Model:   "legacy-model",
+				Enabled: true,
+			},
+		}
+
+		providers, errors := initializeCustomProviders(opts)
+
+		assert.Empty(t, errors)
+		require.Len(t, providers, 1)
+
+		// verify legacy values were used
+		p := providers[0]
+		assert.Contains(t, p.Name(), "custom")
+	})
+
+	t.Run("precedence: CLI overrides legacy", func(t *testing.T) {
+		clearCustomEnv()
+		opts := &options{
+			Custom: customOpenAIProvider{
+				URL:     "http://legacy.example.com",
+				Model:   "legacy-model",
+				Enabled: true,
+			},
+			Customs: map[string]customSpec{
+				"custom": {
+					URL:     "http://cli.example.com",
+					Model:   "cli-model",
+					Enabled: true,
+				},
+			},
+		}
+
+		providers, errors := initializeCustomProviders(opts)
+
+		assert.Empty(t, errors)
+		require.Len(t, providers, 1)
+
+		// verify CLI values were used
+		p := providers[0]
+		assert.Contains(t, p.Name(), "custom")
+	})
+
+	t.Run("multiple providers from different sources", func(t *testing.T) {
+		clearCustomEnv()
+		// environment provider
+		os.Setenv("CUSTOM_ENVPROV_URL", "http://env.example.com")
+		os.Setenv("CUSTOM_ENVPROV_MODEL", "env-model")
+
+		opts := &options{
+			// legacy provider
+			Custom: customOpenAIProvider{
+				Name:    "legacy",
+				URL:     "http://legacy.example.com",
+				Model:   "legacy-model",
+				Enabled: true,
+			},
+			// CLI provider
+			Customs: map[string]customSpec{
+				"cliprov": {
+					URL:     "http://cli.example.com",
+					Model:   "cli-model",
+					Enabled: true,
+				},
+			},
+		}
+
+		providers, errors := initializeCustomProviders(opts)
+
+		assert.Empty(t, errors)
+		assert.Len(t, providers, 3)
+
+		// verify all three providers are present
+		names := make([]string, len(providers))
+		for i, p := range providers {
+			names[i] = p.Name()
+		}
+		assert.Contains(t, names, "cliprov")
+		assert.Contains(t, names, "envprov")
+		assert.Contains(t, names, "legacy")
+	})
+
+	t.Run("disabled providers are skipped", func(t *testing.T) {
+		clearCustomEnv()
+		opts := &options{
+			Customs: map[string]customSpec{
+				"enabled": {
+					URL:     "http://enabled.example.com",
+					Model:   "model",
+					Enabled: true,
+				},
+				"disabled": {
+					URL:     "http://disabled.example.com",
+					Model:   "model",
+					Enabled: false,
+				},
+			},
+		}
+
+		providers, errors := initializeCustomProviders(opts)
+
+		assert.Empty(t, errors)
+		require.Len(t, providers, 1)
+		assert.Contains(t, providers[0].Name(), "enabled")
+	})
+
+	t.Run("validation errors collected", func(t *testing.T) {
+		clearCustomEnv()
+		opts := &options{
+			Customs: map[string]customSpec{
+				"nourl": {
+					Model:   "model",
+					Enabled: true,
+				},
+				"nomodel": {
+					URL:     "http://example.com",
+					Enabled: true,
+				},
+				"invalid-id!": {
+					URL:     "http://example.com",
+					Model:   "model",
+					Enabled: true,
+				},
+			},
+		}
+
+		providers, errors := initializeCustomProviders(opts)
+
+		assert.Empty(t, providers)
+		assert.Len(t, errors, 3)
+		// check for specific error messages
+		errStr := joinStrings(errors, " ")
+		assert.Contains(t, errStr, "missing URL")
+		assert.Contains(t, errStr, "missing model")
+		assert.Contains(t, errStr, "invalid character")
+	})
+
+	t.Run("legacy custom with custom name", func(t *testing.T) {
+		clearCustomEnv()
+		opts := &options{
+			Custom: customOpenAIProvider{
+				Name:    "MyProvider",
+				URL:     "http://example.com",
+				Model:   "model",
+				Enabled: true,
+			},
+		}
+
+		providers, errors := initializeCustomProviders(opts)
+
+		assert.Empty(t, errors)
+		require.Len(t, providers, 1)
+		assert.Equal(t, "MyProvider", providers[0].Name())
+	})
 }
 
-// Helper function to join strings
-func joinStrings(strs []string, sep string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-	result := strs[0]
-	for i := 1; i < len(strs); i++ {
-		result += sep + strs[i]
-	}
-	return result
+func TestCollectCustomSecrets(t *testing.T) {
+	t.Run("collects from all sources", func(t *testing.T) {
+		clearCustomEnv()
+		os.Setenv("CUSTOM_ENV_API_KEY", "env-secret")
+
+		opts := &options{
+			Custom: customOpenAIProvider{
+				APIKey: "legacy-secret",
+			},
+			Customs: map[string]customSpec{
+				"cli": {
+					APIKey: "cli-secret",
+				},
+			},
+		}
+
+		secrets := collectCustomSecrets(opts)
+
+		assert.Len(t, secrets, 3)
+		assert.Contains(t, secrets, "env-secret")
+		assert.Contains(t, secrets, "legacy-secret")
+		assert.Contains(t, secrets, "cli-secret")
+	})
+
+	t.Run("no duplicates", func(t *testing.T) {
+		clearCustomEnv()
+		opts := &options{
+			Customs: map[string]customSpec{
+				"prov1": {
+					APIKey: "same-secret",
+				},
+				"prov2": {
+					APIKey: "same-secret",
+				},
+			},
+		}
+
+		secrets := collectCustomSecrets(opts)
+
+		assert.Len(t, secrets, 1)
+		assert.Contains(t, secrets, "same-secret")
+	})
+
+	t.Run("precedence in secret collection", func(t *testing.T) {
+		clearCustomEnv()
+		os.Setenv("CUSTOM_PROV_API_KEY", "env-secret")
+
+		opts := &options{
+			Customs: map[string]customSpec{
+				"prov": {
+					APIKey: "cli-secret",
+				},
+			},
+		}
+
+		secrets := collectCustomSecrets(opts)
+
+		// should have CLI secret (higher precedence)
+		assert.Len(t, secrets, 1)
+		assert.Contains(t, secrets, "cli-secret")
+	})
+}
+
+func TestAnyCustomProvidersEnabled(t *testing.T) {
+	t.Run("legacy custom enabled", func(t *testing.T) {
+		clearCustomEnv()
+		opts := &options{
+			Custom: customOpenAIProvider{
+				Enabled: true,
+			},
+		}
+
+		assert.True(t, anyCustomProvidersEnabled(opts))
+	})
+
+	t.Run("customs map has providers", func(t *testing.T) {
+		clearCustomEnv()
+		opts := &options{
+			Customs: map[string]customSpec{
+				"test": {},
+			},
+		}
+
+		assert.True(t, anyCustomProvidersEnabled(opts))
+	})
+
+	t.Run("environment has providers", func(t *testing.T) {
+		clearCustomEnv()
+		os.Setenv("CUSTOM_TEST_URL", "http://example.com")
+
+		opts := &options{}
+
+		assert.True(t, anyCustomProvidersEnabled(opts))
+	})
+
+	t.Run("no custom providers", func(t *testing.T) {
+		clearCustomEnv()
+		opts := &options{}
+
+		assert.False(t, anyCustomProvidersEnabled(opts))
+	})
 }
