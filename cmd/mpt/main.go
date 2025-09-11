@@ -31,6 +31,9 @@ type options struct {
 
 	Custom customOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
 
+	// new map for multiple custom providers
+	Customs map[string]customSpec `long:"customs" description:"Add custom OpenAI-compatible provider as 'id:key=value[,key=value,...]' (e.g., openrouter:url=https://openrouter.ai/api/v1,model=claude-3.5)" key-value-delimiter:":" value-name:"ID:SPEC"`
+
 	MCP   mcpOpts   `group:"mcp" namespace:"mcp" env-namespace:"MCP"`
 	Git   gitOpts   `group:"git" namespace:"git" env-namespace:"GIT"`
 	Retry retryOpts `group:"retry" namespace:"retry" env-namespace:"RETRY"`
@@ -99,6 +102,7 @@ type customOpenAIProvider struct {
 	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
 	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
 }
+
 
 // gitOpts defines options for Git integration
 type gitOpts struct {
