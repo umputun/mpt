@@ -597,7 +597,7 @@ func getPrompt(opts *options) error {
 func setupLog(dbg bool, secs ...string) {
 	logOpts := []lgr.Option{lgr.Out(io.Discard), lgr.Err(io.Discard)} // default to discard
 	if dbg {
-		logOpts = []lgr.Option{lgr.Debug, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
+		logOpts = []lgr.Option{lgr.Debug, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError, lgr.Out(os.Stderr)}
 	}
 	if len(secs) > 0 {
 		logOpts = append(logOpts, lgr.Secret(secs...))
