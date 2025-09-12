@@ -511,7 +511,7 @@ func TestOpenAI_NewOpenAI_EdgeCases(t *testing.T) {
 			expectedTemperature: DefaultTemperature,
 		},
 		{
-			name: "zero_temperature_sets_default",
+			name: "zero_temperature_preserved",
 			options: Options{
 				APIKey:      "test-key",
 				Model:       "gpt-4",
@@ -521,7 +521,7 @@ func TestOpenAI_NewOpenAI_EdgeCases(t *testing.T) {
 			},
 			expectedEnabled:     true,
 			expectedMaxTokens:   100,
-			expectedTemperature: DefaultTemperature,
+			expectedTemperature: 0, // zero temperature is preserved for deterministic output
 		},
 		{
 			name: "positive_temperature_preserved",
@@ -569,7 +569,12 @@ func TestOpenAI_NewOpenAI_EdgeCases(t *testing.T) {
 			provider := NewOpenAI(tt.options)
 			assert.Equal(t, tt.expectedEnabled, provider.Enabled())
 			assert.Equal(t, tt.expectedMaxTokens, provider.maxTokens)
-			assert.InEpsilon(t, tt.expectedTemperature, provider.temperature, 0.0001)
+			// use exact comparison for 0, epsilon for non-zero values
+			if tt.expectedTemperature == 0 {
+				assert.Equal(t, tt.expectedTemperature, provider.temperature) //nolint:testifylint // need exact comparison for 0
+			} else {
+				assert.InEpsilon(t, tt.expectedTemperature, provider.temperature, 0.0001)
+			}
 		})
 	}
 }

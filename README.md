@@ -175,7 +175,7 @@ You can provide a prompt in the following ways:
 --openai.model        OpenAI model to use (default: gpt-4.1)
 --openai.enabled      Enable OpenAI provider
 --openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
---openai.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
+--openai.temperature  Controls randomness (0-1, higher is more random) (default: 0.1)
 ```
 
 #### Anthropic (Claude)
@@ -191,7 +191,7 @@ You can provide a prompt in the following ways:
 
 ```
 --google.api-key      Google API key (or GOOGLE_API_KEY env var)
---google.model        Google model to use (default: gemini-2.5-pro-exp-03-25)
+--google.model        Google model to use (default: gemini-2.5-pro-preview-06-05)
 --google.enabled      Enable Google provider
 --google.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 ```
@@ -213,8 +213,8 @@ Available keys:
 - `model` - Model to use (required)
 - `api-key` - API key for authentication
 - `name` - Display name for the provider (defaults to ID)
-- `max-tokens` - Maximum tokens to generate (default: 16384)
-- `temperature` - Controls randomness 0-2 (default: 0.7)
+- `max-tokens` - Maximum tokens to generate (default: 16384, 0 = use model maximum)
+- `temperature` - Controls randomness 0-2 (default: 0.7, 0 = deterministic)
 - `enabled` - Enable/disable provider (default: true)
 
 Examples:
@@ -245,8 +245,8 @@ For backward compatibility, you can still configure a single custom provider usi
 --custom.api-key      API key for the custom provider (if needed)
 --custom.model        Model to use (required)
 --custom.enabled      Enable this custom provider (default: true)
---custom.max-tokens   Maximum number of tokens to generate (default: 16384)
---custom.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
+--custom.max-tokens   Maximum number of tokens to generate (default: 16384, 0 = use model maximum)
+--custom.temperature  Controls randomness (0-2, higher is more random) (default: 0.7, 0 = deterministic)
 ```
 
 Example:

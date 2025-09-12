@@ -16,6 +16,7 @@ import (
 	"github.com/go-pkgz/lgr"
 	"github.com/jessevdk/go-flags"
 
+	"github.com/umputun/mpt/pkg/config"
 	"github.com/umputun/mpt/pkg/mcp"
 	"github.com/umputun/mpt/pkg/mix"
 	"github.com/umputun/mpt/pkg/prompt"
@@ -115,6 +116,46 @@ type retryOpts struct {
 	Delay    time.Duration `long:"delay" env:"DELAY" default:"1s" description:"base delay between retries"`
 	MaxDelay time.Duration `long:"max-delay" env:"MAX_DELAY" default:"30s" description:"max delay between retries"`
 	Factor   float64       `long:"factor" env:"FACTOR" default:"2" description:"backoff multiplier"`
+}
+
+// customSpec is a CLI wrapper around config.CustomSpec that implements UnmarshalFlag for go-flags
+type customSpec struct {
+	config.CustomSpec
+}
+
+// UnmarshalFlag parses "url=https://...,model=xxx,api-key=xxx" format for go-flags
+func (c *customSpec) UnmarshalFlag(value string) error {
+	spec, err := config.ParseCustomSpec(value)
+	if err != nil {
+		return err
+	}
+	c.CustomSpec = spec
+	return nil
+}
+
+// createCustomManager creates a CustomProviderManager from CLI options
+func createCustomManager(opts *options) *config.CustomProviderManager {
+	// convert CLI customSpec to config.CustomSpec
+	configCustoms := make(map[string]config.CustomSpec)
+	for id, spec := range opts.Customs {
+		configCustoms[id] = spec.CustomSpec
+	}
+
+	// convert legacy custom to config.CustomSpec pointer if any field is set
+	var legacyCustom *config.CustomSpec
+	if opts.Custom.Enabled || opts.Custom.URL != "" || opts.Custom.APIKey != "" || opts.Custom.Model != "" {
+		legacyCustom = &config.CustomSpec{
+			Name:        opts.Custom.Name,
+			URL:         opts.Custom.URL,
+			APIKey:      opts.Custom.APIKey,
+			Model:       opts.Custom.Model,
+			MaxTokens:   int(opts.Custom.MaxTokens),
+			Temperature: opts.Custom.Temperature,
+			Enabled:     opts.Custom.Enabled,
+		}
+	}
+
+	return config.NewCustomProviderManager(configCustoms, legacyCustom)
 }
 
 var revision = "unknown"
@@ -250,7 +291,7 @@ func collectSecrets(opts *options) []string {
 	}
 
 	// add API keys from custom providers
-	customSecrets := collectCustomSecrets(opts)
+	customSecrets := createCustomManager(opts).CollectSecrets()
 	for _, secret := range customSecrets {
 		if secret != "" {
 			secretsMap[secret] = true
@@ -374,7 +415,7 @@ func initializeProviders(opts *options) ([]provider.Provider, error) {
 	}
 
 	// initialize multiple custom providers (handles legacy custom too)
-	customProviders, customErrors := initializeCustomProviders(opts)
+	customProviders, customErrors := createCustomManager(opts).InitializeProviders()
 	providers = append(providers, customProviders...)
 	providerErrors = append(providerErrors, customErrors...)
 
@@ -444,7 +485,7 @@ func anyProvidersEnabled(opts *options) bool {
 	}
 
 	// check if any custom providers are enabled
-	return anyCustomProvidersEnabled(opts)
+	return createCustomManager(opts).AnyEnabled()
 }
 
 // ExecutionResult holds the structured result of executing a prompt

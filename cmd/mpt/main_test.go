@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/mpt/pkg/config"
 	"github.com/umputun/mpt/pkg/mix"
 	"github.com/umputun/mpt/pkg/provider"
 	"github.com/umputun/mpt/pkg/runner"
@@ -1986,4 +1987,45 @@ func TestExecutePromptWithConsensus(t *testing.T) {
 	assert.True(t, result.ConsensusAchieved)
 	assert.Equal(t, 1, result.ConsensusAttempts)
 	assert.Contains(t, result.Text, "Consensus-verified mixed result")
+}
+
+func TestCustomSpec_UnmarshalFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected config.CustomSpec
+		wantErr  bool
+	}{
+		{
+			name:  "valid spec",
+			input: "url=https://api.example.com,model=gpt-4,api-key=secret",
+			expected: config.CustomSpec{
+				URL:         "https://api.example.com",
+				Model:       "gpt-4",
+				APIKey:      "secret",
+				Temperature: -1,
+				MaxTokens:   16384,
+				Enabled:     true,
+			},
+		},
+		{
+			name:    "invalid spec",
+			input:   "invalid",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var spec customSpec
+			err := spec.UnmarshalFlag(tt.input)
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, spec.CustomSpec)
+			}
+		})
+	}
 }
