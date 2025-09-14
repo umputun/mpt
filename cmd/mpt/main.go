@@ -117,46 +117,6 @@ type retryOpts struct {
 	Factor   float64       `long:"factor" env:"FACTOR" default:"2" description:"backoff multiplier"`
 }
 
-// customSpec is a CLI wrapper around config.CustomSpec that implements UnmarshalFlag for go-flags
-type customSpec struct {
-	config.CustomSpec
-}
-
-// UnmarshalFlag parses "url=https://...,model=xxx,api-key=xxx" format for go-flags
-func (c *customSpec) UnmarshalFlag(value string) error {
-	spec, err := config.ParseCustomSpec(value)
-	if err != nil {
-		return err
-	}
-	c.CustomSpec = spec
-	return nil
-}
-
-// createCustomManager creates a CustomProviderManager from CLI options
-func createCustomManager(opts *options) *config.CustomProviderManager {
-	// convert CLI customSpec to config.CustomSpec
-	configCustoms := make(map[string]config.CustomSpec)
-	for id, spec := range opts.Customs {
-		configCustoms[id] = spec.CustomSpec
-	}
-
-	// convert legacy custom to config.CustomSpec pointer if enabled
-	var legacyCustom *config.CustomSpec
-	if opts.Custom.Enabled {
-		legacyCustom = &config.CustomSpec{
-			Name:        opts.Custom.Name,
-			URL:         opts.Custom.URL,
-			APIKey:      opts.Custom.APIKey,
-			Model:       opts.Custom.Model,
-			MaxTokens:   int(opts.Custom.MaxTokens),
-			Temperature: opts.Custom.Temperature,
-			Enabled:     opts.Custom.Enabled,
-		}
-	}
-
-	return config.NewCustomProviderManager(configCustoms, legacyCustom)
-}
-
 var revision = "unknown"
 
 func main() {
@@ -711,4 +671,44 @@ func (v *SizeValue) UnmarshalFlag(value string) error {
 	}
 	*v = SizeValue(size)
 	return nil
+}
+
+// customSpec is a CLI wrapper around config.CustomSpec that implements UnmarshalFlag for go-flags
+type customSpec struct {
+	config.CustomSpec
+}
+
+// UnmarshalFlag parses "url=https://...,model=xxx,api-key=xxx" format for go-flags
+func (c *customSpec) UnmarshalFlag(value string) error {
+	spec, err := config.ParseCustomSpec(value)
+	if err != nil {
+		return err
+	}
+	c.CustomSpec = spec
+	return nil
+}
+
+// createCustomManager creates a CustomProviderManager from CLI options
+func createCustomManager(opts *options) *config.CustomProviderManager {
+	// convert CLI customSpec to config.CustomSpec
+	configCustoms := make(map[string]config.CustomSpec)
+	for id, spec := range opts.Customs {
+		configCustoms[id] = spec.CustomSpec
+	}
+
+	// convert legacy custom to config.CustomSpec pointer if enabled
+	var legacyCustom *config.CustomSpec
+	if opts.Custom.Enabled {
+		legacyCustom = &config.CustomSpec{
+			Name:        opts.Custom.Name,
+			URL:         opts.Custom.URL,
+			APIKey:      opts.Custom.APIKey,
+			Model:       opts.Custom.Model,
+			MaxTokens:   int(opts.Custom.MaxTokens),
+			Temperature: opts.Custom.Temperature,
+			Enabled:     opts.Custom.Enabled,
+		}
+	}
+
+	return config.NewCustomProviderManager(configCustoms, legacyCustom)
 }
