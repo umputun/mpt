@@ -885,3 +885,273 @@ func TestIntegrationJSONOutput(t *testing.T) {
 	// verify the content
 	assert.Contains(t, output, "This is a JSON output test response", "Output should contain provider response")
 }
+
+// TestIntegrationMultipleCustomProviders tests multiple custom providers configured via CLI
+func TestIntegrationMultipleCustomProviders(t *testing.T) {
+	// create two test servers simulating different custom providers
+	ts1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chat/completions" {
+			resp := `{
+				"id": "test-id-1",
+				"object": "chat.completion",
+				"model": "model1",
+				"choices": [{
+					"message": {"role": "assistant", "content": "Response from provider 1"},
+					"finish_reason": "stop",
+					"index": 0
+				}]
+			}`
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(resp))
+		}
+	}))
+	defer ts1.Close()
+
+	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chat/completions" {
+			resp := `{
+				"id": "test-id-2",
+				"object": "chat.completion",
+				"model": "model2",
+				"choices": [{
+					"message": {"role": "assistant", "content": "Response from provider 2"},
+					"finish_reason": "stop",
+					"index": 0
+				}]
+			}`
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(resp))
+		}
+	}))
+	defer ts2.Close()
+
+	// save original args and restore them after the test
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// set up command line arguments with multiple custom providers
+	os.Args = []string{
+		"test",
+		"--prompt", "test prompt",
+		"--customs", fmt.Sprintf("provider1:url=%s,model=model1,api-key=key1,enabled=true", ts1.URL),
+		"--customs", fmt.Sprintf("provider2:url=%s,model=model2,api-key=key2,enabled=true", ts2.URL),
+	}
+
+	opts := &options{
+		Timeout: 5 * time.Second,
+		Customs: make(map[string]customSpec),
+	}
+
+	p := flags.NewParser(opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
+	_, err := p.Parse()
+	require.NoError(t, err)
+
+	// verify options parsed correctly
+	require.Len(t, opts.Customs, 2, "Should have 2 custom providers")
+	require.Contains(t, opts.Customs, "provider1")
+	require.Contains(t, opts.Customs, "provider2")
+	assert.Equal(t, ts1.URL, opts.Customs["provider1"].URL)
+	assert.Equal(t, ts2.URL, opts.Customs["provider2"].URL)
+
+	// redirect stdout to capture output
+	oldStdout := os.Stdout
+	rOut, wOut, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = wOut
+
+	// run the program
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = run(ctx, opts)
+	require.NoError(t, err)
+
+	// restore stdout
+	wOut.Close()
+	os.Stdout = oldStdout
+
+	// read the captured output
+	var buf bytes.Buffer
+	io.Copy(&buf, rOut)
+	output := buf.String()
+
+	// verify that output contains responses from both providers
+	assert.Contains(t, output, "Response from provider 1")
+	assert.Contains(t, output, "Response from provider 2")
+	assert.Contains(t, output, "provider1")
+	assert.Contains(t, output, "provider2")
+}
+
+// TestIntegrationCustomProvidersEnvironmentVariables tests custom providers configured via environment variables
+func TestIntegrationCustomProvidersEnvironmentVariables(t *testing.T) {
+	// clear any existing CUSTOM_* env vars
+	for _, env := range os.Environ() {
+		if strings.HasPrefix(env, "CUSTOM_") {
+			parts := strings.SplitN(env, "=", 2)
+			if len(parts) > 0 {
+				os.Unsetenv(parts[0])
+			}
+		}
+	}
+
+	// create test server
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chat/completions" {
+			// check api key header
+			apiKey := r.Header.Get("Authorization")
+			content := "Response from environment-configured provider"
+			if apiKey == "Bearer env-secret-key" {
+				content = "Response with correct API key from environment"
+			}
+
+			resp := fmt.Sprintf(`{
+				"id": "test-env",
+				"object": "chat.completion",
+				"model": "env-model",
+				"choices": [{
+					"message": {"role": "assistant", "content": "%s"},
+					"finish_reason": "stop",
+					"index": 0
+				}]
+			}`, content)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(resp))
+		}
+	}))
+	defer ts.Close()
+
+	// set environment variables for custom provider
+	os.Setenv("CUSTOM_ENVPROV_URL", ts.URL)
+	os.Setenv("CUSTOM_ENVPROV_MODEL", "env-model")
+	os.Setenv("CUSTOM_ENVPROV_API_KEY", "env-secret-key")
+	os.Setenv("CUSTOM_ENVPROV_NAME", "Environment Provider")
+	os.Setenv("CUSTOM_ENVPROV_ENABLED", "true")
+	defer func() {
+		os.Unsetenv("CUSTOM_ENVPROV_URL")
+		os.Unsetenv("CUSTOM_ENVPROV_MODEL")
+		os.Unsetenv("CUSTOM_ENVPROV_API_KEY")
+		os.Unsetenv("CUSTOM_ENVPROV_NAME")
+		os.Unsetenv("CUSTOM_ENVPROV_ENABLED")
+	}()
+
+	opts := &options{
+		Prompt:  "test prompt",
+		Timeout: 5 * time.Second,
+		Customs: make(map[string]customSpec),
+	}
+
+	// redirect stdout to capture output
+	oldStdout := os.Stdout
+	rOut, wOut, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = wOut
+
+	// run the program
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = run(ctx, opts)
+	require.NoError(t, err)
+
+	// restore stdout
+	wOut.Close()
+	os.Stdout = oldStdout
+
+	// read the captured output
+	var buf bytes.Buffer
+	io.Copy(&buf, rOut)
+	output := buf.String()
+
+	// verify that output contains response from environment-configured provider
+	assert.Contains(t, output, "Response with correct API key from environment")
+	// when there's only one provider, the runner doesn't show provider headers
+	// so we don't check for "Environment Provider" in the output
+}
+
+// TestIntegrationCustomProvidersPrecedence tests precedence of custom provider configurations
+func TestIntegrationCustomProvidersPrecedence(t *testing.T) {
+	// create test server
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chat/completions" {
+			// check which model is being used to determine precedence
+			body, _ := io.ReadAll(r.Body)
+			content := "Unknown source"
+			if strings.Contains(string(body), "cli-model") {
+				content = "CLI configuration used (highest precedence)"
+			} else if strings.Contains(string(body), "legacy-model") {
+				content = "Legacy configuration used (middle precedence)"
+			} else if strings.Contains(string(body), "env-model") {
+				content = "Environment configuration used (lowest precedence)"
+			}
+
+			resp := fmt.Sprintf(`{
+				"id": "test-precedence",
+				"object": "chat.completion",
+				"choices": [{
+					"message": {"role": "assistant", "content": "%s"},
+					"finish_reason": "stop",
+					"index": 0
+				}]
+			}`, content)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(resp))
+		}
+	}))
+	defer ts.Close()
+
+	// set environment variable (lowest precedence)
+	os.Setenv("CUSTOM_TESTPROV_URL", ts.URL)
+	os.Setenv("CUSTOM_TESTPROV_MODEL", "env-model")
+	os.Setenv("CUSTOM_TESTPROV_ENABLED", "true")
+	defer func() {
+		os.Unsetenv("CUSTOM_TESTPROV_URL")
+		os.Unsetenv("CUSTOM_TESTPROV_MODEL")
+		os.Unsetenv("CUSTOM_TESTPROV_ENABLED")
+	}()
+
+	// save original args and restore them after the test
+	originalArgs := os.Args
+	defer func() { os.Args = originalArgs }()
+
+	// set up command line arguments with CLI custom provider (highest precedence)
+	os.Args = []string{
+		"test",
+		"--prompt", "test prompt",
+		"--customs", fmt.Sprintf("testprov:url=%s,model=cli-model,enabled=true", ts.URL),
+	}
+
+	opts := &options{
+		Timeout: 5 * time.Second,
+		Customs: make(map[string]customSpec),
+	}
+
+	p := flags.NewParser(opts, flags.PrintErrors|flags.PassDoubleDash|flags.HelpFlag)
+	_, err := p.Parse()
+	require.NoError(t, err)
+
+	// redirect stdout to capture output
+	oldStdout := os.Stdout
+	rOut, wOut, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = wOut
+
+	// run the program
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = run(ctx, opts)
+	require.NoError(t, err)
+
+	// restore stdout
+	wOut.Close()
+	os.Stdout = oldStdout
+
+	// read the captured output
+	var buf bytes.Buffer
+	io.Copy(&buf, rOut)
+	output := buf.String()
+
+	// verify that CLI configuration was used (highest precedence)
+	assert.Contains(t, output, "CLI configuration used (highest precedence)")
+}

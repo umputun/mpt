@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/mpt/pkg/config"
 	"github.com/umputun/mpt/pkg/mix"
 	"github.com/umputun/mpt/pkg/provider"
 	"github.com/umputun/mpt/pkg/runner"
@@ -1311,11 +1312,11 @@ func TestInitializeProviders(t *testing.T) {
 				return
 			case "custom provider without URL":
 				require.Error(t, err, "Should return error when custom provider URL is missing")
-				assert.Contains(t, err.Error(), "URL is required")
+				assert.Contains(t, err.Error(), "missing URL")
 				return
 			case "custom provider without model":
 				require.Error(t, err, "Should return error when custom provider model is missing")
-				assert.Contains(t, err.Error(), "model is required")
+				assert.Contains(t, err.Error(), "missing model")
 				return
 			case "mix enabled with single provider":
 				require.NoError(t, err, "Should initialize providers without error")
@@ -1986,4 +1987,45 @@ func TestExecutePromptWithConsensus(t *testing.T) {
 	assert.True(t, result.ConsensusAchieved)
 	assert.Equal(t, 1, result.ConsensusAttempts)
 	assert.Contains(t, result.Text, "Consensus-verified mixed result")
+}
+
+func TestCustomSpec_UnmarshalFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected config.CustomSpec
+		wantErr  bool
+	}{
+		{
+			name:  "valid spec",
+			input: "url=https://api.example.com,model=gpt-4,api-key=secret",
+			expected: config.CustomSpec{
+				URL:         "https://api.example.com",
+				Model:       "gpt-4",
+				APIKey:      "secret",
+				Temperature: -1,
+				MaxTokens:   16384,
+				Enabled:     false, // default, matches standard providers
+			},
+		},
+		{
+			name:    "invalid spec",
+			input:   "invalid",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var spec customSpec
+			err := spec.UnmarshalFlag(tt.input)
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, spec.CustomSpec)
+			}
+		})
+	}
 }

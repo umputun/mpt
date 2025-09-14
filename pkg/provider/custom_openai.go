@@ -48,9 +48,9 @@ func NewCustomOpenAI(opts CustomOptions) *CustomOpenAI {
 	}
 	// if maxTokens is 0, we'll use the model's maximum (API will determine the limit)
 
-	// set default temperature if not specified
+	// set default temperature if not specified (negative means unset)
 	temperature := opts.Temperature
-	if temperature <= 0 {
+	if temperature < 0 {
 		temperature = 0.7 // default OpenAI temperature
 	}
 

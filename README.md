@@ -174,8 +174,8 @@ You can provide a prompt in the following ways:
 --openai.api-key      OpenAI API key (or OPENAI_API_KEY env var)
 --openai.model        OpenAI model to use (default: gpt-4.1)
 --openai.enabled      Enable OpenAI provider
---openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
---openai.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
+--openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum, supports k/kb/m/mb/g/gb suffixes)
+--openai.temperature  Controls randomness (0-2, higher is more random) (default: 0.1)
 ```
 
 #### Anthropic (Claude)
@@ -184,48 +184,86 @@ You can provide a prompt in the following ways:
 --anthropic.api-key   Anthropic API key (or ANTHROPIC_API_KEY env var)
 --anthropic.model     Anthropic model to use (default: claude-3-7-sonnet-20250219)
 --anthropic.enabled   Enable Anthropic provider
---anthropic.max-tokens Maximum number of tokens to generate (default: 16384, 0 for model maximum)
+--anthropic.max-tokens Maximum number of tokens to generate (default: 16384, 0 for model maximum, supports k/kb/m/mb/g/gb suffixes)
 ```
 
 #### Google (Gemini)
 
 ```
 --google.api-key      Google API key (or GOOGLE_API_KEY env var)
---google.model        Google model to use (default: gemini-2.5-pro-exp-03-25)
+--google.model        Google model to use (default: gemini-2.5-pro-preview-06-05)
 --google.enabled      Enable Google provider
---google.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
+--google.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum, supports k/kb/m/mb/g/gb suffixes)
 ```
 
-#### Custom OpenAI-Compatible Provider
+#### Custom OpenAI-Compatible Providers
 
-You can add a single custom provider that implements the OpenAI-compatible API:
+MPT supports multiple custom providers that implement the OpenAI-compatible API. You can configure them through command-line flags, environment variables, or a combination of both.
+
+##### Multiple Custom Providers (New)
+
+You can add multiple custom providers using the `--customs` flag with a compact key-value format:
 
 ```
---custom.name         Name for the custom provider (required)
+--customs ID:key=value[,key=value,...]
+```
+
+Available keys (use hyphens in flag values):
+- `url` - Base URL for the provider API (required)
+- `model` - Model to use (required)
+- `api-key` - API key for authentication
+- `name` - Display name for the provider (defaults to ID)
+- `max-tokens` - Maximum tokens to generate (default: 16384, 0 = use model maximum, supports k/kb/m/mb/g/gb suffixes)
+- `temperature` - Controls randomness 0-2 (default: 0.7, 0 = deterministic)
+- `enabled` - Enable/disable provider (default: true)
+
+Examples:
+
+```bash
+# Multiple providers in one command
+mpt --customs openrouter:url=https://openrouter.ai/api/v1,model=claude-3.5-sonnet,api-key=$OPENROUTER_KEY \
+    --customs local:url=http://localhost:1234/v1,model=mixtral-8x7b \
+    --prompt "Explain quantum computing"
+
+# Using environment variables for custom providers
+export CUSTOM_OPENROUTER_URL=https://openrouter.ai/api/v1
+export CUSTOM_OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
+export CUSTOM_OPENROUTER_API_KEY=$OPENROUTER_KEY
+export CUSTOM_LOCAL_URL=http://localhost:1234/v1
+export CUSTOM_LOCAL_MODEL=mixtral-8x7b
+
+mpt --prompt "Analyze this code"  # Will use both configured providers
+```
+
+##### Single Custom Provider (Legacy)
+
+For backward compatibility, you can still configure a single custom provider using the `--custom.*` flags:
+
+```
+--custom.name         Name for the custom provider
 --custom.url          Base URL for the custom provider API (required)
 --custom.api-key      API key for the custom provider (if needed)
 --custom.model        Model to use (required)
 --custom.enabled      Enable this custom provider (default: true)
---custom.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
---custom.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
+--custom.max-tokens   Maximum number of tokens to generate (default: 16384, 0 = use model maximum, supports k/kb/m/mb/g/gb suffixes)
+--custom.temperature  Controls randomness (0-2, higher is more random) (default: 0.7, 0 = deterministic)
 ```
 
-Example for adding a local LLM server:
+Example:
 
 ```
 mpt --custom.enabled --custom.name="LocalLLM" --custom.url="http://localhost:1234/v1" \
     --custom.model="mixtral-8x7b" --prompt="Explain quantum computing"
 ```
 
-Example with OpenRouter:
+##### Configuration Precedence
 
-```
-mpt --custom.enabled --custom.name="OpenRouter" \
-    --custom.url="https://openrouter.ai/api/v1" \
-    --custom.api-key="$OPENROUTER_API_KEY" \
-    --custom.model="anthropic/claude-sonnet-4" \
-    --prompt="Analyze this code for improvements"
-```
+When the same provider is configured through multiple methods, the precedence order is:
+1. CLI `--customs` flag (highest priority)
+2. Legacy `--custom.*` flags
+3. Environment variables `CUSTOM_<ID>_*` (lowest priority)
+
+This allows you to set defaults in environment variables and override them via command-line when needed.
 
 
 ### General Options
@@ -245,7 +283,7 @@ mpt --custom.enabled --custom.name="OpenRouter" \
 --git.diff            Include git diff (uncommitted changes) in the prompt context
 --git.branch          Include git diff between given branch and main/master (for PR review)
 -t, --timeout         Timeout duration (e.g., 60s, 2m) (default: 60s)
---max-file-size       Maximum size of individual files to process in bytes (default: 64KB)
+--max-file-size       Maximum size of individual files to process (default: 64KB, supports k/kb/m/mb/g/gb suffixes)
 --mix                 Enable mix mode to combine results from all providers
 --mix.provider        Provider to use for mixing results (default: "openai")
 --mix.prompt          Prompt used for mixing results (default: "merge results from all providers")
@@ -900,13 +938,39 @@ GIT_BRANCH="feature-xyz" # Include diff between feature-xyz and main/master
 MCP_SERVER=true
 MCP_SERVER_NAME="My MPT MCP Server"
 
-# Custom OpenAI-compatible provider
+# Legacy single custom provider
 CUSTOM_NAME="LocalLLM"
 CUSTOM_URL="http://localhost:1234/v1"
 CUSTOM_MODEL="mixtral-8x7b"
 CUSTOM_ENABLED=true
 CUSTOM_MAX_TOKENS=16384
 CUSTOM_TEMPERATURE=0.7
+
+# Multiple custom providers (new)
+# Pattern: CUSTOM_<ID>_<FIELD>
+# IDs can contain underscores (e.g., MY_PROVIDER, OPEN_ROUTER)
+# Supported fields (use underscores in env vars):
+#   - URL: API endpoint
+#   - API_KEY: Authentication key
+#   - MODEL: Model identifier
+#   - NAME: Display name for the provider
+#   - MAX_TOKENS: Maximum tokens (supports k/kb/m/mb/g/gb suffixes)
+#   - TEMPERATURE: Temperature setting (0-2)
+#   - ENABLED: Whether the provider is enabled (true/false)
+
+CUSTOM_OPENROUTER_URL="https://openrouter.ai/api/v1"
+CUSTOM_OPENROUTER_MODEL="anthropic/claude-3.5-sonnet"
+CUSTOM_OPENROUTER_API_KEY="your-openrouter-key"
+CUSTOM_OPENROUTER_NAME="OpenRouter"
+
+CUSTOM_LOCAL_URL="http://localhost:1234/v1"
+CUSTOM_LOCAL_MODEL="mixtral-8x7b"
+CUSTOM_LOCAL_NAME="Local LLM"
+
+# Multi-word IDs with underscores are supported
+CUSTOM_MY_PROVIDER_URL="https://api.example.com"
+CUSTOM_MY_PROVIDER_MODEL="gpt-4"
+CUSTOM_OPEN_ROUTER_MAX_TOKENS="8k"
 
 # Mix options
 MIX=true                # Enable mix mode

@@ -9,13 +9,13 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-pkgz/lgr"
 	"github.com/jessevdk/go-flags"
 
+	"github.com/umputun/mpt/pkg/config"
 	"github.com/umputun/mpt/pkg/mcp"
 	"github.com/umputun/mpt/pkg/mix"
 	"github.com/umputun/mpt/pkg/prompt"
@@ -31,6 +31,9 @@ type options struct {
 
 	Custom customOpenAIProvider `group:"custom" namespace:"custom" env-namespace:"CUSTOM"`
 
+	// new map for multiple custom providers
+	Customs map[string]customSpec `long:"customs" description:"Add custom OpenAI-compatible provider as 'id:key=value[,key=value,...]' (e.g., openrouter:url=https://openrouter.ai/api/v1,model=claude-3.5)" key-value-delimiter:":" value-name:"ID:SPEC"`
+
 	MCP   mcpOpts   `group:"mcp" namespace:"mcp" env-namespace:"MCP"`
 	Git   gitOpts   `group:"git" namespace:"git" env-namespace:"GIT"`
 	Retry retryOpts `group:"retry" namespace:"retry" env-namespace:"RETRY"`
@@ -39,7 +42,7 @@ type options struct {
 	Files       []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
 	Excludes    []string      `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
 	Timeout     time.Duration `short:"t" long:"timeout" default:"60s" description:"timeout duration"`
-	MaxFileSize SizeValue     `long:"max-file-size" env:"MAX_FILE_SIZE" default:"65536" description:"maximum size of individual files to process in bytes (default: 64KB, supports k/m suffixes)"`
+	MaxFileSize SizeValue     `long:"max-file-size" env:"MAX_FILE_SIZE" default:"65536" description:"maximum size of individual files to process in bytes (default: 64KB, supports k/kb/m/mb/g/gb suffixes)"`
 	Force       bool          `long:"force" description:"force loading files by skipping all exclusion patterns (including .gitignore and common patterns)"`
 
 	// mix options
@@ -63,8 +66,8 @@ type openAIOpts struct {
 	Enabled     bool      `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
 	APIKey      string    `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
 	Model       string    `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4.1"`
-	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
-	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.1"`
+	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/kb/m/mb/g/gb suffixes)" default:"16384"`
+	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-2, higher is more random)" default:"0.1"`
 }
 
 // anthropicOpts defines options for Anthropic provider
@@ -96,8 +99,8 @@ type customOpenAIProvider struct {
 	URL         string    `long:"url" env:"URL" description:"Base URL for the custom provider API"`
 	APIKey      string    `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
 	Model       string    `long:"model" env:"MODEL" description:"Model to use for the custom provider"`
-	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
-	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
+	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate (default: 16384, supports k/kb/m/mb/g/gb suffixes)" default:"16384"`
+	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-2, higher is more random)" default:"0.7"`
 }
 
 // gitOpts defines options for Git integration
@@ -233,22 +236,31 @@ func runMCPServer(_ context.Context, opts *options) error {
 
 // collectSecrets extracts all API keys for secure logging
 func collectSecrets(opts *options) []string {
-	var secrets []string
+	secretsMap := make(map[string]bool) // use map to avoid duplicates
 
 	// add API keys from built-in providers
 	if opts.OpenAI.APIKey != "" {
-		secrets = append(secrets, opts.OpenAI.APIKey)
+		secretsMap[opts.OpenAI.APIKey] = true
 	}
 	if opts.Anthropic.APIKey != "" {
-		secrets = append(secrets, opts.Anthropic.APIKey)
+		secretsMap[opts.Anthropic.APIKey] = true
 	}
 	if opts.Google.APIKey != "" {
-		secrets = append(secrets, opts.Google.APIKey)
+		secretsMap[opts.Google.APIKey] = true
 	}
 
-	// add API key from custom provider
-	if opts.Custom.APIKey != "" {
-		secrets = append(secrets, opts.Custom.APIKey)
+	// add API keys from custom providers
+	customSecrets := createCustomManager(opts).CollectSecrets()
+	for _, secret := range customSecrets {
+		if secret != "" {
+			secretsMap[secret] = true
+		}
+	}
+
+	// convert map to slice
+	secrets := make([]string, 0, len(secretsMap))
+	for secret := range secretsMap {
+		secrets = append(secrets, secret)
 	}
 
 	return secrets
@@ -361,16 +373,10 @@ func initializeProviders(opts *options) ([]provider.Provider, error) {
 		lgr.Printf("[DEBUG] added %s provider, model: %s", config.name, config.model)
 	}
 
-	// initialize custom provider if enabled
-	if opts.Custom.Enabled {
-		p, err := initializeCustomProvider(opts)
-		if err != nil {
-			lgr.Printf("[WARN] %s", err)
-			providerErrors = append(providerErrors, fmt.Sprintf("Custom (%s): %v", opts.Custom.Name, err))
-		} else if p != nil {
-			providers = append(providers, p)
-		}
-	}
+	// initialize multiple custom providers (handles legacy custom too)
+	customProviders, customErrors := createCustomManager(opts).InitializeProviders()
+	providers = append(providers, customProviders...)
+	providerErrors = append(providerErrors, customErrors...)
 
 	// check if any providers were successfully initialized
 	if len(providers) == 0 {
@@ -432,41 +438,13 @@ func getStandardProviderConfigs(opts *options) []providerConfig {
 
 // anyProvidersEnabled checks if at least one provider is enabled in the options
 func anyProvidersEnabled(opts *options) bool {
-	return opts.OpenAI.Enabled || opts.Anthropic.Enabled ||
-		opts.Google.Enabled || opts.Custom.Enabled
-}
-
-// initializeCustomProvider initializes the custom provider
-func initializeCustomProvider(opts *options) (provider.Provider, error) {
-	// validate required fields
-	if opts.Custom.URL == "" {
-		return nil, fmt.Errorf("custom provider %s failed to initialize: URL is required", opts.Custom.Name)
+	// check standard providers
+	if opts.OpenAI.Enabled || opts.Anthropic.Enabled || opts.Google.Enabled {
+		return true
 	}
 
-	if opts.Custom.Model == "" {
-		return nil, fmt.Errorf("custom provider %s failed to initialize: model is required", opts.Custom.Name)
-	}
-
-	// create custom provider
-	customProvider := provider.NewCustomOpenAI(provider.CustomOptions{
-		Name:        opts.Custom.Name,
-		BaseURL:     opts.Custom.URL,
-		APIKey:      opts.Custom.APIKey,
-		Model:       opts.Custom.Model,
-		Enabled:     true,
-		MaxTokens:   int(opts.Custom.MaxTokens),
-		Temperature: opts.Custom.Temperature,
-	})
-
-	// check if the provider was enabled successfully
-	if customProvider.Enabled() {
-		lgr.Printf("[DEBUG] added custom provider: %s, URL: %s, model: %s, temperature: %.2f",
-			opts.Custom.Name, opts.Custom.URL, opts.Custom.Model, opts.Custom.Temperature)
-		return customProvider, nil
-	}
-
-	// provider failed to initialize
-	return nil, fmt.Errorf("custom provider %s failed to initialize", opts.Custom.Name)
+	// check if any custom providers are enabled
+	return createCustomManager(opts).AnyEnabled()
 }
 
 // ExecutionResult holds the structured result of executing a prompt
@@ -682,34 +660,55 @@ func outputJSON(result *ExecutionResult) error {
 	return nil
 }
 
-// SizeValue is a custom type that supports human-readable size values with k/m suffixes
+// SizeValue is a custom type that supports human-readable size values with k/kb/m/mb/g/gb suffixes
 type SizeValue int64
 
 // UnmarshalFlag implements the flags.Unmarshaler interface for human-readable sizes
 func (v *SizeValue) UnmarshalFlag(value string) error {
-	value = strings.TrimSpace(strings.ToLower(value))
-
-	var multiplier int64 = 1
-	switch {
-	case strings.HasSuffix(value, "kb"):
-		multiplier = 1024
-		value = value[:len(value)-2]
-	case strings.HasSuffix(value, "k"):
-		multiplier = 1024
-		value = value[:len(value)-1]
-	case strings.HasSuffix(value, "mb"):
-		multiplier = 1024 * 1024
-		value = value[:len(value)-2]
-	case strings.HasSuffix(value, "m"):
-		multiplier = 1024 * 1024
-		value = value[:len(value)-1]
-	}
-
-	val, err := strconv.ParseInt(value, 10, 64)
+	size, err := config.ParseSize(value)
 	if err != nil {
 		return fmt.Errorf("invalid size value %q: %w", value, err)
 	}
-
-	*v = SizeValue(val * multiplier)
+	*v = SizeValue(size)
 	return nil
+}
+
+// customSpec is a CLI wrapper around config.CustomSpec that implements UnmarshalFlag for go-flags
+type customSpec struct {
+	config.CustomSpec
+}
+
+// UnmarshalFlag parses "url=https://...,model=xxx,api-key=xxx" format for go-flags
+func (c *customSpec) UnmarshalFlag(value string) error {
+	spec, err := config.ParseCustomSpec(value)
+	if err != nil {
+		return err
+	}
+	c.CustomSpec = spec
+	return nil
+}
+
+// createCustomManager creates a CustomProviderManager from CLI options
+func createCustomManager(opts *options) *config.CustomProviderManager {
+	// convert CLI customSpec to config.CustomSpec
+	configCustoms := make(map[string]config.CustomSpec)
+	for id, spec := range opts.Customs {
+		configCustoms[id] = spec.CustomSpec
+	}
+
+	// convert legacy custom to config.CustomSpec pointer if enabled
+	var legacyCustom *config.CustomSpec
+	if opts.Custom.Enabled {
+		legacyCustom = &config.CustomSpec{
+			Name:        opts.Custom.Name,
+			URL:         opts.Custom.URL,
+			APIKey:      opts.Custom.APIKey,
+			Model:       opts.Custom.Model,
+			MaxTokens:   int(opts.Custom.MaxTokens),
+			Temperature: opts.Custom.Temperature,
+			Enabled:     opts.Custom.Enabled,
+		}
+	}
+
+	return config.NewCustomProviderManager(configCustoms, legacyCustom)
 }
