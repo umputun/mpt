@@ -569,12 +569,8 @@ func TestOpenAI_NewOpenAI_EdgeCases(t *testing.T) {
 			provider := NewOpenAI(tt.options)
 			assert.Equal(t, tt.expectedEnabled, provider.Enabled())
 			assert.Equal(t, tt.expectedMaxTokens, provider.maxTokens)
-			// use exact comparison for 0, epsilon for non-zero values
-			if tt.expectedTemperature == 0 {
-				assert.Equal(t, tt.expectedTemperature, provider.temperature) //nolint:testifylint // need exact comparison for 0
-			} else {
-				assert.InEpsilon(t, tt.expectedTemperature, provider.temperature, 0.0001)
-			}
+			// use InDelta for float comparison (handles both zero and non-zero uniformly)
+			assert.InDelta(t, tt.expectedTemperature, provider.temperature, 0.0001)
 		})
 	}
 }
