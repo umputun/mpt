@@ -2005,7 +2005,7 @@ func TestCustomSpec_UnmarshalFlag(t *testing.T) {
 				APIKey:      "secret",
 				Temperature: -1,
 				MaxTokens:   16384,
-				Enabled:     true,
+				Enabled:     false, // default, matches standard providers
 			},
 		},
 		{

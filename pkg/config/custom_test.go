@@ -19,7 +19,7 @@ func TestParseCustomSpec(t *testing.T) {
 	}{
 		{
 			name:  "full spec with all fields",
-			input: "url=https://api.example.com,model=gpt-4,api-key=secret,temperature=0.5,max-tokens=8k,name=MyProvider",
+			input: "url=https://api.example.com,model=gpt-4,api-key=secret,temperature=0.5,max-tokens=8k,name=MyProvider,enabled=true",
 			expected: CustomSpec{
 				URL:         "https://api.example.com",
 				Model:       "gpt-4",
@@ -38,97 +38,7 @@ func TestParseCustomSpec(t *testing.T) {
 				Model:       "local-llm",
 				Temperature: -1,                     // unset, will use provider default
 				MaxTokens:   defaultCustomMaxTokens, // default
-				Enabled:     true,                   // default
-			},
-		},
-		{
-			name:  "spec with URL aliases",
-			input: "base-url=http://test.com,model=test",
-			expected: CustomSpec{
-				URL:         "http://test.com",
-				Model:       "test",
-				Temperature: -1, // unset
-				MaxTokens:   defaultCustomMaxTokens,
-				Enabled:     true,
-			},
-		},
-		{
-			name:  "spec with base_url alias",
-			input: "base_url=http://test.com,model=test",
-			expected: CustomSpec{
-				URL:         "http://test.com",
-				Model:       "test",
-				Temperature: -1, // unset
-				MaxTokens:   defaultCustomMaxTokens,
-				Enabled:     true,
-			},
-		},
-		{
-			name:  "spec with baseurl alias",
-			input: "baseurl=http://test.com,model=test",
-			expected: CustomSpec{
-				URL:         "http://test.com",
-				Model:       "test",
-				Temperature: -1, // unset
-				MaxTokens:   defaultCustomMaxTokens,
-				Enabled:     true,
-			},
-		},
-		{
-			name:  "spec with api-key aliases",
-			input: "url=http://test.com,model=test,api_key=key1,temperature=0.3",
-			expected: CustomSpec{
-				URL:         "http://test.com",
-				Model:       "test",
-				APIKey:      "key1",
-				Temperature: 0.3,
-				MaxTokens:   16384,
-				Enabled:     true,
-			},
-		},
-		{
-			name:  "spec with apikey alias",
-			input: "url=http://test.com,model=test,apikey=key2",
-			expected: CustomSpec{
-				URL:         "http://test.com",
-				Model:       "test",
-				APIKey:      "key2",
-				Temperature: -1, // unset
-				MaxTokens:   defaultCustomMaxTokens,
-				Enabled:     true,
-			},
-		},
-		{
-			name:  "spec with max-tokens aliases",
-			input: "url=http://test.com,model=test,max_tokens=4k",
-			expected: CustomSpec{
-				URL:         "http://test.com",
-				Model:       "test",
-				Temperature: -1, // unset
-				MaxTokens:   4096,
-				Enabled:     true,
-			},
-		},
-		{
-			name:  "spec with maxtokens alias",
-			input: "url=http://test.com,model=test,maxtokens=2048",
-			expected: CustomSpec{
-				URL:         "http://test.com",
-				Model:       "test",
-				Temperature: -1, // unset
-				MaxTokens:   2048,
-				Enabled:     true,
-			},
-		},
-		{
-			name:  "spec with temp alias",
-			input: "url=http://test.com,model=test,temp=0.3",
-			expected: CustomSpec{
-				URL:         "http://test.com",
-				Model:       "test",
-				Temperature: 0.3,
-				MaxTokens:   16384,
-				Enabled:     true,
+				Enabled:     false,                  // default, matches standard providers
 			},
 		},
 		{
@@ -139,7 +49,7 @@ func TestParseCustomSpec(t *testing.T) {
 				Model:       "test",
 				Temperature: 0, // explicit 0 for deterministic output
 				MaxTokens:   16384,
-				Enabled:     true,
+				Enabled:     false, // default, matches standard providers
 			},
 		},
 		{
@@ -162,7 +72,7 @@ func TestParseCustomSpec(t *testing.T) {
 				Name:        "My Provider",
 				Temperature: -1, // unset
 				MaxTokens:   defaultCustomMaxTokens,
-				Enabled:     true,
+				Enabled:     false, // default, matches standard providers
 			},
 		},
 		{
@@ -173,7 +83,7 @@ func TestParseCustomSpec(t *testing.T) {
 				Model:       "local",
 				Temperature: -1, // unset
 				MaxTokens:   defaultCustomMaxTokens,
-				Enabled:     true,
+				Enabled:     false, // default, matches standard providers
 			},
 		},
 		{
@@ -184,7 +94,7 @@ func TestParseCustomSpec(t *testing.T) {
 				Model:       "gpt-4",
 				Temperature: -1, // unset
 				MaxTokens:   defaultCustomMaxTokens,
-				Enabled:     true,
+				Enabled:     false, // default, matches standard providers
 			},
 		},
 		{
@@ -231,7 +141,7 @@ func TestParseCustomSpec(t *testing.T) {
 				Model:       "test",
 				Temperature: -1, // unset
 				MaxTokens:   32768,
-				Enabled:     true,
+				Enabled:     false, // default, matches standard providers
 			},
 		},
 		{
@@ -242,7 +152,7 @@ func TestParseCustomSpec(t *testing.T) {
 				Model:       "test",
 				Temperature: -1, // unset
 				MaxTokens:   1048576,
-				Enabled:     true,
+				Enabled:     false, // default, matches standard providers
 			},
 		},
 	}
@@ -282,9 +192,11 @@ func TestCustomProviderManager_parseCustomProvidersFromEnv(t *testing.T) {
 		os.Setenv("CUSTOM_OPENROUTER_MODEL", "claude-3.5-sonnet")
 		os.Setenv("CUSTOM_OPENROUTER_API_KEY", "or-key-123")
 		os.Setenv("CUSTOM_OPENROUTER_NAME", "OpenRouter")
+		os.Setenv("CUSTOM_OPENROUTER_ENABLED", "true")
 		os.Setenv("CUSTOM_LOCAL_URL", "http://localhost:11434")
 		os.Setenv("CUSTOM_LOCAL_MODEL", "mixtral:8x7b")
 		os.Setenv("CUSTOM_LOCAL_TEMPERATURE", "0.5")
+		os.Setenv("CUSTOM_LOCAL_ENABLED", "true")
 
 		manager := NewCustomProviderManager(nil, nil)
 		providers, warnings := manager.parseCustomProvidersFromEnv()
@@ -320,6 +232,7 @@ func TestCustomProviderManager_parseCustomProvidersFromEnv(t *testing.T) {
 		// set new-style var
 		os.Setenv("CUSTOM_NEW_URL", "http://new.com")
 		os.Setenv("CUSTOM_NEW_MODEL", "new-model")
+		os.Setenv("CUSTOM_NEW_ENABLED", "true")
 
 		manager := NewCustomProviderManager(nil, nil)
 		providers, warnings := manager.parseCustomProvidersFromEnv()
@@ -354,6 +267,7 @@ func TestCustomProviderManager_parseCustomProvidersFromEnv(t *testing.T) {
 		os.Setenv("CUSTOM_TEST_URL", "http://test.com")
 		os.Setenv("CUSTOM_TEST_MODEL", "test")
 		os.Setenv("CUSTOM_TEST_TEMPERATURE", "invalid")
+		os.Setenv("CUSTOM_TEST_ENABLED", "true")
 
 		manager := NewCustomProviderManager(nil, nil)
 		providers, warnings := manager.parseCustomProvidersFromEnv()
@@ -362,6 +276,112 @@ func TestCustomProviderManager_parseCustomProvidersFromEnv(t *testing.T) {
 		assert.Contains(t, warnings[0], "invalid temperature")
 		assert.Len(t, providers, 1)
 		assert.InEpsilon(t, float32(-1), providers["test"].Temperature, 0.0001) // keeps default
+	})
+
+	t.Run("support multi-word IDs with underscores", func(t *testing.T) {
+		clearCustomEnv()
+		defer clearCustomEnv()
+
+		// test various multi-word ID patterns
+		os.Setenv("CUSTOM_MY_PROVIDER_URL", "https://api.example.com")
+		os.Setenv("CUSTOM_MY_PROVIDER_MODEL", "gpt-4")
+		os.Setenv("CUSTOM_MY_PROVIDER_API_KEY", "test-key")
+
+		os.Setenv("CUSTOM_OPEN_ROUTER_MAX_TOKENS", "8192")
+		os.Setenv("CUSTOM_OPEN_ROUTER_URL", "https://openrouter.ai/api/v1")
+		os.Setenv("CUSTOM_OPEN_ROUTER_MODEL", "claude-3.5")
+
+		os.Setenv("CUSTOM_A_B_C_API_KEY", "abc-key")
+		os.Setenv("CUSTOM_A_B_C_MODEL", "test-model")
+		os.Setenv("CUSTOM_A_B_C_URL", "http://abc.com")
+
+		manager := NewCustomProviderManager(nil, nil)
+		providers, warnings := manager.parseCustomProvidersFromEnv()
+
+		assert.Empty(t, warnings)
+		assert.Len(t, providers, 3)
+
+		// check my_provider
+		myProvider, exists := providers["my_provider"]
+		assert.True(t, exists, "my_provider should exist")
+		assert.Equal(t, "https://api.example.com", myProvider.URL)
+		assert.Equal(t, "gpt-4", myProvider.Model)
+		assert.Equal(t, "test-key", myProvider.APIKey)
+
+		// check open_router
+		openRouter, exists := providers["open_router"]
+		assert.True(t, exists, "open_router should exist")
+		assert.Equal(t, "https://openrouter.ai/api/v1", openRouter.URL)
+		assert.Equal(t, "claude-3.5", openRouter.Model)
+		assert.Equal(t, 8192, openRouter.MaxTokens)
+
+		// check a_b_c
+		abc, exists := providers["a_b_c"]
+		assert.True(t, exists, "a_b_c should exist")
+		assert.Equal(t, "http://abc.com", abc.URL)
+		assert.Equal(t, "test-model", abc.Model)
+		assert.Equal(t, "abc-key", abc.APIKey)
+	})
+
+	t.Run("handle edge cases with suffix matching", func(t *testing.T) {
+		clearCustomEnv()
+		defer clearCustomEnv()
+
+		// test empty ID (just field)
+		os.Setenv("CUSTOM__URL", "http://test.com")
+
+		// test unrecognized field
+		os.Setenv("CUSTOM_FOO_UNKNOWN", "value")
+
+		// test field-only patterns that should be rejected
+		os.Setenv("CUSTOM_URL", "http://legacy.com") // legacy, should be skipped
+
+		// test valid simple ID
+		os.Setenv("CUSTOM_SIMPLE_URL", "http://simple.com")
+
+		manager := NewCustomProviderManager(nil, nil)
+		providers, warnings := manager.parseCustomProvidersFromEnv()
+
+		// should have warnings for empty ID and unrecognized field
+		assert.Len(t, warnings, 2)
+		// check both warnings are present without assuming order
+		warningsText := strings.Join(warnings, " ")
+		assert.Contains(t, warningsText, "empty provider ID")
+		assert.Contains(t, warningsText, "unrecognized field")
+
+		// only simple provider should succeed
+		assert.Len(t, providers, 1)
+		assert.Contains(t, providers, "simple")
+		assert.Equal(t, "http://simple.com", providers["simple"].URL)
+	})
+
+	t.Run("canonical field names work correctly", func(t *testing.T) {
+		clearCustomEnv()
+		defer clearCustomEnv()
+
+		// test canonical field names (all underscored for env vars)
+		os.Setenv("CUSTOM_PROVIDER1_URL", "http://url.com")
+		os.Setenv("CUSTOM_PROVIDER2_API_KEY", "key1")
+		os.Setenv("CUSTOM_PROVIDER3_MAX_TOKENS", "4096")
+		os.Setenv("CUSTOM_PROVIDER4_TEMPERATURE", "0.7")
+		os.Setenv("CUSTOM_PROVIDER5_MODEL", "test-model")
+		os.Setenv("CUSTOM_PROVIDER6_NAME", "Test Provider")
+		os.Setenv("CUSTOM_PROVIDER7_ENABLED", "false")
+
+		manager := NewCustomProviderManager(nil, nil)
+		providers, warnings := manager.parseCustomProvidersFromEnv()
+
+		assert.Empty(t, warnings)
+		assert.Len(t, providers, 7)
+
+		// verify canonical names work
+		assert.Equal(t, "http://url.com", providers["provider1"].URL)
+		assert.Equal(t, "key1", providers["provider2"].APIKey)
+		assert.Equal(t, 4096, providers["provider3"].MaxTokens)
+		assert.InEpsilon(t, float32(0.7), providers["provider4"].Temperature, 0.0001)
+		assert.Equal(t, "test-model", providers["provider5"].Model)
+		assert.Equal(t, "Test Provider", providers["provider6"].Name)
+		assert.False(t, providers["provider7"].Enabled)
 	})
 
 	t.Run("disabled provider from env", func(t *testing.T) {
@@ -486,6 +506,7 @@ func TestCustomProviderManager_InitializeProviders(t *testing.T) {
 		// set env provider
 		os.Setenv("CUSTOM_TEST_URL", "http://env.com")
 		os.Setenv("CUSTOM_TEST_MODEL", "env-model")
+		os.Setenv("CUSTOM_TEST_ENABLED", "true")
 
 		// CLI provider with same ID
 		customs := map[string]CustomSpec{
@@ -678,6 +699,7 @@ func TestCustomProviderManager_AnyEnabled(t *testing.T) {
 
 		os.Setenv("CUSTOM_TEST_URL", "http://test.com")
 		os.Setenv("CUSTOM_TEST_MODEL", "test")
+		os.Setenv("CUSTOM_TEST_ENABLED", "true")
 
 		manager := NewCustomProviderManager(nil, nil)
 		assert.True(t, manager.AnyEnabled())

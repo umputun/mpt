@@ -175,7 +175,7 @@ You can provide a prompt in the following ways:
 --openai.model        OpenAI model to use (default: gpt-4.1)
 --openai.enabled      Enable OpenAI provider
 --openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum, supports k/kb/m/mb/g/gb suffixes)
---openai.temperature  Controls randomness (0-1, higher is more random) (default: 0.1)
+--openai.temperature  Controls randomness (0-2, higher is more random) (default: 0.1)
 ```
 
 #### Anthropic (Claude)
@@ -208,8 +208,8 @@ You can add multiple custom providers using the `--customs` flag with a compact 
 --customs ID:key=value[,key=value,...]
 ```
 
-Available keys:
-- `url` (or `base-url`) - Base URL for the provider API (required)
+Available keys (use hyphens in flag values):
+- `url` - Base URL for the provider API (required)
 - `model` - Model to use (required)
 - `api-key` - API key for authentication
 - `name` - Display name for the provider (defaults to ID)
@@ -948,6 +948,16 @@ CUSTOM_TEMPERATURE=0.7
 
 # Multiple custom providers (new)
 # Pattern: CUSTOM_<ID>_<FIELD>
+# IDs can contain underscores (e.g., MY_PROVIDER, OPEN_ROUTER)
+# Supported fields (use underscores in env vars):
+#   - URL: API endpoint
+#   - API_KEY: Authentication key
+#   - MODEL: Model identifier
+#   - NAME: Display name for the provider
+#   - MAX_TOKENS: Maximum tokens (supports k/kb/m/mb/g/gb suffixes)
+#   - TEMPERATURE: Temperature setting (0-2)
+#   - ENABLED: Whether the provider is enabled (true/false)
+
 CUSTOM_OPENROUTER_URL="https://openrouter.ai/api/v1"
 CUSTOM_OPENROUTER_MODEL="anthropic/claude-3.5-sonnet"
 CUSTOM_OPENROUTER_API_KEY="your-openrouter-key"
@@ -956,6 +966,11 @@ CUSTOM_OPENROUTER_NAME="OpenRouter"
 CUSTOM_LOCAL_URL="http://localhost:1234/v1"
 CUSTOM_LOCAL_MODEL="mixtral-8x7b"
 CUSTOM_LOCAL_NAME="Local LLM"
+
+# Multi-word IDs with underscores are supported
+CUSTOM_MY_PROVIDER_URL="https://api.example.com"
+CUSTOM_MY_PROVIDER_MODEL="gpt-4"
+CUSTOM_OPEN_ROUTER_MAX_TOKENS="8k"
 
 # Mix options
 MIX=true                # Enable mix mode

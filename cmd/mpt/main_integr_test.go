@@ -935,8 +935,8 @@ func TestIntegrationMultipleCustomProviders(t *testing.T) {
 	os.Args = []string{
 		"test",
 		"--prompt", "test prompt",
-		"--customs", fmt.Sprintf("provider1:url=%s,model=model1,api-key=key1", ts1.URL),
-		"--customs", fmt.Sprintf("provider2:url=%s,model=model2,api-key=key2", ts2.URL),
+		"--customs", fmt.Sprintf("provider1:url=%s,model=model1,api-key=key1,enabled=true", ts1.URL),
+		"--customs", fmt.Sprintf("provider2:url=%s,model=model2,api-key=key2,enabled=true", ts2.URL),
 	}
 
 	opts := &options{
@@ -1027,11 +1027,13 @@ func TestIntegrationCustomProvidersEnvironmentVariables(t *testing.T) {
 	os.Setenv("CUSTOM_ENVPROV_MODEL", "env-model")
 	os.Setenv("CUSTOM_ENVPROV_API_KEY", "env-secret-key")
 	os.Setenv("CUSTOM_ENVPROV_NAME", "Environment Provider")
+	os.Setenv("CUSTOM_ENVPROV_ENABLED", "true")
 	defer func() {
 		os.Unsetenv("CUSTOM_ENVPROV_URL")
 		os.Unsetenv("CUSTOM_ENVPROV_MODEL")
 		os.Unsetenv("CUSTOM_ENVPROV_API_KEY")
 		os.Unsetenv("CUSTOM_ENVPROV_NAME")
+		os.Unsetenv("CUSTOM_ENVPROV_ENABLED")
 	}()
 
 	opts := &options{
@@ -1102,9 +1104,11 @@ func TestIntegrationCustomProvidersPrecedence(t *testing.T) {
 	// set environment variable (lowest precedence)
 	os.Setenv("CUSTOM_TESTPROV_URL", ts.URL)
 	os.Setenv("CUSTOM_TESTPROV_MODEL", "env-model")
+	os.Setenv("CUSTOM_TESTPROV_ENABLED", "true")
 	defer func() {
 		os.Unsetenv("CUSTOM_TESTPROV_URL")
 		os.Unsetenv("CUSTOM_TESTPROV_MODEL")
+		os.Unsetenv("CUSTOM_TESTPROV_ENABLED")
 	}()
 
 	// save original args and restore them after the test
@@ -1115,7 +1119,7 @@ func TestIntegrationCustomProvidersPrecedence(t *testing.T) {
 	os.Args = []string{
 		"test",
 		"--prompt", "test prompt",
-		"--customs", fmt.Sprintf("testprov:url=%s,model=cli-model", ts.URL),
+		"--customs", fmt.Sprintf("testprov:url=%s,model=cli-model,enabled=true", ts.URL),
 	}
 
 	opts := &options{

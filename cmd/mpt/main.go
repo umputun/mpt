@@ -67,7 +67,7 @@ type openAIOpts struct {
 	APIKey      string    `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
 	Model       string    `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4.1"`
 	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/kb/m/mb/g/gb suffixes)" default:"16384"`
-	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.1"`
+	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-2, higher is more random)" default:"0.1"`
 }
 
 // anthropicOpts defines options for Anthropic provider
@@ -100,7 +100,7 @@ type customOpenAIProvider struct {
 	APIKey      string    `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
 	Model       string    `long:"model" env:"MODEL" description:"Model to use for the custom provider"`
 	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate (default: 16384, supports k/kb/m/mb/g/gb suffixes)" default:"16384"`
-	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
+	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-2, higher is more random)" default:"0.7"`
 }
 
 // gitOpts defines options for Git integration
@@ -140,9 +140,9 @@ func createCustomManager(opts *options) *config.CustomProviderManager {
 		configCustoms[id] = spec.CustomSpec
 	}
 
-	// convert legacy custom to config.CustomSpec pointer if any field is set
+	// convert legacy custom to config.CustomSpec pointer if enabled
 	var legacyCustom *config.CustomSpec
-	if opts.Custom.Enabled || opts.Custom.URL != "" || opts.Custom.APIKey != "" || opts.Custom.Model != "" {
+	if opts.Custom.Enabled {
 		legacyCustom = &config.CustomSpec{
 			Name:        opts.Custom.Name,
 			URL:         opts.Custom.URL,

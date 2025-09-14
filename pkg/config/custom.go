@@ -171,14 +171,13 @@ func (m *CustomProviderManager) buildEffectiveCustomsMap() (customs map[string]C
 	}
 
 	// 2. add legacy custom if configured (middle precedence)
-	if m.legacyCustom != nil && (m.legacyCustom.Enabled || m.legacyCustom.URL != "") {
+	if m.legacyCustom != nil && m.legacyCustom.Enabled {
 		id := "custom"
 		if m.legacyCustom.Name != "" {
 			id = normalizeProviderID(m.legacyCustom.Name)
 		}
 
 		spec := *m.legacyCustom
-		spec.Enabled = true // force enabled if URL is set
 		customs[id] = spec
 		lgr.Printf("[DEBUG] converted legacy --custom.* to customs[%s]", id)
 	}
@@ -230,15 +229,50 @@ func (m *CustomProviderManager) parseCustomProvidersFromEnv() (providers map[str
 			continue
 		}
 
-		// parse ID and field from CUSTOM_<ID>_<FIELD>
+		// parse ID and field from CUSTOM_<ID>_<FIELD> using suffix matching
 		remaining := strings.TrimPrefix(key, "CUSTOM_")
-		parts = strings.SplitN(remaining, "_", 2)
-		if len(parts) != 2 {
+
+		// known field suffixes (all use underscores to match env var convention)
+		knownFields := []string{
+			"_max_tokens",
+			"_api_key",
+			"_temperature",
+			"_enabled",
+			"_model",
+			"_name",
+			"_url",
+		}
+
+		var id, field string
+		found := false
+		lowerRemaining := strings.ToLower(remaining)
+
+		// try to match known field suffixes
+		for _, suffix := range knownFields {
+			if !strings.HasSuffix(lowerRemaining, suffix) {
+				continue
+			}
+			// extract ID (everything before the suffix)
+			idEnd := len(remaining) - len(suffix)
+			if idEnd <= 0 {
+				warnings = append(warnings, fmt.Sprintf("skipping env var %s: empty provider ID", key))
+				found = true
+				break
+			}
+			id = normalizeProviderID(remaining[:idEnd])
+			field = strings.TrimPrefix(suffix, "_")
+			found = true
+			break
+		}
+
+		if !found {
+			warnings = append(warnings, fmt.Sprintf("skipping env var %s: unrecognized field name (valid fields: url, api_key, model, name, max_tokens, temperature, enabled)", key))
 			continue
 		}
 
-		id := normalizeProviderID(parts[0])
-		field := strings.ToLower(parts[1])
+		if id == "" {
+			continue // already warned above
+		}
 
 		// validate ID
 		if err := validateProviderID(id); err != nil {
@@ -258,15 +292,15 @@ func (m *CustomProviderManager) parseCustomProvidersFromEnv() (providers map[str
 			Name:        id, // default name to ID
 			Temperature: -1, // -1 means unset, will use provider default
 			MaxTokens:   defaultCustomMaxTokens,
-			Enabled:     true,
+			Enabled:     false, // disabled by default, matches standard providers
 		}
 
 		for field, value := range fields {
 			switch field {
-			case "url", "base_url":
+			case "url":
 				spec.URL = value
 
-			case "api_key", "apikey":
+			case "api_key":
 				spec.APIKey = value
 
 			case "model":
@@ -275,7 +309,7 @@ func (m *CustomProviderManager) parseCustomProvidersFromEnv() (providers map[str
 			case "name":
 				spec.Name = value
 
-			case "max_tokens", "maxtokens":
+			case "max_tokens":
 				if tokens, err := ParseSize(value); err == nil {
 					// safe downcast with overflow check
 					if tokens > math.MaxInt32 {
@@ -289,7 +323,7 @@ func (m *CustomProviderManager) parseCustomProvidersFromEnv() (providers map[str
 						fmt.Sprintf("custom[%s]: invalid max_tokens '%s': %v", id, value, err))
 				}
 
-			case "temperature", "temp":
+			case "temperature":
 				if temp, err := strconv.ParseFloat(value, 32); err == nil {
 					if temp >= 0 && temp <= 2 {
 						spec.Temperature = float32(temp)
@@ -325,7 +359,7 @@ func ParseCustomSpec(value string) (CustomSpec, error) {
 		// set defaults (-1 means unset for temperature to allow explicit 0)
 		Temperature: -1, // will be set to default by provider if not specified
 		MaxTokens:   defaultCustomMaxTokens,
-		Enabled:     true, // enabled by default; override with enabled=false
+		Enabled:     false, // disabled by default, matches standard providers
 	}
 
 	// parse comma-separated key=value pairs
@@ -340,12 +374,10 @@ func ParseCustomSpec(value string) (CustomSpec, error) {
 		val := strings.TrimSpace(kv[1])
 
 		switch key {
-		// url aliases
-		case "url", "base-url", "base_url", "baseurl":
+		case "url":
 			spec.URL = val
 
-		// api key aliases
-		case "api-key", "api_key", "apikey":
+		case "api-key":
 			spec.APIKey = val
 
 		case "model":
@@ -354,8 +386,7 @@ func ParseCustomSpec(value string) (CustomSpec, error) {
 		case "name":
 			spec.Name = val
 
-		// max tokens aliases
-		case "max-tokens", "max_tokens", "maxtokens":
+		case "max-tokens":
 			tokens, err := ParseSize(val)
 			if err != nil {
 				return spec, fmt.Errorf("invalid max-tokens '%s': %w", val, err)
@@ -366,8 +397,7 @@ func ParseCustomSpec(value string) (CustomSpec, error) {
 			}
 			spec.MaxTokens = int(tokens)
 
-		// temperature aliases
-		case "temperature", "temp":
+		case "temperature":
 			temp, err := strconv.ParseFloat(val, 32)
 			if err != nil {
 				return spec, fmt.Errorf("invalid temperature '%s': %w", val, err)
