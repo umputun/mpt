@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -145,14 +146,14 @@ func (m *CustomProviderManager) CollectSecrets() []string {
 func (m *CustomProviderManager) AnyEnabled() bool {
 	// build the effective customs map with all precedence rules applied
 	customs, _ := m.buildEffectiveCustomsMap()
-	
+
 	// check if any provider is actually enabled
 	for _, spec := range customs {
 		if spec.Enabled {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -275,8 +276,14 @@ func (m *CustomProviderManager) parseCustomProvidersFromEnv() (providers map[str
 				spec.Name = value
 
 			case "max_tokens", "maxtokens":
-				if tokens, err := parseSizeValue(value); err == nil {
-					spec.MaxTokens = tokens
+				if tokens, err := ParseSize(value); err == nil {
+					// safe downcast with overflow check
+					if tokens > math.MaxInt32 {
+						warnings = append(warnings,
+							fmt.Sprintf("custom[%s]: max_tokens value too large", id))
+					} else {
+						spec.MaxTokens = int(tokens)
+					}
 				} else {
 					warnings = append(warnings,
 						fmt.Sprintf("custom[%s]: invalid max_tokens '%s': %v", id, value, err))
@@ -349,11 +356,15 @@ func ParseCustomSpec(value string) (CustomSpec, error) {
 
 		// max tokens aliases
 		case "max-tokens", "max_tokens", "maxtokens":
-			tokens, err := parseSizeValue(val)
+			tokens, err := ParseSize(val)
 			if err != nil {
 				return spec, fmt.Errorf("invalid max-tokens '%s': %w", val, err)
 			}
-			spec.MaxTokens = tokens
+			// safe downcast with overflow check
+			if tokens > math.MaxInt32 {
+				return spec, fmt.Errorf("max-tokens value too large")
+			}
+			spec.MaxTokens = int(tokens)
 
 		// temperature aliases
 		case "temperature", "temp":
@@ -380,48 +391,6 @@ func ParseCustomSpec(value string) (CustomSpec, error) {
 	}
 
 	return spec, nil
-}
-
-// parseSizeValue parses size values like "1024", "1k", "1K", "1m", "1M", "1g", "1G"
-func parseSizeValue(s string) (int, error) {
-	s = strings.TrimSpace(strings.ToLower(s))
-	if s == "" {
-		return 0, fmt.Errorf("empty size value")
-	}
-
-	// check for suffix
-	multiplier := 1
-	if len(s) > 1 {
-		suffix := s[len(s)-1]
-		switch suffix {
-		case 'k':
-			multiplier = 1024
-			s = s[:len(s)-1]
-		case 'm':
-			multiplier = 1024 * 1024
-			s = s[:len(s)-1]
-		case 'g':
-			multiplier = 1024 * 1024 * 1024
-			s = s[:len(s)-1]
-		}
-	}
-
-	// parse the numeric part
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		return 0, fmt.Errorf("invalid numeric value: %w", err)
-	}
-
-	if n < 0 {
-		return 0, fmt.Errorf("size cannot be negative")
-	}
-
-	result := n * multiplier
-	if result < 0 {
-		return 0, fmt.Errorf("size value overflow")
-	}
-
-	return result, nil
 }
 
 // validateProviderID ensures ID contains only [a-z0-9-_]

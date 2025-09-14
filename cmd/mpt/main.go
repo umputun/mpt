@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"time"
 
@@ -43,7 +42,7 @@ type options struct {
 	Files       []string      `short:"f" long:"file" description:"files or glob patterns to include in the prompt context"`
 	Excludes    []string      `short:"x" long:"exclude" description:"patterns to exclude from file matching (e.g., 'vendor/**', '**/mocks/*')"`
 	Timeout     time.Duration `short:"t" long:"timeout" default:"60s" description:"timeout duration"`
-	MaxFileSize SizeValue     `long:"max-file-size" env:"MAX_FILE_SIZE" default:"65536" description:"maximum size of individual files to process in bytes (default: 64KB, supports k/m suffixes)"`
+	MaxFileSize SizeValue     `long:"max-file-size" env:"MAX_FILE_SIZE" default:"65536" description:"maximum size of individual files to process in bytes (default: 64KB, supports k/kb/m/mb/g/gb suffixes)"`
 	Force       bool          `long:"force" description:"force loading files by skipping all exclusion patterns (including .gitignore and common patterns)"`
 
 	// mix options
@@ -67,7 +66,7 @@ type openAIOpts struct {
 	Enabled     bool      `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
 	APIKey      string    `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
 	Model       string    `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4.1"`
-	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
+	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/kb/m/mb/g/gb suffixes)" default:"16384"`
 	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.1"`
 }
 
@@ -100,7 +99,7 @@ type customOpenAIProvider struct {
 	URL         string    `long:"url" env:"URL" description:"Base URL for the custom provider API"`
 	APIKey      string    `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
 	Model       string    `long:"model" env:"MODEL" description:"Model to use for the custom provider"`
-	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
+	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate (default: 16384, supports k/kb/m/mb/g/gb suffixes)" default:"16384"`
 	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-1, higher is more random)" default:"0.7"`
 }
 
@@ -701,34 +700,15 @@ func outputJSON(result *ExecutionResult) error {
 	return nil
 }
 
-// SizeValue is a custom type that supports human-readable size values with k/m suffixes
+// SizeValue is a custom type that supports human-readable size values with k/kb/m/mb/g/gb suffixes
 type SizeValue int64
 
 // UnmarshalFlag implements the flags.Unmarshaler interface for human-readable sizes
 func (v *SizeValue) UnmarshalFlag(value string) error {
-	value = strings.TrimSpace(strings.ToLower(value))
-
-	var multiplier int64 = 1
-	switch {
-	case strings.HasSuffix(value, "kb"):
-		multiplier = 1024
-		value = value[:len(value)-2]
-	case strings.HasSuffix(value, "k"):
-		multiplier = 1024
-		value = value[:len(value)-1]
-	case strings.HasSuffix(value, "mb"):
-		multiplier = 1024 * 1024
-		value = value[:len(value)-2]
-	case strings.HasSuffix(value, "m"):
-		multiplier = 1024 * 1024
-		value = value[:len(value)-1]
-	}
-
-	val, err := strconv.ParseInt(value, 10, 64)
+	size, err := config.ParseSize(value)
 	if err != nil {
 		return fmt.Errorf("invalid size value %q: %w", value, err)
 	}
-
-	*v = SizeValue(val * multiplier)
+	*v = SizeValue(size)
 	return nil
 }

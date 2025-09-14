@@ -617,7 +617,7 @@ func TestCustomProviderManager_AnyEnabled(t *testing.T) {
 		manager := NewCustomProviderManager(customs, nil)
 		assert.True(t, manager.AnyEnabled())
 	})
-	
+
 	t.Run("CLI customs configured but all disabled", func(t *testing.T) {
 		clearCustomEnv()
 		defer clearCustomEnv()
@@ -629,7 +629,7 @@ func TestCustomProviderManager_AnyEnabled(t *testing.T) {
 				Enabled: false,
 			},
 			"test2": {
-				URL:     "http://test2.com", 
+				URL:     "http://test2.com",
 				Model:   "model2",
 				Enabled: false,
 			},
@@ -638,7 +638,7 @@ func TestCustomProviderManager_AnyEnabled(t *testing.T) {
 		manager := NewCustomProviderManager(customs, nil)
 		assert.False(t, manager.AnyEnabled())
 	})
-	
+
 	t.Run("mixed enabled and disabled customs", func(t *testing.T) {
 		clearCustomEnv()
 		defer clearCustomEnv()
@@ -651,7 +651,7 @@ func TestCustomProviderManager_AnyEnabled(t *testing.T) {
 			},
 			"enabled": {
 				URL:     "http://enabled.com",
-				Model:   "model2", 
+				Model:   "model2",
 				Enabled: true,
 			},
 		}
@@ -694,7 +694,7 @@ func TestParseSizeValue(t *testing.T) {
 		// basic numbers
 		{name: "simple number", input: "100", want: 100},
 		{name: "zero", input: "0", want: 0},
-		
+
 		// with suffixes
 		{name: "kilobytes", input: "1k", want: 1024},
 		{name: "kilobytes uppercase", input: "1K", want: 1024},
@@ -702,7 +702,7 @@ func TestParseSizeValue(t *testing.T) {
 		{name: "megabytes uppercase", input: "2M", want: 2 * 1024 * 1024},
 		{name: "gigabytes", input: "1g", want: 1024 * 1024 * 1024},
 		{name: "gigabytes uppercase", input: "1G", want: 1024 * 1024 * 1024},
-		
+
 		// edge cases
 		{name: "empty string", input: "", wantErr: true},
 		{name: "negative number", input: "-100", wantErr: true},
@@ -711,12 +711,12 @@ func TestParseSizeValue(t *testing.T) {
 		{name: "whitespace", input: "  100  ", want: 100},
 		{name: "whitespace with suffix", input: "  2k  ", want: 2048},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// test through ParseCustomSpec since parseSizeValue is unexported
 			spec, err := ParseCustomSpec("url=http://test.com,model=test,max-tokens=" + tt.input)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

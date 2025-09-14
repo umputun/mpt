@@ -174,7 +174,7 @@ You can provide a prompt in the following ways:
 --openai.api-key      OpenAI API key (or OPENAI_API_KEY env var)
 --openai.model        OpenAI model to use (default: gpt-4.1)
 --openai.enabled      Enable OpenAI provider
---openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
+--openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum, supports k/kb/m/mb/g/gb suffixes)
 --openai.temperature  Controls randomness (0-1, higher is more random) (default: 0.1)
 ```
 
@@ -184,7 +184,7 @@ You can provide a prompt in the following ways:
 --anthropic.api-key   Anthropic API key (or ANTHROPIC_API_KEY env var)
 --anthropic.model     Anthropic model to use (default: claude-3-7-sonnet-20250219)
 --anthropic.enabled   Enable Anthropic provider
---anthropic.max-tokens Maximum number of tokens to generate (default: 16384, 0 for model maximum)
+--anthropic.max-tokens Maximum number of tokens to generate (default: 16384, 0 for model maximum, supports k/kb/m/mb/g/gb suffixes)
 ```
 
 #### Google (Gemini)
@@ -193,7 +193,7 @@ You can provide a prompt in the following ways:
 --google.api-key      Google API key (or GOOGLE_API_KEY env var)
 --google.model        Google model to use (default: gemini-2.5-pro-preview-06-05)
 --google.enabled      Enable Google provider
---google.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
+--google.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum, supports k/kb/m/mb/g/gb suffixes)
 ```
 
 #### Custom OpenAI-Compatible Providers
@@ -213,7 +213,7 @@ Available keys:
 - `model` - Model to use (required)
 - `api-key` - API key for authentication
 - `name` - Display name for the provider (defaults to ID)
-- `max-tokens` - Maximum tokens to generate (default: 16384, 0 = use model maximum)
+- `max-tokens` - Maximum tokens to generate (default: 16384, 0 = use model maximum, supports k/kb/m/mb/g/gb suffixes)
 - `temperature` - Controls randomness 0-2 (default: 0.7, 0 = deterministic)
 - `enabled` - Enable/disable provider (default: true)
 
@@ -245,7 +245,7 @@ For backward compatibility, you can still configure a single custom provider usi
 --custom.api-key      API key for the custom provider (if needed)
 --custom.model        Model to use (required)
 --custom.enabled      Enable this custom provider (default: true)
---custom.max-tokens   Maximum number of tokens to generate (default: 16384, 0 = use model maximum)
+--custom.max-tokens   Maximum number of tokens to generate (default: 16384, 0 = use model maximum, supports k/kb/m/mb/g/gb suffixes)
 --custom.temperature  Controls randomness (0-2, higher is more random) (default: 0.7, 0 = deterministic)
 ```
 
@@ -283,7 +283,7 @@ This allows you to set defaults in environment variables and override them via c
 --git.diff            Include git diff (uncommitted changes) in the prompt context
 --git.branch          Include git diff between given branch and main/master (for PR review)
 -t, --timeout         Timeout duration (e.g., 60s, 2m) (default: 60s)
---max-file-size       Maximum size of individual files to process in bytes (default: 64KB)
+--max-file-size       Maximum size of individual files to process (default: 64KB, supports k/kb/m/mb/g/gb suffixes)
 --mix                 Enable mix mode to combine results from all providers
 --mix.provider        Provider to use for mixing results (default: "openai")
 --mix.prompt          Prompt used for mixing results (default: "merge results from all providers")
