@@ -1,6 +1,6 @@
 module github.com/umputun/mpt
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.11.0
@@ -10,7 +10,7 @@ require (
 	github.com/google/generative-ai-go v0.20.1
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/mark3labs/mcp-go v0.39.1
-	github.com/sashabaranov/go-openai v1.41.1
+	github.com/sashabaranov/go-openai v1.41.2
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/api v0.248.0
 )

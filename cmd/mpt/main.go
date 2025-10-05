@@ -65,7 +65,7 @@ type options struct {
 type openAIOpts struct {
 	Enabled     bool      `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
 	APIKey      string    `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
-	Model       string    `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-4.1"`
+	Model       string    `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-5"`
 	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/kb/m/mb/g/gb suffixes)" default:"16384"`
 	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-2, higher is more random)" default:"0.1"`
 }
@@ -74,7 +74,7 @@ type openAIOpts struct {
 type anthropicOpts struct {
 	Enabled   bool      `long:"enabled" env:"ENABLED" description:"enable Anthropic provider"`
 	APIKey    string    `long:"api-key" env:"API_KEY" description:"Anthropic API key"`
-	Model     string    `long:"model" env:"MODEL" description:"Anthropic model" default:"claude-sonnet-4-20250514"`
+	Model     string    `long:"model" env:"MODEL" description:"Anthropic model" default:"claude-sonnet-4-5"`
 	MaxTokens SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/m suffixes)" default:"16384"`
 }
 

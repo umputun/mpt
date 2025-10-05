@@ -250,8 +250,8 @@ When running as MCP server (`--mcp.enabled`):
 ## Default Configuration
 
 ### Default Models
-- OpenAI: `gpt-4.1` 
-- Anthropic: `claude-3-7-sonnet-20250219`
+- OpenAI: `gpt-5`
+- Anthropic: `claude-sonnet-4-5`
 - Google: `gemini-2.5-pro-exp-03-25`
 - Custom: Must be specified via `--custom.<id>.model`
 

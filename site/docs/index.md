@@ -172,7 +172,7 @@ You can provide a prompt in the following ways:
 
 ```
 --openai.api-key      OpenAI API key (or OPENAI_API_KEY env var)
---openai.model        OpenAI model to use (default: gpt-4.1)
+--openai.model        OpenAI model to use (default: gpt-5-codex)
 --openai.enabled      Enable OpenAI provider
 --openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 --openai.temperature  Controls randomness (0-1, higher is more random) (default: 0.7)
@@ -182,7 +182,7 @@ You can provide a prompt in the following ways:
 
 ```
 --anthropic.api-key   Anthropic API key (or ANTHROPIC_API_KEY env var)
---anthropic.model     Anthropic model to use (default: claude-3-7-sonnet-20250219)
+--anthropic.model     Anthropic model to use (default: claude-sonnet-4-5)
 --anthropic.enabled   Enable Anthropic provider
 --anthropic.max-tokens Maximum number of tokens to generate (default: 16384, 0 for model maximum)
 ```
@@ -653,7 +653,7 @@ This produces JSON output like:
       "text": "Quantum computing is a type of computing that..."
     },
     {
-      "provider": "Anthropic (claude-3-7-sonnet)",
+      "provider": "Anthropic (claude-sonnet-4-5)",
       "text": "Quantum computing leverages the principles of quantum mechanics..."
     }
   ],
@@ -675,7 +675,7 @@ mpt --openai.enabled --anthropic.enabled --mix --prompt "Explain quantum computi
       "text": "Quantum computing is a type of computing that..."
     },
     {
-      "provider": "Anthropic (claude-3-7-sonnet)",
+      "provider": "Anthropic (claude-sonnet-4-5)",
       "text": "Quantum computing leverages the principles of quantum mechanics..."
     }
   ],
@@ -802,7 +802,7 @@ For a more specific configuration with selected providers and settings:
       "--openai.enabled",
       "--openai.model=gpt-4o",
       "--anthropic.enabled",
-      "--anthropic.model=claude-3-7-sonnet-20250219",
+      "--anthropic.model=claude-sonnet-4-5",
       "--google.enabled",
       "--google.model=gemini-2.5-pro-exp-03-25"
     ],
@@ -877,13 +877,13 @@ You can use environment variables instead of command-line flags:
 
 ```
 OPENAI_API_KEY="your-openai-key"
-OPENAI_MODEL="gpt-4.1"
+OPENAI_MODEL="gpt-5"
 OPENAI_ENABLED=true
 OPENAI_MAX_TOKENS=16384
 OPENAI_TEMPERATURE=0.7
 
 ANTHROPIC_API_KEY="your-anthropic-key"
-ANTHROPIC_MODEL="claude-3-7-sonnet-20250219"
+ANTHROPIC_MODEL="claude-sonnet-4-5"
 ANTHROPIC_ENABLED=true
 ANTHROPIC_MAX_TOKENS=16384
 
