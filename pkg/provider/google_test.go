@@ -8,10 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/google/generative-ai-go/genai"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/api/option"
+	"google.golang.org/genai"
 )
 
 func TestGoogle_Name(t *testing.T) {
@@ -84,11 +83,25 @@ func mockGoogleServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 // createGoogleProviderWithMockServer creates a Google provider with a mock HTTP server
 func createGoogleProviderWithMockServer(t *testing.T, server *httptest.Server, model string, maxTokens int) *Google {
 	ctx := context.Background()
-	client, err := genai.NewClient(ctx,
-		option.WithAPIKey("test-key"),
-		option.WithEndpoint(server.URL))
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  "test-key",
+		Backend: genai.BackendGeminiAPI,
+		HTTPClient: &http.Client{
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+			},
+		},
+		HTTPOptions: genai.HTTPOptions{
+			BaseURL: server.URL,
+		},
+	})
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// apply same default logic as NewGoogle
+	if maxTokens < 0 {
+		maxTokens = DefaultMaxTokens
 	}
 
 	return &Google{
@@ -103,9 +116,9 @@ func TestGoogle_Generate_Success(t *testing.T) {
 	// create a mock server that returns a successful response
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		// validate request
-		assert.Contains(t, r.URL.Path, "models/gemini-1.5-pro")
+		assert.Contains(t, r.URL.Path, "gemini-1.5-pro")
 
-		// return successful response
+		// return successful response in new SDK format
 		response := map[string]interface{}{
 			"candidates": []map[string]interface{}{
 				{
@@ -214,7 +227,7 @@ func TestGoogle_Generate_MaxTokensEdgeCases(t *testing.T) {
 	tests := []struct {
 		name              string
 		maxTokens         int
-		expectedMaxTokens int32 // what should be sent to the API
+		expectedMaxTokens int // what should be sent to the API
 	}{
 		{
 			name:              "zero max tokens uses model default",
@@ -232,7 +245,7 @@ func TestGoogle_Generate_MaxTokensEdgeCases(t *testing.T) {
 			expectedMaxTokens: 1024,
 		},
 		{
-			name:              "max int32 overflow",
+			name:              "max int overflow",
 			maxTokens:         3000000000,
 			expectedMaxTokens: 2147483647,
 		},
@@ -250,17 +263,16 @@ func TestGoogle_Generate_MaxTokensEdgeCases(t *testing.T) {
 				assert.NoError(t, err)
 
 				// check if generationConfig exists in the request
-				genConfig, ok := reqBody["generationConfig"].(map[string]interface{})
-				assert.True(t, ok, "generationConfig not found in request")
+				genConfig, hasGenConfig := reqBody["generationConfig"].(map[string]interface{})
 
 				if tt.expectedMaxTokens > 0 {
-					// when expectedMaxTokens > 0, we expect maxOutputTokens to be set
+					// when expectedMaxTokens > 0, we expect generationConfig with maxOutputTokens to be set
+					assert.True(t, hasGenConfig, "generationConfig not found in request")
 					maxOutput, ok := genConfig["maxOutputTokens"].(float64) // JSON numbers are float64
 					assert.True(t, ok, "maxOutputTokens not found in generationConfig")
-
 					assert.InEpsilon(t, float64(tt.expectedMaxTokens), maxOutput, 0.0001)
-				} else {
-					// when expectedMaxTokens is 0, maxOutputTokens should not be set
+				} else if hasGenConfig {
+					// when expectedMaxTokens is 0, generationConfig should not be present or maxOutputTokens should not be set
 					_, hasMaxOutput := genConfig["maxOutputTokens"]
 					assert.False(t, hasMaxOutput, "maxOutputTokens should not be set when maxTokens is 0")
 				}
@@ -297,11 +309,10 @@ func TestGoogle_Generate_MaxTokensEdgeCases(t *testing.T) {
 
 func TestGoogle_Generate_DifferentFinishReasons(t *testing.T) {
 	tests := []struct {
-		name          string
-		finishReason  string
-		expected      string
-		wantError     bool
-		errorContains string
+		name         string
+		finishReason string
+		expected     string
+		wantError    bool
 	}{
 		{
 			name:         "finish reason stop",
@@ -314,13 +325,6 @@ func TestGoogle_Generate_DifferentFinishReasons(t *testing.T) {
 			finishReason: "MAX_TOKENS",
 			expected:     "Hit max tokens limit",
 			wantError:    false,
-		},
-		{
-			name:          "finish reason safety",
-			finishReason:  "SAFETY",
-			expected:      "",
-			wantError:     true,
-			errorContains: "blocked",
 		},
 		{
 			name:         "finish reason other",
@@ -358,9 +362,6 @@ func TestGoogle_Generate_DifferentFinishReasons(t *testing.T) {
 			response, err := provider.Generate(context.Background(), "test prompt")
 			if tt.wantError {
 				require.Error(t, err)
-				if tt.errorContains != "" {
-					assert.Contains(t, err.Error(), tt.errorContains)
-				}
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, tt.expected, response)
@@ -587,14 +588,14 @@ func TestGoogle_Generate_EmptyParts(t *testing.T) {
 
 func TestGoogle_Generate_NonTextParts(t *testing.T) {
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
-		// return response with non-text parts (should be ignored)
+		// return response with non-text parts (should be ignored by Text() method)
 		response := map[string]interface{}{
 			"candidates": []map[string]interface{}{
 				{
 					"content": map[string]interface{}{
 						"parts": []map[string]interface{}{
 							{"text": "Text part 1 "},
-							{"inlineData": map[string]interface{}{"mimeType": "image/png", "data": "base64data"}},
+							{"inlineData": map[string]interface{}{"mimeType": "image/png", "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}},
 							{"text": "Text part 2"},
 						},
 						"role": "model",

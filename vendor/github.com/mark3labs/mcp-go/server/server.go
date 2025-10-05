@@ -124,14 +124,7 @@ func (e *requestError) ToJSONRPCError() mcp.JSONRPCError {
 	return mcp.JSONRPCError{
 		JSONRPC: mcp.JSONRPC_VERSION,
 		ID:      mcp.NewRequestId(e.id),
-		Error: struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-			Data    any    `json:"data,omitempty"`
-		}{
-			Code:    e.code,
-			Message: e.err.Error(),
-		},
+		Error:   mcp.NewJSONRPCErrorDetails(e.code, e.err.Error(), nil),
 	}
 }
 
@@ -147,9 +140,10 @@ type NotificationHandlerFunc func(ctx context.Context, notification mcp.JSONRPCN
 type MCPServer struct {
 	// Separate mutexes for different resource types
 	resourcesMu            sync.RWMutex
+	resourceMiddlewareMu   sync.RWMutex
 	promptsMu              sync.RWMutex
 	toolsMu                sync.RWMutex
-	middlewareMu           sync.RWMutex
+	toolMiddlewareMu       sync.RWMutex
 	notificationHandlersMu sync.RWMutex
 	capabilitiesMu         sync.RWMutex
 	toolFiltersMu          sync.RWMutex
@@ -181,11 +175,12 @@ func WithPaginationLimit(limit int) ServerOption {
 
 // serverCapabilities defines the supported features of the MCP server
 type serverCapabilities struct {
-	tools     *toolCapabilities
-	resources *resourceCapabilities
-	prompts   *promptCapabilities
-	logging   *bool
-	sampling  *bool
+	tools       *toolCapabilities
+	resources   *resourceCapabilities
+	prompts     *promptCapabilities
+	logging     *bool
+	sampling    *bool
+	elicitation *bool
 }
 
 // resourceCapabilities defines the supported resource-related features
@@ -221,9 +216,9 @@ func WithToolHandlerMiddleware(
 	toolHandlerMiddleware ToolHandlerMiddleware,
 ) ServerOption {
 	return func(s *MCPServer) {
-		s.middlewareMu.Lock()
+		s.toolMiddlewareMu.Lock()
 		s.toolHandlerMiddlewares = append(s.toolHandlerMiddlewares, toolHandlerMiddleware)
-		s.middlewareMu.Unlock()
+		s.toolMiddlewareMu.Unlock()
 	}
 }
 
@@ -233,9 +228,9 @@ func WithResourceHandlerMiddleware(
 	resourceHandlerMiddleware ResourceHandlerMiddleware,
 ) ServerOption {
 	return func(s *MCPServer) {
-		s.middlewareMu.Lock()
+		s.resourceMiddlewareMu.Lock()
 		s.resourceHandlerMiddlewares = append(s.resourceHandlerMiddlewares, resourceHandlerMiddleware)
-		s.middlewareMu.Unlock()
+		s.resourceMiddlewareMu.Unlock()
 	}
 }
 
@@ -319,6 +314,13 @@ func WithToolCapabilities(listChanged bool) ServerOption {
 func WithLogging() ServerOption {
 	return func(s *MCPServer) {
 		s.capabilities.logging = mcp.ToBoolPtr(true)
+	}
+}
+
+// WithElicitation enables elicitation capabilities for the server
+func WithElicitation() ServerOption {
+	return func(s *MCPServer) {
+		s.capabilities.elicitation = mcp.ToBoolPtr(true)
 	}
 }
 
@@ -591,6 +593,30 @@ func (s *MCPServer) SetTools(tools ...ServerTool) {
 	s.AddTools(tools...)
 }
 
+// GetTool retrieves the specified tool
+func (s *MCPServer) GetTool(toolName string) *ServerTool {
+	s.toolsMu.RLock()
+	defer s.toolsMu.RUnlock()
+	if tool, ok := s.tools[toolName]; ok {
+		return &tool
+	}
+	return nil
+}
+
+func (s *MCPServer) ListTools() map[string]*ServerTool {
+	s.toolsMu.RLock()
+	defer s.toolsMu.RUnlock()
+	if len(s.tools) == 0 {
+		return nil
+	}
+	// Create a copy to prevent external modification
+	toolsCopy := make(map[string]*ServerTool, len(s.tools))
+	for name, tool := range s.tools {
+		toolsCopy[name] = &tool
+	}
+	return toolsCopy
+}
+
 // DeleteTools removes tools from the server
 func (s *MCPServer) DeleteTools(names ...string) {
 	s.toolsMu.Lock()
@@ -662,6 +688,10 @@ func (s *MCPServer) handleInitialize(
 
 	if s.capabilities.sampling != nil && *s.capabilities.sampling {
 		capabilities.Sampling = &struct{}{}
+	}
+
+	if s.capabilities.elicitation != nil && *s.capabilities.elicitation {
+		capabilities.Elicitation = &struct{}{}
 	}
 
 	result := mcp.InitializeResult{
@@ -876,13 +906,13 @@ func (s *MCPServer) handleReadResource(
 		s.resourcesMu.RUnlock()
 
 		finalHandler := handler
-		s.middlewareMu.RLock()
+		s.resourceMiddlewareMu.RLock()
 		mw := s.resourceHandlerMiddlewares
 		// Apply middlewares in reverse order
 		for i := len(mw) - 1; i >= 0; i-- {
 			finalHandler = mw[i](finalHandler)
 		}
-		s.middlewareMu.RUnlock()
+		s.resourceMiddlewareMu.RUnlock()
 
 		contents, err := finalHandler(ctx, request)
 		if err != nil {
@@ -1138,14 +1168,14 @@ func (s *MCPServer) handleToolCall(
 
 	finalHandler := tool.Handler
 
-	s.middlewareMu.RLock()
+	s.toolMiddlewareMu.RLock()
 	mw := s.toolHandlerMiddlewares
 
 	// Apply middlewares in reverse order
 	for i := len(mw) - 1; i >= 0; i-- {
 		finalHandler = mw[i](finalHandler)
 	}
-	s.middlewareMu.RUnlock()
+	s.toolMiddlewareMu.RUnlock()
 
 	result, err := finalHandler(ctx, request)
 	if err != nil {
@@ -1174,11 +1204,7 @@ func (s *MCPServer) handleNotification(
 }
 
 func createResponse(id any, result any) mcp.JSONRPCMessage {
-	return mcp.JSONRPCResponse{
-		JSONRPC: mcp.JSONRPC_VERSION,
-		ID:      mcp.NewRequestId(id),
-		Result:  result,
-	}
+	return mcp.NewJSONRPCResultResponse(mcp.NewRequestId(id), result)
 }
 
 func createErrorResponse(
@@ -1189,13 +1215,6 @@ func createErrorResponse(
 	return mcp.JSONRPCError{
 		JSONRPC: mcp.JSONRPC_VERSION,
 		ID:      mcp.NewRequestId(id),
-		Error: struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-			Data    any    `json:"data,omitempty"`
-		}{
-			Code:    code,
-			Message: message,
-		},
+		Error:   mcp.NewJSONRPCErrorDetails(code, message, nil),
 	}
 }

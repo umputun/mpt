@@ -5,8 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/generative-ai-go/genai"
-	"google.golang.org/api/option"
+	"google.golang.org/genai"
 )
 
 // Google implements Provider interface for Google's Gemini models
@@ -25,7 +24,10 @@ func NewGoogle(opts Options) *Google {
 	}
 
 	ctx := context.Background()
-	client, err := genai.NewClient(ctx, option.WithAPIKey(opts.APIKey))
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  opts.APIKey,
+		Backend: genai.BackendGeminiAPI,
+	})
 	if err != nil {
 		return &Google{enabled: false}
 	}
@@ -56,35 +58,36 @@ func (g *Google) Generate(ctx context.Context, prompt string) (string, error) {
 		return "", errors.New("google provider is not enabled")
 	}
 
-	model := g.client.GenerativeModel(g.model)
+	// prepare content for request
+	content := &genai.Content{
+		Parts: []*genai.Part{
+			{Text: prompt},
+		},
+	}
 
-	// only set max output tokens if not zero (0 means use model's maximum)
-	if g.maxTokens != 0 {
-		// set max output tokens with safe conversion to int32
-		switch {
-		case g.maxTokens < 0:
-			model.SetMaxOutputTokens(1024) // default value
-		case g.maxTokens > 2147483647: // max int32 value
-			model.SetMaxOutputTokens(2147483647)
-		default:
-			model.SetMaxOutputTokens(int32(g.maxTokens))
+	// prepare generation config
+	var config *genai.GenerateContentConfig
+	if g.maxTokens > 0 {
+		// only set max output tokens if not zero (0 means use model's maximum)
+		maxTokens := int32(g.maxTokens)
+		if g.maxTokens > 2147483647 { // max int32 value
+			maxTokens = 2147483647
+		}
+		config = &genai.GenerateContentConfig{
+			MaxOutputTokens: maxTokens,
 		}
 	}
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+
+	resp, err := g.client.Models.GenerateContent(ctx, g.model, []*genai.Content{content}, config)
 	if err != nil {
 		// sanitize any potential sensitive information in error
 		return "", fmt.Errorf("google api error: %w", err)
 	}
 
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+	// extract text from response
+	text := resp.Text()
+	if text == "" {
 		return "", errors.New("google returned empty response")
-	}
-
-	text := ""
-	for _, part := range resp.Candidates[0].Content.Parts {
-		if t, ok := part.(genai.Text); ok {
-			text += string(t)
-		}
 	}
 
 	return text, nil
