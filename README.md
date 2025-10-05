@@ -909,6 +909,74 @@ Note: Since MPT is running as an MCP server in this mode, it doesn't have the sa
 
 This allows you to get insights from multiple AI models simultaneously, helping you get more comprehensive answers and identify different perspectives on the same question.
 
+## Running MPT in Background Mode
+
+When using MPT with automation tools like Claude Code or in CI/CD pipelines, the caller's timeout can be shorter than MPT needs to complete. For example, Claude Code times out external commands after 2 minutes, but MPT analysis (especially with gpt-5) can take 2-4 minutes or longer. While MPT has its own `--timeout` setting to control how long it waits for provider responses, the caller may terminate MPT before it finishes. You can invoke MPT in background mode to work around caller timeouts:
+
+### Background Execution Pattern
+
+For analyses that take significant time (especially with models like gpt-5), run MPT in background:
+
+```bash
+# Start MPT in background (returns immediately)
+mpt --timeout=600s --openai.enabled --google.enabled --anthropic.enabled \
+    -f "**/*.go" -x "**/vendor/**" \
+    -p "analyze code for design and security issues" &
+
+# Store the process ID
+MPT_PID=$!
+
+# Monitor progress (check periodically)
+# The process continues running in background
+
+# Wait for completion
+wait $MPT_PID
+```
+
+### Claude Code Integration
+
+When using MPT within Claude Code, use the Bash tool's `run_in_background: true` parameter:
+
+1. Start MPT in background using `run_in_background: true`
+2. Monitor output with BashOutput tool (returns only NEW output since last check)
+3. Check BashOutput every 10-15 seconds for progress
+4. Retrieve final results when complete
+
+**Timing expectations:**
+- With gpt-5 model: 2-4 minutes per analysis
+- Total wait time can be up to 10 minutes for complex queries
+- Multiple providers run in parallel
+
+**Example workflow:**
+```bash
+# 1. Start in background
+mpt --timeout=600s --openai.enabled -f "pkg/**/*.go" -p "review code" &
+
+# 2. Use /bashes command to list background shells
+# 3. Use BashOutput tool to check progress periodically
+# 4. Wait for completion before processing results
+```
+
+### CI/CD Integration
+
+For CI/CD pipelines, use extended timeouts and explicit background handling:
+
+```bash
+# In GitHub Actions or similar
+- name: Run MPT Analysis
+  run: |
+    mpt --timeout=600s --openai.enabled --anthropic.enabled \
+        --git.diff \
+        -p "review changes for security and design issues" > mpt-results.txt 2>&1
+  timeout-minutes: 15
+```
+
+**Best practices:**
+- Set `--timeout` to at least 600s (10 minutes) for thorough analyses
+- Use `--git.diff` for focused review of changes
+- Redirect output to files for later processing
+- Configure CI timeout higher than MPT timeout
+
 ## Using Environment Variables
 
 You can use environment variables instead of command-line flags:
