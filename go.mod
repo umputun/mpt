@@ -1,6 +1,6 @@
 module github.com/umputun/mpt
 
-go 1.24.0
+go 1.25
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.13.0
