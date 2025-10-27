@@ -502,12 +502,8 @@ func TestMCPServerImplementation(t *testing.T) {
 	mockRunner := runner.New(mockProvider)
 	require.NotNil(t, mockRunner, "Runner should be created successfully")
 
-	// check that the Runner satisfies the interface needed by pkg/mcp
-	var runnerInterface any = mockRunner
-	_, ok := runnerInterface.(interface {
-		Run(ctx context.Context, prompt string) (string, error)
-	})
-	require.True(t, ok, "Runner should implement the interface needed by pkg/mcp")
+	// compile-time check that Runner satisfies the interface needed by pkg/mcp
+	var _ mcp.Runner = mockRunner
 
 	// verify we can pass options to the MCP server constructor
 	mcpOpts := mcp.ServerOptions{

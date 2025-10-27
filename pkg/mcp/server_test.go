@@ -139,14 +139,14 @@ func TestServer_handleGenerateTool(t *testing.T) {
 			runner:      successRunner,
 			arguments:   map[string]any{},
 			expectError: true,
-			errorText:   "missing required 'prompt' parameter",
+			errorText:   "required argument \"prompt\" not found",
 		},
 		{
 			name:        "wrong prompt type",
 			runner:      successRunner,
 			arguments:   map[string]any{"prompt": 123}, // not a string
 			expectError: true,
-			errorText:   "'prompt' parameter must be a string",
+			errorText:   "argument \"prompt\" is not a string",
 		},
 		{
 			name:           "runner error",
