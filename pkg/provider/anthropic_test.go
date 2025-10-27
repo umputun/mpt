@@ -541,7 +541,7 @@ func TestAnthropic_Generate_MaxTokensEdgeCases(t *testing.T) {
 				body, err := io.ReadAll(r.Body)
 				assert.NoError(t, err)
 
-				var reqBody map[string]interface{}
+				var reqBody map[string]any
 				err = json.Unmarshal(body, &reqBody)
 				assert.NoError(t, err)
 

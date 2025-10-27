@@ -48,7 +48,7 @@ func TestNewServer(t *testing.T) {
 			// test that tool is registered - we can only access this indirectly by
 			// checking that we get a valid response from the handler
 			request := mcp.CallToolRequest{}
-			request.Params.Arguments = map[string]interface{}{
+			request.Params.Arguments = map[string]any{
 				"prompt": "test prompt",
 			}
 
@@ -100,7 +100,7 @@ func TestServer_handleGenerateTool(t *testing.T) {
 	tests := []struct {
 		name           string
 		runner         *mocks.RunnerMock
-		arguments      map[string]interface{}
+		arguments      map[string]any
 		expectedPrompt string
 		expectError    bool
 		errorText      string
@@ -109,7 +109,7 @@ func TestServer_handleGenerateTool(t *testing.T) {
 		{
 			name:           "valid prompt with short response",
 			runner:         successRunner,
-			arguments:      map[string]interface{}{"prompt": "Test prompt"},
+			arguments:      map[string]any{"prompt": "Test prompt"},
 			expectedPrompt: "Test prompt",
 			expectError:    false,
 			checkResult: func(t *testing.T, result *mcp.CallToolResult) {
@@ -122,7 +122,7 @@ func TestServer_handleGenerateTool(t *testing.T) {
 		{
 			name:           "valid prompt with long response",
 			runner:         longResponseRunner,
-			arguments:      map[string]interface{}{"prompt": "Long request"},
+			arguments:      map[string]any{"prompt": "Long request"},
 			expectedPrompt: "Long request",
 			expectError:    false,
 			checkResult: func(t *testing.T, result *mcp.CallToolResult) {
@@ -137,21 +137,21 @@ func TestServer_handleGenerateTool(t *testing.T) {
 		{
 			name:        "missing prompt parameter",
 			runner:      successRunner,
-			arguments:   map[string]interface{}{},
+			arguments:   map[string]any{},
 			expectError: true,
 			errorText:   "missing required 'prompt' parameter",
 		},
 		{
 			name:        "wrong prompt type",
 			runner:      successRunner,
-			arguments:   map[string]interface{}{"prompt": 123}, // not a string
+			arguments:   map[string]any{"prompt": 123}, // not a string
 			expectError: true,
 			errorText:   "'prompt' parameter must be a string",
 		},
 		{
 			name:           "runner error",
 			runner:         errorRunner,
-			arguments:      map[string]interface{}{"prompt": "Test prompt"},
+			arguments:      map[string]any{"prompt": "Test prompt"},
 			expectedPrompt: "Test prompt",
 			expectError:    true,
 			errorText:      "failed to run prompt through MPT",
@@ -159,7 +159,7 @@ func TestServer_handleGenerateTool(t *testing.T) {
 		{
 			name:           "canceled context",
 			runner:         canceledContextRunner,
-			arguments:      map[string]interface{}{"prompt": "Cancel me"},
+			arguments:      map[string]any{"prompt": "Cancel me"},
 			expectedPrompt: "Cancel me",
 			expectError:    true,
 			errorText:      "failed to run prompt through MPT",

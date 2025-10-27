@@ -1463,7 +1463,7 @@ func TestOutputJSON(t *testing.T) {
 			output := buf.String()
 
 			// check that the output is valid JSON
-			var result map[string]interface{}
+			var result map[string]any
 			err = json.Unmarshal([]byte(output), &result)
 			require.NoError(t, err, "Output should be valid JSON")
 
@@ -1478,7 +1478,7 @@ func TestOutputJSON(t *testing.T) {
 			assert.NotContains(t, result, "result", "JSON should not contain 'result' field")
 
 			// verify the responses array
-			responses, ok := result["responses"].([]interface{})
+			responses, ok := result["responses"].([]any)
 			require.True(t, ok, "responses should be an array")
 			assert.Len(t, responses, len(tc.execResult.Results), "Number of responses should match input")
 
@@ -1855,7 +1855,7 @@ func TestExecutePrompt_WithMixJSON(t *testing.T) {
 	output := buf.String()
 
 	// verify that output is valid JSON
-	var result map[string]interface{}
+	var result map[string]any
 	err = json.Unmarshal([]byte(output), &result)
 	require.NoError(t, err, "Output should be valid JSON")
 
@@ -1883,7 +1883,7 @@ func TestExecutePrompt_WithMixJSON(t *testing.T) {
 	assert.Equal(t, "Provider1", mixProvider, "mix_provider should be Provider1")
 
 	// check responses array
-	responses, ok := result["responses"].([]interface{})
+	responses, ok := result["responses"].([]any)
 	require.True(t, ok, "responses should be an array")
 	require.Len(t, responses, 2, "Should have two responses")
 }

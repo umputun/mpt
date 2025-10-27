@@ -503,7 +503,7 @@ func TestMCPServerImplementation(t *testing.T) {
 	require.NotNil(t, mockRunner, "Runner should be created successfully")
 
 	// check that the Runner satisfies the interface needed by pkg/mcp
-	var runnerInterface interface{} = mockRunner
+	var runnerInterface any = mockRunner
 	_, ok := runnerInterface.(interface {
 		Run(ctx context.Context, prompt string) (string, error)
 	})
@@ -714,7 +714,7 @@ func TestIntegrationMCPServerModeErrorScenarios(t *testing.T) {
 // TestHumanSizeValueIntegration tests the human-readable size values in an integration test
 func TestHumanSizeValueIntegration(t *testing.T) {
 	// create a stub server that simulates the custom provider API
-	requestData := make(map[string]interface{})
+	requestData := make(map[string]any)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/chat/completions" {
 			// read and parse the request body to check max_tokens value
@@ -873,7 +873,7 @@ func TestIntegrationJSONOutput(t *testing.T) {
 	output := buf.String()
 
 	// verify that the output is valid JSON
-	var result map[string]interface{}
+	var result map[string]any
 	err = json.Unmarshal([]byte(output), &result)
 	require.NoError(t, err, "Output should be valid JSON")
 

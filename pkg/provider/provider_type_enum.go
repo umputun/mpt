@@ -36,7 +36,7 @@ func (e ProviderType) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface
-func (e *ProviderType) Scan(value interface{}) error {
+func (e *ProviderType) Scan(value any) error {
 	if value == nil {
 		// try to find zero value
 		for _, v := range ProviderTypeValues {

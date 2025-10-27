@@ -119,11 +119,11 @@ func TestGoogle_Generate_Success(t *testing.T) {
 		assert.Contains(t, r.URL.Path, "gemini-1.5-pro")
 
 		// return successful response in new SDK format
-		response := map[string]interface{}{
-			"candidates": []map[string]interface{}{
+		response := map[string]any{
+			"candidates": []map[string]any{
 				{
-					"content": map[string]interface{}{
-						"parts": []map[string]interface{}{
+					"content": map[string]any{
+						"parts": []map[string]any{
 							{"text": "This is a test response"},
 						},
 						"role": "model",
@@ -150,8 +150,8 @@ func TestGoogle_Generate_Success(t *testing.T) {
 func TestGoogle_Generate_EmptyResponse(t *testing.T) {
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		// return response with no candidates
-		response := map[string]interface{}{
-			"candidates": []map[string]interface{}{},
+		response := map[string]any{
+			"candidates": []map[string]any{},
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -171,8 +171,8 @@ func TestGoogle_Generate_APIError(t *testing.T) {
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		// return API error
 		w.WriteHeader(http.StatusUnauthorized)
-		response := map[string]interface{}{
-			"error": map[string]interface{}{
+		response := map[string]any{
+			"error": map[string]any{
 				"code":    401,
 				"message": "API key not valid. Please pass a valid API key.",
 				"status":  "UNAUTHENTICATED",
@@ -194,11 +194,11 @@ func TestGoogle_Generate_APIError(t *testing.T) {
 
 func TestGoogle_Generate_MultipleParts(t *testing.T) {
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]interface{}{
-			"candidates": []map[string]interface{}{
+		response := map[string]any{
+			"candidates": []map[string]any{
 				{
-					"content": map[string]interface{}{
-						"parts": []map[string]interface{}{
+					"content": map[string]any{
+						"parts": []map[string]any{
 							{"text": "Part 1 "},
 							{"text": "Part 2 "},
 							{"text": "Part 3"},
@@ -258,12 +258,12 @@ func TestGoogle_Generate_MaxTokensEdgeCases(t *testing.T) {
 				body, err := io.ReadAll(r.Body)
 				assert.NoError(t, err)
 
-				var reqBody map[string]interface{}
+				var reqBody map[string]any
 				err = json.Unmarshal(body, &reqBody)
 				assert.NoError(t, err)
 
 				// check if generationConfig exists in the request
-				genConfig, hasGenConfig := reqBody["generationConfig"].(map[string]interface{})
+				genConfig, hasGenConfig := reqBody["generationConfig"].(map[string]any)
 
 				if tt.expectedMaxTokens > 0 {
 					// when expectedMaxTokens > 0, we expect generationConfig with maxOutputTokens to be set
@@ -278,11 +278,11 @@ func TestGoogle_Generate_MaxTokensEdgeCases(t *testing.T) {
 				}
 
 				// return successful response
-				response := map[string]interface{}{
-					"candidates": []map[string]interface{}{
+				response := map[string]any{
+					"candidates": []map[string]any{
 						{
-							"content": map[string]interface{}{
-								"parts": []map[string]interface{}{
+							"content": map[string]any{
+								"parts": []map[string]any{
 									{"text": "Response with max tokens"},
 								},
 								"role": "model",
@@ -337,11 +337,11 @@ func TestGoogle_Generate_DifferentFinishReasons(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
-				response := map[string]interface{}{
-					"candidates": []map[string]interface{}{
+				response := map[string]any{
+					"candidates": []map[string]any{
 						{
-							"content": map[string]interface{}{
-								"parts": []map[string]interface{}{
+							"content": map[string]any{
+								"parts": []map[string]any{
 									{"text": tt.expected},
 								},
 								"role": "model",
@@ -373,11 +373,11 @@ func TestGoogle_Generate_DifferentFinishReasons(t *testing.T) {
 func TestGoogle_Generate_MultipleCandidates(t *testing.T) {
 	// test that we only use the first candidate
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]interface{}{
-			"candidates": []map[string]interface{}{
+		response := map[string]any{
+			"candidates": []map[string]any{
 				{
-					"content": map[string]interface{}{
-						"parts": []map[string]interface{}{
+					"content": map[string]any{
+						"parts": []map[string]any{
 							{"text": "First candidate"},
 						},
 						"role": "model",
@@ -386,8 +386,8 @@ func TestGoogle_Generate_MultipleCandidates(t *testing.T) {
 					"index":        0,
 				},
 				{
-					"content": map[string]interface{}{
-						"parts": []map[string]interface{}{
+					"content": map[string]any{
+						"parts": []map[string]any{
 							{"text": "Second candidate"},
 						},
 						"role": "model",
@@ -414,8 +414,8 @@ func TestGoogle_Generate_MultipleCandidates(t *testing.T) {
 func TestGoogle_Generate_RateLimitError(t *testing.T) {
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
-		response := map[string]interface{}{
-			"error": map[string]interface{}{
+		response := map[string]any{
+			"error": map[string]any{
 				"code":    429,
 				"message": "Quota exceeded for quota metric 'generate-content-requests' and limit 'GenerateContent request limit per minute' of service 'generativelanguage.googleapis.com'",
 				"status":  "RESOURCE_EXHAUSTED",
@@ -438,8 +438,8 @@ func TestGoogle_Generate_RateLimitError(t *testing.T) {
 func TestGoogle_Generate_ModelNotFoundError(t *testing.T) {
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		response := map[string]interface{}{
-			"error": map[string]interface{}{
+		response := map[string]any{
+			"error": map[string]any{
 				"code":    404,
 				"message": "models/gemini-invalid-model is not found for API version v1beta",
 				"status":  "NOT_FOUND",
@@ -479,11 +479,11 @@ func TestGoogle_Generate_ContextCanceled(t *testing.T) {
 
 func TestGoogle_Generate_EmptyPrompt(t *testing.T) {
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]interface{}{
-			"candidates": []map[string]interface{}{
+		response := map[string]any{
+			"candidates": []map[string]any{
 				{
-					"content": map[string]interface{}{
-						"parts": []map[string]interface{}{
+					"content": map[string]any{
+						"parts": []map[string]any{
 							{"text": "Response to empty prompt"},
 						},
 						"role": "model",
@@ -508,11 +508,11 @@ func TestGoogle_Generate_EmptyPrompt(t *testing.T) {
 
 func TestGoogle_Generate_SpecialCharactersInResponse(t *testing.T) {
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]interface{}{
-			"candidates": []map[string]interface{}{
+		response := map[string]any{
+			"candidates": []map[string]any{
 				{
-					"content": map[string]interface{}{
-						"parts": []map[string]interface{}{
+					"content": map[string]any{
+						"parts": []map[string]any{
 							{"text": "Response with special chars: 你好世界 🌍 \n\t\r <script>alert('test')</script>"},
 						},
 						"role": "model",
@@ -561,11 +561,11 @@ func TestGoogle_Generate_NetworkError(t *testing.T) {
 func TestGoogle_Generate_EmptyParts(t *testing.T) {
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		// return response with content but empty parts
-		response := map[string]interface{}{
-			"candidates": []map[string]interface{}{
+		response := map[string]any{
+			"candidates": []map[string]any{
 				{
-					"content": map[string]interface{}{
-						"parts": []map[string]interface{}{},
+					"content": map[string]any{
+						"parts": []map[string]any{},
 						"role":  "model",
 					},
 					"finishReason": "STOP",
@@ -589,13 +589,13 @@ func TestGoogle_Generate_EmptyParts(t *testing.T) {
 func TestGoogle_Generate_NonTextParts(t *testing.T) {
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		// return response with non-text parts (should be ignored by Text() method)
-		response := map[string]interface{}{
-			"candidates": []map[string]interface{}{
+		response := map[string]any{
+			"candidates": []map[string]any{
 				{
-					"content": map[string]interface{}{
-						"parts": []map[string]interface{}{
+					"content": map[string]any{
+						"parts": []map[string]any{
 							{"text": "Text part 1 "},
-							{"inlineData": map[string]interface{}{"mimeType": "image/png", "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}},
+							{"inlineData": map[string]any{"mimeType": "image/png", "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}},
 							{"text": "Text part 2"},
 						},
 						"role": "model",
@@ -627,11 +627,11 @@ func TestGoogle_Generate_LongResponse(t *testing.T) {
 	}
 
 	server := mockGoogleServer(t, func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]interface{}{
-			"candidates": []map[string]interface{}{
+		response := map[string]any{
+			"candidates": []map[string]any{
 				{
-					"content": map[string]interface{}{
-						"parts": []map[string]interface{}{
+					"content": map[string]any{
+						"parts": []map[string]any{
 							{"text": longText},
 						},
 						"role": "model",
