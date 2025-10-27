@@ -3,6 +3,7 @@ package consensus
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/go-pkgz/lgr"
@@ -15,7 +16,12 @@ import (
 
 // Manager handles consensus checking and attempts between multiple providers
 type Manager struct {
-	logger lgr.L
+	logger                      lgr.L
+	negatedAgreementPatterns    []*regexp.Regexp
+	negatedDisagreementPatterns []*regexp.Regexp
+	negativeIndicators          []*regexp.Regexp
+	positiveIndicators          []*regexp.Regexp
+	agreePatterns               []*regexp.Regexp
 }
 
 // Options configures consensus checking behavior
@@ -40,14 +46,86 @@ type AttemptResponse struct {
 	Achieved     bool
 }
 
-// New creates a new consensus manager
+// New creates a new consensus manager with pre-compiled regex patterns
 func New(logger lgr.L) *Manager {
 	if logger == nil {
 		logger = lgr.Default()
 	}
 	return &Manager{
-		logger: logger,
+		logger:                      logger,
+		negatedAgreementPatterns:    compileNegatedAgreementPatterns(),
+		negatedDisagreementPatterns: compileNegatedDisagreementPatterns(),
+		negativeIndicators:          compileNegativeIndicators(),
+		positiveIndicators:          compilePositiveIndicators(),
+		agreePatterns:               compileAgreePatterns(),
 	}
+}
+
+// compileNegatedAgreementPatterns compiles patterns for negated positive indicators
+func compileNegatedAgreementPatterns() []*regexp.Regexp {
+	patterns := []string{
+		`\bdon't\s+agree`, `\bdoesn't\s+agree`,
+		`\bdon't\s+align`, `\bdoesn't\s+align`,
+		`\bdon't\s+concur`, `\bdoesn't\s+concur`,
+		`\bnot\s+the\s+same\b`, `\bnot\s+similar\b`,
+		`\bnot\s+consistent`, `\bnot\s+aligned`,
+		`\bno\s+agreement\b`, `\bno\s+consensus\b`,
+	}
+	return mustCompileAll(patterns)
+}
+
+// compileNegatedDisagreementPatterns compiles patterns for negated negative indicators
+func compileNegatedDisagreementPatterns() []*regexp.Regexp {
+	patterns := []string{
+		`\bnot\s+(significantly\s+)?different\b`,
+		`\bnot\s+in\s+conflict\b`, `\bnot\s+contradictory\b`,
+		`\bnot\s+opposing\b`, `\bnot\s+inconsistent\b`,
+		`\bdon't\s+disagree\b`, `\bdoesn't\s+disagree\b`,
+		`\bdon't\s+conflict\b`, `\bdoesn't\s+conflict\b`,
+		`\bdon't\s+contradict\b`, `\bdoesn't\s+contradict\b`,
+		`\bdon't\s+diverge\b`, `\bdoesn't\s+diverge\b`,
+		`\bdon't\s+differ\b`, `\bdoesn't\s+differ\b`,
+		`\bno\s+disagreement\b`, `\bno\s+conflict\b`,
+		`\bno\s+contradiction\b`, `\bno\s+significant\s+difference\b`,
+	}
+	return mustCompileAll(patterns)
+}
+
+// compileNegativeIndicators compiles patterns for disagreement indicators
+func compileNegativeIndicators() []*regexp.Regexp {
+	patterns := []string{
+		`\bdisagree\b`, `\bconflict\b`, `\bdifferent\b`, `\bdiverge\b`,
+		`\bcontradict\b`, `\boppose\b`, `\binconsistent\b`, `\bvary\b`, `\bdiffer\b`,
+		`\bdisagreeable\b`, `\bdissimilar\b`,
+	}
+	return mustCompileAll(patterns)
+}
+
+// compilePositiveIndicators compiles patterns for agreement indicators
+func compilePositiveIndicators() []*regexp.Regexp {
+	patterns := []string{
+		`\bagree`, `\bconsensus\b`, `\bsame\b`, `\bsimilar`, `\bconsistent`,
+		`\balign`, `\bconcur`, `\bunanimous\b`, `\baccord\b`, `\bharmony\b`, `\bunified\b`,
+	}
+	return mustCompileAll(patterns)
+}
+
+// compileAgreePatterns compiles specific agreement phrase patterns
+func compileAgreePatterns() []*regexp.Regexp {
+	patterns := []string{
+		`\bresponses\s+agree`, `\bthey\s+agree`, `\bmodels\s+agree`,
+		`\banswers\s+agree`, `\bproviders\s+agree`, `\ball\s+agree`,
+	}
+	return mustCompileAll(patterns)
+}
+
+// mustCompileAll compiles a slice of regex patterns, panicking on any error
+func mustCompileAll(patterns []string) []*regexp.Regexp {
+	compiled := make([]*regexp.Regexp, len(patterns))
+	for i, pattern := range patterns {
+		compiled[i] = regexp.MustCompile(pattern)
+	}
+	return compiled
 }
 
 // Attempt tries to reach consensus among provider results
@@ -144,7 +222,8 @@ func (m *Manager) findMixProvider(mixProviderName string, providers []provider.P
 func (m *Manager) buildConsensusCheckPrompt(results []provider.Result) string {
 	var sb strings.Builder
 	sb.WriteString("Do the following AI responses fundamentally agree on the main points? ")
-	sb.WriteString("Answer with just YES if they agree, or NO if they significantly disagree.\n\n")
+	sb.WriteString("IMPORTANT: You must answer with ONLY the word YES or NO. ")
+	sb.WriteString("Answer YES if they agree on the core message. Answer NO if they significantly disagree.\n\n")
 
 	for i, r := range results {
 		if r.Error != nil {
@@ -201,12 +280,24 @@ func (m *Manager) isConsensusReached(response string) bool {
 		return result
 	}
 
-	// check for negative indicators (check these first to avoid false positives)
+	// check for negated positive indicators (e.g., "don't agree", "not same") - these indicate disagreement
+	// must be checked BEFORE checking for positive indicators
+	if m.containsNegatedAgreement(normalized) {
+		return false
+	}
+
+	// check for negation patterns that indicate consensus (e.g., "not different", "don't disagree")
+	// these must be checked BEFORE standalone negative indicators
+	if m.containsNegatedDisagreement(normalized) {
+		return true
+	}
+
+	// check for negative indicators (disagreement)
 	if m.containsNegativeIndicator(normalized) {
 		return false
 	}
 
-	// check for positive indicators or patterns
+	// check for positive indicators (agreement)
 	if m.containsPositiveIndicator(normalized) {
 		return true
 	}
@@ -233,40 +324,52 @@ func (m *Manager) checkExplicitAnswer(response string) (result, found bool) {
 	return false, false
 }
 
-// containsNegativeIndicator checks if response contains negative consensus indicators
-func (m *Manager) containsNegativeIndicator(response string) bool {
-	negativeIndicators := []string{
-		"disagree", "conflict", "different", "not", "don't", "doesn't",
-		"diverge", "contradict", "oppose", "inconsistent", "vary", "differ",
-	}
-	for _, indicator := range negativeIndicators {
-		if strings.Contains(response, indicator) {
+// containsNegatedAgreement checks for negated positive indicators that indicate disagreement
+// e.g., "don't agree", "not the same", "doesn't align"
+// IMPORTANT: must be called BEFORE containsPositiveIndicator to avoid false positives
+func (m *Manager) containsNegatedAgreement(response string) bool {
+	for _, pattern := range m.negatedAgreementPatterns {
+		if pattern.MatchString(response) {
 			return true
 		}
 	}
 	return false
 }
 
-// containsPositiveIndicator checks if response contains positive consensus indicators
-func (m *Manager) containsPositiveIndicator(response string) bool {
-	// check standalone positive indicators
-	positiveIndicators := []string{
-		"agree", "consensus", "same", "similar", "consistent", "align",
-		"concur", "unanimous", "accord", "harmony", "unified",
+// containsNegatedDisagreement checks for negated negative indicators that actually mean consensus
+// e.g., "not different", "don't disagree", "not in conflict"
+// IMPORTANT: must be called BEFORE containsNegativeIndicator to avoid false negatives
+func (m *Manager) containsNegatedDisagreement(response string) bool {
+	for _, pattern := range m.negatedDisagreementPatterns {
+		if pattern.MatchString(response) {
+			return true
+		}
 	}
-	for _, indicator := range positiveIndicators {
-		if strings.Contains(response, indicator) {
+	return false
+}
+
+// containsNegativeIndicator checks if response contains negative consensus indicators using word boundaries
+func (m *Manager) containsNegativeIndicator(response string) bool {
+	for _, pattern := range m.negativeIndicators {
+		if pattern.MatchString(response) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsPositiveIndicator checks if response contains positive consensus indicators using word boundaries
+// note: patterns use start boundary only to match word variations (e.g., "agree", "agrees", "agreement")
+func (m *Manager) containsPositiveIndicator(response string) bool {
+	for _, pattern := range m.positiveIndicators {
+		if pattern.MatchString(response) {
 			return true
 		}
 	}
 
 	// check specific agreement patterns
-	agreePatterns := []string{
-		"responses agree", "they agree", "models agree",
-		"answers agree", "providers agree", "all agree",
-	}
-	for _, pattern := range agreePatterns {
-		if strings.Contains(response, pattern) {
+	for _, pattern := range m.agreePatterns {
+		if pattern.MatchString(response) {
 			return true
 		}
 	}

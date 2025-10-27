@@ -452,6 +452,172 @@ func TestManager_buildConsensusRerunPrompt(t *testing.T) {
 	assert.Contains(t, prompt, "Please reconsider your answer")
 }
 
+func TestManager_containsNegatedAgreement(t *testing.T) {
+	manager := New(nil)
+	tests := []struct {
+		name     string
+		response string
+		expected bool
+	}{
+		// should match negated agreement patterns (means disagreement)
+		{"don't agree", "they don't agree", true},
+		{"doesn't agree", "it doesn't agree", true},
+		{"don't align", "views don't align", true},
+		{"doesn't align", "this doesn't align", true},
+		{"don't concur", "experts don't concur", true},
+		{"doesn't concur", "opinion doesn't concur", true},
+		{"not the same", "they are not the same", true},
+		{"not similar", "responses are not similar", true},
+		{"not consistent", "answers are not consistent", true},
+		{"not aligned", "views are not aligned", true},
+		{"no agreement", "there is no agreement", true},
+		{"no consensus", "there is no consensus", true},
+
+		// should NOT match regular agreement (without negation)
+		{"agree", "they agree", false},
+		{"aligned", "responses are aligned", false},
+		{"same", "they are the same", false},
+
+		// should NOT match unrelated text
+		{"no match", "the sky is blue", false},
+		{"empty", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := manager.containsNegatedAgreement(tt.response)
+			assert.Equal(t, tt.expected, result, "Response: %q", tt.response)
+		})
+	}
+}
+
+func TestManager_containsNegatedDisagreement(t *testing.T) {
+	manager := New(nil)
+	tests := []struct {
+		name     string
+		response string
+		expected bool
+	}{
+		// should match negated disagreement patterns
+		{"not different", "they are not different", true},
+		{"not significantly different", "not significantly different", true},
+		{"don't disagree", "they don't disagree", true},
+		{"doesn't disagree", "it doesn't disagree", true},
+		{"not in conflict", "responses are not in conflict", true},
+		{"don't conflict", "answers don't conflict", true},
+		{"doesn't conflict", "this doesn't conflict", true},
+		{"don't contradict", "they don't contradict", true},
+		{"doesn't contradict", "it doesn't contradict", true},
+		{"don't diverge", "they don't diverge", true},
+		{"doesn't diverge", "opinion doesn't diverge", true},
+		{"don't differ", "views don't differ", true},
+		{"doesn't differ", "answer doesn't differ", true},
+		{"no disagreement", "there is no disagreement", true},
+		{"no conflict", "no conflict exists", true},
+		{"no contradiction", "there's no contradiction", true},
+		{"no significant difference", "no significant difference", true},
+		{"not contradictory", "not contradictory", true},
+		{"not opposing", "not opposing", true},
+		{"not inconsistent", "not inconsistent", true},
+
+		// should NOT match regular disagreement (without negation)
+		{"disagree", "they disagree", false},
+		{"different", "they are different", false},
+		{"conflict", "there is conflict", false},
+		{"contradict", "they contradict", false},
+
+		// should NOT match unrelated text
+		{"no match", "the sky is blue", false},
+		{"empty", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := manager.containsNegatedDisagreement(tt.response)
+			assert.Equal(t, tt.expected, result, "Response: %q", tt.response)
+		})
+	}
+}
+
+func TestManager_containsNegativeIndicator(t *testing.T) {
+	manager := New(nil)
+	tests := []struct {
+		name     string
+		response string
+		expected bool
+	}{
+		// should match negative indicators with word boundaries
+		{"disagree", "they disagree", true},
+		{"conflict", "there is a conflict", true},
+		{"different", "they are different", true},
+		{"diverge", "opinions diverge", true},
+		{"contradict", "they contradict", true},
+		{"oppose", "they oppose", true},
+		{"inconsistent", "results are inconsistent", true},
+		{"vary", "answers vary", true},
+		{"differ", "views differ", true},
+
+		// should NOT match substrings (word boundary test)
+		{"indifferent", "they are indifferent", false},
+		{"preferred", "the preferred option", false},
+
+		// should NOT match unrelated text
+		{"no match", "the sky is blue", false},
+		{"empty", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := manager.containsNegativeIndicator(tt.response)
+			assert.Equal(t, tt.expected, result, "Response: %q", tt.response)
+		})
+	}
+}
+
+func TestManager_containsPositiveIndicator(t *testing.T) {
+	manager := New(nil)
+	tests := []struct {
+		name     string
+		response string
+		expected bool
+	}{
+		// should match positive indicators with word boundaries
+		{"agree", "they agree", true},
+		{"consensus", "there is consensus", true},
+		{"same", "they have the same view", true},
+		{"similar", "very similar", true},
+		{"consistent", "answers are consistent", true},
+		{"align", "views align", true},
+		{"concur", "experts concur", true},
+		{"unanimous", "decision is unanimous", true},
+		{"accord", "in accord", true},
+		{"harmony", "in harmony", true},
+		{"unified", "unified position", true},
+
+		// specific agreement patterns
+		{"responses agree", "the responses agree", true},
+		{"they agree", "they agree on this", true},
+		{"models agree", "all models agree", true},
+		{"answers agree", "the answers agree", true},
+		{"providers agree", "providers agree", true},
+		{"all agree", "all agree", true},
+
+		// should NOT match substrings
+		{"disagree contains agree", "they disagree", false},
+
+		// should NOT match unrelated text
+		{"no match", "the sky is blue", false},
+		{"empty", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := manager.containsPositiveIndicator(tt.response)
+			assert.Equal(t, tt.expected, result, "Response: %q", tt.response)
+		})
+	}
+}
+
 func TestManager_isConsensusReached(t *testing.T) {
 	manager := New(nil)
 	tests := []struct {
@@ -483,11 +649,40 @@ func TestManager_isConsensusReached(t *testing.T) {
 		{"disagree", "They disagree", false},
 		{"conflict", "There is a conflict", false},
 		{"different", "They have different opinions", false},
-		{"not agree", "They do not agree", false},
 		{"don't agree", "They don't agree", false},
 		{"diverge", "The opinions diverge", false},
 		{"contradict", "They contradict each other", false},
 		{"inconsistent", "The answers are inconsistent", false},
+
+		// negation patterns (double negative = positive/consensus)
+		{"not different", "They are not different", true},
+		{"not significantly different", "They are not significantly different", true},
+		{"don't disagree", "They don't disagree", true},
+		{"doesn't disagree", "The second response doesn't disagree with the first", true},
+		{"not in conflict", "The responses are not in conflict", true},
+		{"don't conflict", "The answers don't conflict", true},
+		{"doesn't conflict", "This doesn't conflict with that", true},
+		{"don't contradict", "They don't contradict each other", true},
+		{"doesn't contradict", "Response A doesn't contradict response B", true},
+		{"don't diverge", "The opinions don't diverge", true},
+		{"doesn't diverge", "The conclusion doesn't diverge", true},
+		{"don't differ", "They don't differ on this point", true},
+		{"doesn't differ", "The answer doesn't differ", true},
+		{"no disagreement", "There is no disagreement", true},
+		{"no conflict", "There is no conflict between them", true},
+		{"no contradiction", "There is no contradiction", true},
+		{"no significant difference", "There is no significant difference", true},
+		{"not contradictory", "The responses are not contradictory", true},
+		{"not opposing", "They are not opposing views", true},
+		{"not inconsistent", "The answers are not inconsistent", true},
+
+		// word boundary tests (should not match substrings)
+		{"indifferent should not match", "They are indifferent to the question", false},
+		{"different should match", "They are different", false},
+		{"agreement should match", "There is agreement", true},
+		{"disagreement should match", "There is disagreement", false},
+		{"disagreeable should match as negative", "They are disagreeable", false},
+		{"dissimilar should match as negative", "Views are dissimilar", false},
 
 		// edge cases
 		{"empty", "", false},
