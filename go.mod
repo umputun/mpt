@@ -3,14 +3,14 @@ module github.com/umputun/mpt
 go 1.25
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.13.0
+	github.com/anthropics/anthropic-sdk-go v1.16.0
 	github.com/bmatcuk/doublestar/v4 v4.9.1
 	github.com/go-pkgz/lgr v0.12.1
 	github.com/go-pkgz/repeater/v2 v2.2.0
 	github.com/jessevdk/go-flags v1.6.1
-	github.com/mark3labs/mcp-go v0.41.1
+	github.com/mark3labs/mcp-go v0.42.0
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/genai v1.28.0
+	google.golang.org/genai v1.33.0
 )
 
 require (
@@ -44,12 +44,12 @@ require (
 	go.opentelemetry.io/otel v1.38.0 // indirect
 	go.opentelemetry.io/otel/metric v1.38.0 // indirect
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
-	golang.org/x/crypto v0.42.0 // indirect
-	golang.org/x/net v0.44.0 // indirect
-	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20251002232023-7c0ddcbb5797 // indirect
-	google.golang.org/grpc v1.75.1 // indirect
+	golang.org/x/crypto v0.43.0 // indirect
+	golang.org/x/net v0.46.0 // indirect
+	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/text v0.30.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
+	google.golang.org/grpc v1.76.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

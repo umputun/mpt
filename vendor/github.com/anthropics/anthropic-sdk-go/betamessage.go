@@ -110,6 +110,27 @@ func (r *BetaMessageService) CountTokens(ctx context.Context, params BetaMessage
 	return
 }
 
+func NewBetaAllThinkingTurnsParam() BetaAllThinkingTurnsParam {
+	return BetaAllThinkingTurnsParam{
+		Type: "all",
+	}
+}
+
+// This struct has a constant value, construct it with
+// [NewBetaAllThinkingTurnsParam].
+type BetaAllThinkingTurnsParam struct {
+	Type constant.All `json:"type,required"`
+	paramObj
+}
+
+func (r BetaAllThinkingTurnsParam) MarshalJSON() (data []byte, err error) {
+	type shadow BetaAllThinkingTurnsParam
+	return param.MarshalObject(r, (*shadow)(&r))
+}
+func (r *BetaAllThinkingTurnsParam) UnmarshalJSON(data []byte) error {
+	return apijson.UnmarshalRoot(data, r)
+}
+
 // The properties Data, MediaType, Type are required.
 type BetaBase64ImageSourceParam struct {
 	Data string `json:"data,required" format:"byte"`
@@ -1180,6 +1201,95 @@ func (r *BetaCitationsWebSearchResultLocation) UnmarshalJSON(data []byte) error 
 }
 
 // The property Type is required.
+type BetaClearThinking20251015EditParam struct {
+	// Number of most recent assistant turns to keep thinking blocks for. Older turns
+	// will have their thinking blocks removed.
+	Keep BetaClearThinking20251015EditKeepUnionParam `json:"keep,omitzero"`
+	// This field can be elided, and will marshal its zero value as
+	// "clear_thinking_20251015".
+	Type constant.ClearThinking20251015 `json:"type,required"`
+	paramObj
+}
+
+func (r BetaClearThinking20251015EditParam) MarshalJSON() (data []byte, err error) {
+	type shadow BetaClearThinking20251015EditParam
+	return param.MarshalObject(r, (*shadow)(&r))
+}
+func (r *BetaClearThinking20251015EditParam) UnmarshalJSON(data []byte) error {
+	return apijson.UnmarshalRoot(data, r)
+}
+
+// Only one field can be non-zero.
+//
+// Use [param.IsOmitted] to confirm if a field is set.
+type BetaClearThinking20251015EditKeepUnionParam struct {
+	OfThinkingTurns    *BetaThinkingTurnsParam    `json:",omitzero,inline"`
+	OfAllThinkingTurns *BetaAllThinkingTurnsParam `json:",omitzero,inline"`
+	// Construct this variant with constant.ValueOf[constant.All]()
+	OfAll constant.All `json:",omitzero,inline"`
+	paramUnion
+}
+
+func (u BetaClearThinking20251015EditKeepUnionParam) MarshalJSON() ([]byte, error) {
+	return param.MarshalUnion(u, u.OfThinkingTurns, u.OfAllThinkingTurns, u.OfAll)
+}
+func (u *BetaClearThinking20251015EditKeepUnionParam) UnmarshalJSON(data []byte) error {
+	return apijson.UnmarshalRoot(data, u)
+}
+
+func (u *BetaClearThinking20251015EditKeepUnionParam) asAny() any {
+	if !param.IsOmitted(u.OfThinkingTurns) {
+		return u.OfThinkingTurns
+	} else if !param.IsOmitted(u.OfAllThinkingTurns) {
+		return u.OfAllThinkingTurns
+	} else if !param.IsOmitted(u.OfAll) {
+		return &u.OfAll
+	}
+	return nil
+}
+
+// Returns a pointer to the underlying variant's property, if present.
+func (u BetaClearThinking20251015EditKeepUnionParam) GetValue() *int64 {
+	if vt := u.OfThinkingTurns; vt != nil {
+		return &vt.Value
+	}
+	return nil
+}
+
+// Returns a pointer to the underlying variant's property, if present.
+func (u BetaClearThinking20251015EditKeepUnionParam) GetType() *string {
+	if vt := u.OfThinkingTurns; vt != nil {
+		return (*string)(&vt.Type)
+	} else if vt := u.OfAllThinkingTurns; vt != nil {
+		return (*string)(&vt.Type)
+	}
+	return nil
+}
+
+type BetaClearThinking20251015EditResponse struct {
+	// Number of input tokens cleared by this edit.
+	ClearedInputTokens int64 `json:"cleared_input_tokens,required"`
+	// Number of thinking turns that were cleared.
+	ClearedThinkingTurns int64 `json:"cleared_thinking_turns,required"`
+	// The type of context management edit applied.
+	Type constant.ClearThinking20251015 `json:"type,required"`
+	// JSON contains metadata for fields, check presence with [respjson.Field.Valid].
+	JSON struct {
+		ClearedInputTokens   respjson.Field
+		ClearedThinkingTurns respjson.Field
+		Type                 respjson.Field
+		ExtraFields          map[string]respjson.Field
+		raw                  string
+	} `json:"-"`
+}
+
+// Returns the unmodified JSON received from the API
+func (r BetaClearThinking20251015EditResponse) RawJSON() string { return r.JSON.raw }
+func (r *BetaClearThinking20251015EditResponse) UnmarshalJSON(data []byte) error {
+	return apijson.UnmarshalRoot(data, r)
+}
+
+// The property Type is required.
 type BetaClearToolUses20250919EditParam struct {
 	// Whether to clear all tool inputs (bool) or specific tool inputs to clear (list)
 	ClearToolInputs BetaClearToolUses20250919EditClearToolInputsUnionParam `json:"clear_tool_inputs,omitzero"`
@@ -1284,7 +1394,6 @@ func init() {
 	)
 }
 
-// Results for clear_tool_uses_20250919 edit.
 type BetaClearToolUses20250919EditResponse struct {
 	// Number of input tokens cleared by this edit.
 	ClearedInputTokens int64 `json:"cleared_input_tokens,required"`
@@ -1656,10 +1765,13 @@ type BetaContainer struct {
 	ID string `json:"id,required"`
 	// The time at which the container will expire.
 	ExpiresAt time.Time `json:"expires_at,required" format:"date-time"`
+	// Skills loaded in the container
+	Skills []BetaSkill `json:"skills,required"`
 	// JSON contains metadata for fields, check presence with [respjson.Field.Valid].
 	JSON struct {
 		ID          respjson.Field
 		ExpiresAt   respjson.Field
+		Skills      respjson.Field
 		ExtraFields map[string]respjson.Field
 		raw         string
 	} `json:"-"`
@@ -1668,6 +1780,23 @@ type BetaContainer struct {
 // Returns the unmodified JSON received from the API
 func (r BetaContainer) RawJSON() string { return r.JSON.raw }
 func (r *BetaContainer) UnmarshalJSON(data []byte) error {
+	return apijson.UnmarshalRoot(data, r)
+}
+
+// Container parameters with skills to be loaded.
+type BetaContainerParams struct {
+	// Container id
+	ID param.Opt[string] `json:"id,omitzero"`
+	// List of skills to load in the container
+	Skills []BetaSkillParams `json:"skills,omitzero"`
+	paramObj
+}
+
+func (r BetaContainerParams) MarshalJSON() (data []byte, err error) {
+	type shadow BetaContainerParams
+	return param.MarshalObject(r, (*shadow)(&r))
+}
+func (r *BetaContainerParams) UnmarshalJSON(data []byte) error {
 	return apijson.UnmarshalRoot(data, r)
 }
 
@@ -2992,10 +3121,9 @@ func (u *BetaContentBlockSourceContentUnionParam) asAny() any {
 	return nil
 }
 
-// Configuration for context management operations.
 type BetaContextManagementConfigParam struct {
 	// List of context management edits to apply
-	Edits []BetaClearToolUses20250919EditParam `json:"edits,omitzero"`
+	Edits []BetaContextManagementConfigEditUnionParam `json:"edits,omitzero"`
 	paramObj
 }
 
@@ -3007,10 +3135,131 @@ func (r *BetaContextManagementConfigParam) UnmarshalJSON(data []byte) error {
 	return apijson.UnmarshalRoot(data, r)
 }
 
-// Information about context management operations applied during the request.
+// Only one field can be non-zero.
+//
+// Use [param.IsOmitted] to confirm if a field is set.
+type BetaContextManagementConfigEditUnionParam struct {
+	OfClearToolUses20250919 *BetaClearToolUses20250919EditParam `json:",omitzero,inline"`
+	OfClearThinking20251015 *BetaClearThinking20251015EditParam `json:",omitzero,inline"`
+	paramUnion
+}
+
+func (u BetaContextManagementConfigEditUnionParam) MarshalJSON() ([]byte, error) {
+	return param.MarshalUnion(u, u.OfClearToolUses20250919, u.OfClearThinking20251015)
+}
+func (u *BetaContextManagementConfigEditUnionParam) UnmarshalJSON(data []byte) error {
+	return apijson.UnmarshalRoot(data, u)
+}
+
+func (u *BetaContextManagementConfigEditUnionParam) asAny() any {
+	if !param.IsOmitted(u.OfClearToolUses20250919) {
+		return u.OfClearToolUses20250919
+	} else if !param.IsOmitted(u.OfClearThinking20251015) {
+		return u.OfClearThinking20251015
+	}
+	return nil
+}
+
+// Returns a pointer to the underlying variant's property, if present.
+func (u BetaContextManagementConfigEditUnionParam) GetClearAtLeast() *BetaInputTokensClearAtLeastParam {
+	if vt := u.OfClearToolUses20250919; vt != nil {
+		return &vt.ClearAtLeast
+	}
+	return nil
+}
+
+// Returns a pointer to the underlying variant's property, if present.
+func (u BetaContextManagementConfigEditUnionParam) GetClearToolInputs() *BetaClearToolUses20250919EditClearToolInputsUnionParam {
+	if vt := u.OfClearToolUses20250919; vt != nil {
+		return &vt.ClearToolInputs
+	}
+	return nil
+}
+
+// Returns a pointer to the underlying variant's property, if present.
+func (u BetaContextManagementConfigEditUnionParam) GetExcludeTools() []string {
+	if vt := u.OfClearToolUses20250919; vt != nil {
+		return vt.ExcludeTools
+	}
+	return nil
+}
+
+// Returns a pointer to the underlying variant's property, if present.
+func (u BetaContextManagementConfigEditUnionParam) GetTrigger() *BetaClearToolUses20250919EditTriggerUnionParam {
+	if vt := u.OfClearToolUses20250919; vt != nil {
+		return &vt.Trigger
+	}
+	return nil
+}
+
+// Returns a pointer to the underlying variant's property, if present.
+func (u BetaContextManagementConfigEditUnionParam) GetType() *string {
+	if vt := u.OfClearToolUses20250919; vt != nil {
+		return (*string)(&vt.Type)
+	} else if vt := u.OfClearThinking20251015; vt != nil {
+		return (*string)(&vt.Type)
+	}
+	return nil
+}
+
+// Returns a subunion which exports methods to access subproperties
+//
+// Or use AsAny() to get the underlying value
+func (u BetaContextManagementConfigEditUnionParam) GetKeep() (res betaContextManagementConfigEditUnionParamKeep) {
+	if vt := u.OfClearToolUses20250919; vt != nil {
+		res.any = &vt.Keep
+	} else if vt := u.OfClearThinking20251015; vt != nil {
+		res.any = vt.Keep.asAny()
+	}
+	return
+}
+
+// Can have the runtime types [*BetaToolUsesKeepParam], [*string]
+type betaContextManagementConfigEditUnionParamKeep struct{ any }
+
+// Use the following switch statement to get the type of the union:
+//
+//	switch u.AsAny().(type) {
+//	case *anthropic.BetaToolUsesKeepParam:
+//	case *string:
+//	default:
+//	    fmt.Errorf("not present")
+//	}
+func (u betaContextManagementConfigEditUnionParamKeep) AsAny() any { return u.any }
+
+// Returns a pointer to the underlying variant's property, if present.
+func (u betaContextManagementConfigEditUnionParamKeep) GetType() *string {
+	switch vt := u.any.(type) {
+	case *BetaToolUsesKeepParam:
+		return (*string)(&vt.Type)
+	case *BetaClearThinking20251015EditKeepUnionParam:
+		return vt.GetType()
+	}
+	return nil
+}
+
+// Returns a pointer to the underlying variant's property, if present.
+func (u betaContextManagementConfigEditUnionParamKeep) GetValue() *int64 {
+	switch vt := u.any.(type) {
+	case *BetaToolUsesKeepParam:
+		return (*int64)(&vt.Value)
+	case *BetaClearThinking20251015EditKeepUnionParam:
+		return vt.GetValue()
+	}
+	return nil
+}
+
+func init() {
+	apijson.RegisterUnion[BetaContextManagementConfigEditUnionParam](
+		"type",
+		apijson.Discriminator[BetaClearToolUses20250919EditParam]("clear_tool_uses_20250919"),
+		apijson.Discriminator[BetaClearThinking20251015EditParam]("clear_thinking_20251015"),
+	)
+}
+
 type BetaContextManagementResponse struct {
 	// List of context management edits that were applied.
-	AppliedEdits []BetaClearToolUses20250919EditResponse `json:"applied_edits,required"`
+	AppliedEdits []BetaContextManagementResponseAppliedEditUnion `json:"applied_edits,required"`
 	// JSON contains metadata for fields, check presence with [respjson.Field.Valid].
 	JSON struct {
 		AppliedEdits respjson.Field
@@ -3022,6 +3271,76 @@ type BetaContextManagementResponse struct {
 // Returns the unmodified JSON received from the API
 func (r BetaContextManagementResponse) RawJSON() string { return r.JSON.raw }
 func (r *BetaContextManagementResponse) UnmarshalJSON(data []byte) error {
+	return apijson.UnmarshalRoot(data, r)
+}
+
+// BetaContextManagementResponseAppliedEditUnion contains all possible properties
+// and values from [BetaClearToolUses20250919EditResponse],
+// [BetaClearThinking20251015EditResponse].
+//
+// Use the [BetaContextManagementResponseAppliedEditUnion.AsAny] method to switch
+// on the variant.
+//
+// Use the methods beginning with 'As' to cast the union to one of its variants.
+type BetaContextManagementResponseAppliedEditUnion struct {
+	ClearedInputTokens int64 `json:"cleared_input_tokens"`
+	// This field is from variant [BetaClearToolUses20250919EditResponse].
+	ClearedToolUses int64 `json:"cleared_tool_uses"`
+	// Any of "clear_tool_uses_20250919", "clear_thinking_20251015".
+	Type string `json:"type"`
+	// This field is from variant [BetaClearThinking20251015EditResponse].
+	ClearedThinkingTurns int64 `json:"cleared_thinking_turns"`
+	JSON                 struct {
+		ClearedInputTokens   respjson.Field
+		ClearedToolUses      respjson.Field
+		Type                 respjson.Field
+		ClearedThinkingTurns respjson.Field
+		raw                  string
+	} `json:"-"`
+}
+
+// anyBetaContextManagementResponseAppliedEdit is implemented by each variant of
+// [BetaContextManagementResponseAppliedEditUnion] to add type safety for the
+// return type of [BetaContextManagementResponseAppliedEditUnion.AsAny]
+type anyBetaContextManagementResponseAppliedEdit interface {
+	implBetaContextManagementResponseAppliedEditUnion()
+}
+
+func (BetaClearToolUses20250919EditResponse) implBetaContextManagementResponseAppliedEditUnion() {}
+func (BetaClearThinking20251015EditResponse) implBetaContextManagementResponseAppliedEditUnion() {}
+
+// Use the following switch statement to find the correct variant
+//
+//	switch variant := BetaContextManagementResponseAppliedEditUnion.AsAny().(type) {
+//	case anthropic.BetaClearToolUses20250919EditResponse:
+//	case anthropic.BetaClearThinking20251015EditResponse:
+//	default:
+//	  fmt.Errorf("no variant present")
+//	}
+func (u BetaContextManagementResponseAppliedEditUnion) AsAny() anyBetaContextManagementResponseAppliedEdit {
+	switch u.Type {
+	case "clear_tool_uses_20250919":
+		return u.AsClearToolUses20250919()
+	case "clear_thinking_20251015":
+		return u.AsClearThinking20251015()
+	}
+	return nil
+}
+
+func (u BetaContextManagementResponseAppliedEditUnion) AsClearToolUses20250919() (v BetaClearToolUses20250919EditResponse) {
+	apijson.UnmarshalRoot(json.RawMessage(u.JSON.raw), &v)
+	return
+}
+
+func (u BetaContextManagementResponseAppliedEditUnion) AsClearThinking20251015() (v BetaClearThinking20251015EditResponse) {
+	apijson.UnmarshalRoot(json.RawMessage(u.JSON.raw), &v)
+	return
+}
+
+// Returns the unmodified JSON received from the API
+func (u BetaContextManagementResponseAppliedEditUnion) RawJSON() string { return u.JSON.raw }
+
+func (r *BetaContextManagementResponseAppliedEditUnion) UnmarshalJSON(data []byte) error {
 	return apijson.UnmarshalRoot(data, r)
 }
 
@@ -3742,7 +4061,9 @@ type BetaMessage struct {
 	// [{ "type": "text", "text": "B)" }]
 	// ```
 	Content []BetaContentBlockUnion `json:"content,required"`
-	// Information about context management operations applied during the request.
+	// Context management response.
+	//
+	// Information about context management strategies applied during the request.
 	ContextManagement BetaContextManagementResponse `json:"context_management,required"`
 	// The model that will complete your prompt.\n\nSee
 	// [models](https://docs.anthropic.com/en/docs/models-overview) for additional
@@ -4503,7 +4824,7 @@ func (r *BetaRawContentBlockStopEvent) UnmarshalJSON(data []byte) error {
 }
 
 type BetaRawMessageDeltaEvent struct {
-	// Information about context management operations applied during the request.
+	// Information about context management strategies applied during the request
 	ContextManagement BetaContextManagementResponse `json:"context_management,required"`
 	Delta             BetaRawMessageDeltaEventDelta `json:"delta,required"`
 	Type              constant.MessageDelta         `json:"type,required"`
@@ -5197,6 +5518,71 @@ func (r BetaSignatureDelta) RawJSON() string { return r.JSON.raw }
 func (r *BetaSignatureDelta) UnmarshalJSON(data []byte) error {
 	return apijson.UnmarshalRoot(data, r)
 }
+
+// A skill that was loaded in a container (response model).
+type BetaSkill struct {
+	// Skill ID
+	SkillID string `json:"skill_id,required"`
+	// Type of skill - either 'anthropic' (built-in) or 'custom' (user-defined)
+	//
+	// Any of "anthropic", "custom".
+	Type BetaSkillType `json:"type,required"`
+	// Skill version or 'latest' for most recent version
+	Version string `json:"version,required"`
+	// JSON contains metadata for fields, check presence with [respjson.Field.Valid].
+	JSON struct {
+		SkillID     respjson.Field
+		Type        respjson.Field
+		Version     respjson.Field
+		ExtraFields map[string]respjson.Field
+		raw         string
+	} `json:"-"`
+}
+
+// Returns the unmodified JSON received from the API
+func (r BetaSkill) RawJSON() string { return r.JSON.raw }
+func (r *BetaSkill) UnmarshalJSON(data []byte) error {
+	return apijson.UnmarshalRoot(data, r)
+}
+
+// Type of skill - either 'anthropic' (built-in) or 'custom' (user-defined)
+type BetaSkillType string
+
+const (
+	BetaSkillTypeAnthropic BetaSkillType = "anthropic"
+	BetaSkillTypeCustom    BetaSkillType = "custom"
+)
+
+// Specification for a skill to be loaded in a container (request model).
+//
+// The properties SkillID, Type are required.
+type BetaSkillParams struct {
+	// Skill ID
+	SkillID string `json:"skill_id,required"`
+	// Type of skill - either 'anthropic' (built-in) or 'custom' (user-defined)
+	//
+	// Any of "anthropic", "custom".
+	Type BetaSkillParamsType `json:"type,omitzero,required"`
+	// Skill version or 'latest' for most recent version
+	Version param.Opt[string] `json:"version,omitzero"`
+	paramObj
+}
+
+func (r BetaSkillParams) MarshalJSON() (data []byte, err error) {
+	type shadow BetaSkillParams
+	return param.MarshalObject(r, (*shadow)(&r))
+}
+func (r *BetaSkillParams) UnmarshalJSON(data []byte) error {
+	return apijson.UnmarshalRoot(data, r)
+}
+
+// Type of skill - either 'anthropic' (built-in) or 'custom' (user-defined)
+type BetaSkillParamsType string
+
+const (
+	BetaSkillParamsTypeAnthropic BetaSkillParamsType = "anthropic"
+	BetaSkillParamsTypeCustom    BetaSkillParamsType = "custom"
+)
 
 type BetaStopReason string
 
@@ -6185,7 +6571,7 @@ type BetaThinkingConfigEnabledParam struct {
 	// Must be ≥1024 and less than `max_tokens`.
 	//
 	// See
-	// [extended thinking](https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking)
+	// [extended thinking](https://docs.claude.com/en/docs/build-with-claude/extended-thinking)
 	// for details.
 	BudgetTokens int64 `json:"budget_tokens,required"`
 	// This field can be elided, and will marshal its zero value as "enabled".
@@ -6265,6 +6651,22 @@ type BetaThinkingDelta struct {
 // Returns the unmodified JSON received from the API
 func (r BetaThinkingDelta) RawJSON() string { return r.JSON.raw }
 func (r *BetaThinkingDelta) UnmarshalJSON(data []byte) error {
+	return apijson.UnmarshalRoot(data, r)
+}
+
+// The properties Type, Value are required.
+type BetaThinkingTurnsParam struct {
+	Value int64 `json:"value,required"`
+	// This field can be elided, and will marshal its zero value as "thinking_turns".
+	Type constant.ThinkingTurns `json:"type,required"`
+	paramObj
+}
+
+func (r BetaThinkingTurnsParam) MarshalJSON() (data []byte, err error) {
+	type shadow BetaThinkingTurnsParam
+	return param.MarshalObject(r, (*shadow)(&r))
+}
+func (r *BetaThinkingTurnsParam) UnmarshalJSON(data []byte) error {
 	return apijson.UnmarshalRoot(data, r)
 }
 
@@ -7977,7 +8379,7 @@ type BetaMessageNewParams struct {
 	// only specifies the absolute maximum number of tokens to generate.
 	//
 	// Different models have different maximum values for this parameter. See
-	// [models](https://docs.anthropic.com/en/docs/models-overview) for details.
+	// [models](https://docs.claude.com/en/docs/models-overview) for details.
 	MaxTokens int64 `json:"max_tokens,required"`
 	// Input messages.
 	//
@@ -8040,12 +8442,12 @@ type BetaMessageNewParams struct {
 	// { "role": "user", "content": [{ "type": "text", "text": "Hello, Claude" }] }
 	// ```
 	//
-	// See [input examples](https://docs.anthropic.com/en/api/messages-examples).
+	// See [input examples](https://docs.claude.com/en/api/messages-examples).
 	//
 	// Note that if you want to include a
-	// [system prompt](https://docs.anthropic.com/en/docs/system-prompts), you can use
-	// the top-level `system` parameter — there is no `"system"` role for input
-	// messages in the Messages API.
+	// [system prompt](https://docs.claude.com/en/docs/system-prompts), you can use the
+	// top-level `system` parameter — there is no `"system"` role for input messages in
+	// the Messages API.
 	//
 	// There is a limit of 100,000 messages in a single request.
 	Messages []BetaMessageParam `json:"messages,omitzero,required"`
@@ -8053,8 +8455,6 @@ type BetaMessageNewParams struct {
 	// [models](https://docs.anthropic.com/en/docs/models-overview) for additional
 	// details and options.
 	Model Model `json:"model,omitzero,required"`
-	// Container identifier for reuse across requests.
-	Container param.Opt[string] `json:"container,omitzero"`
 	// Amount of randomness injected into the response.
 	//
 	// Defaults to `1.0`. Ranges from `0.0` to `1.0`. Use `temperature` closer to `0.0`
@@ -8082,7 +8482,12 @@ type BetaMessageNewParams struct {
 	// Recommended for advanced use cases only. You usually only need to use
 	// `temperature`.
 	TopP param.Opt[float64] `json:"top_p,omitzero"`
-	// Configuration for context management operations.
+	// Container identifier for reuse across requests.
+	Container BetaMessageNewParamsContainerUnion `json:"container,omitzero"`
+	// Context management configuration.
+	//
+	// This allows you to control how Claude manages context across multiple requests,
+	// such as whether to clear function results or not.
 	ContextManagement BetaContextManagementConfigParam `json:"context_management,omitzero"`
 	// MCP servers to be utilized in this request
 	MCPServers []BetaRequestMCPServerURLDefinitionParam `json:"mcp_servers,omitzero"`
@@ -8092,7 +8497,7 @@ type BetaMessageNewParams struct {
 	// for this request.
 	//
 	// Anthropic offers different levels of service for your API requests. See
-	// [service-tiers](https://docs.anthropic.com/en/api/service-tiers) for details.
+	// [service-tiers](https://docs.claude.com/en/api/service-tiers) for details.
 	//
 	// Any of "auto", "standard_only".
 	ServiceTier BetaMessageNewParamsServiceTier `json:"service_tier,omitzero"`
@@ -8110,7 +8515,7 @@ type BetaMessageNewParams struct {
 	//
 	// A system prompt is a way of providing context and instructions to Claude, such
 	// as specifying a particular goal or role. See our
-	// [guide to system prompts](https://docs.anthropic.com/en/docs/system-prompts).
+	// [guide to system prompts](https://docs.claude.com/en/docs/system-prompts).
 	System []BetaTextBlockParam `json:"system,omitzero"`
 	// Configuration for enabling Claude's extended thinking.
 	//
@@ -8119,7 +8524,7 @@ type BetaMessageNewParams struct {
 	// tokens and counts towards your `max_tokens` limit.
 	//
 	// See
-	// [extended thinking](https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking)
+	// [extended thinking](https://docs.claude.com/en/docs/build-with-claude/extended-thinking)
 	// for details.
 	Thinking BetaThinkingConfigParamUnion `json:"thinking,omitzero"`
 	// How the model should use the provided tools. The model can use a specific tool,
@@ -8134,9 +8539,9 @@ type BetaMessageNewParams struct {
 	//
 	// There are two types of tools: **client tools** and **server tools**. The
 	// behavior described below applies to client tools. For
-	// [server tools](https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview#server-tools),
+	// [server tools](https://docs.claude.com/en/docs/agents-and-tools/tool-use/overview#server-tools),
 	// see their individual documentation as each has its own behavior (e.g., the
-	// [web search tool](https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/web-search-tool)).
+	// [web search tool](https://docs.claude.com/en/docs/agents-and-tools/tool-use/web-search-tool)).
 	//
 	// Each tool definition includes:
 	//
@@ -8205,7 +8610,7 @@ type BetaMessageNewParams struct {
 	// functions, or more generally whenever you want the model to produce a particular
 	// JSON structure of output.
 	//
-	// See our [guide](https://docs.anthropic.com/en/docs/tool-use) for more details.
+	// See our [guide](https://docs.claude.com/en/docs/tool-use) for more details.
 	Tools []BetaToolUnionParam `json:"tools,omitzero"`
 	// Optional header to specify the beta version(s) you want to use.
 	Betas []AnthropicBeta `header:"anthropic-beta,omitzero" json:"-"`
@@ -8220,11 +8625,36 @@ func (r *BetaMessageNewParams) UnmarshalJSON(data []byte) error {
 	return apijson.UnmarshalRoot(data, r)
 }
 
+// Only one field can be non-zero.
+//
+// Use [param.IsOmitted] to confirm if a field is set.
+type BetaMessageNewParamsContainerUnion struct {
+	OfContainers *BetaContainerParams `json:",omitzero,inline"`
+	OfString     param.Opt[string]    `json:",omitzero,inline"`
+	paramUnion
+}
+
+func (u BetaMessageNewParamsContainerUnion) MarshalJSON() ([]byte, error) {
+	return param.MarshalUnion(u, u.OfContainers, u.OfString)
+}
+func (u *BetaMessageNewParamsContainerUnion) UnmarshalJSON(data []byte) error {
+	return apijson.UnmarshalRoot(data, u)
+}
+
+func (u *BetaMessageNewParamsContainerUnion) asAny() any {
+	if !param.IsOmitted(u.OfContainers) {
+		return u.OfContainers
+	} else if !param.IsOmitted(u.OfString) {
+		return &u.OfString.Value
+	}
+	return nil
+}
+
 // Determines whether to use priority capacity (if available) or standard capacity
 // for this request.
 //
 // Anthropic offers different levels of service for your API requests. See
-// [service-tiers](https://docs.anthropic.com/en/api/service-tiers) for details.
+// [service-tiers](https://docs.claude.com/en/api/service-tiers) for details.
 type BetaMessageNewParamsServiceTier string
 
 const (
@@ -8294,12 +8724,12 @@ type BetaMessageCountTokensParams struct {
 	// { "role": "user", "content": [{ "type": "text", "text": "Hello, Claude" }] }
 	// ```
 	//
-	// See [input examples](https://docs.anthropic.com/en/api/messages-examples).
+	// See [input examples](https://docs.claude.com/en/api/messages-examples).
 	//
 	// Note that if you want to include a
-	// [system prompt](https://docs.anthropic.com/en/docs/system-prompts), you can use
-	// the top-level `system` parameter — there is no `"system"` role for input
-	// messages in the Messages API.
+	// [system prompt](https://docs.claude.com/en/docs/system-prompts), you can use the
+	// top-level `system` parameter — there is no `"system"` role for input messages in
+	// the Messages API.
 	//
 	// There is a limit of 100,000 messages in a single request.
 	Messages []BetaMessageParam `json:"messages,omitzero,required"`
@@ -8307,7 +8737,10 @@ type BetaMessageCountTokensParams struct {
 	// [models](https://docs.anthropic.com/en/docs/models-overview) for additional
 	// details and options.
 	Model Model `json:"model,omitzero,required"`
-	// Configuration for context management operations.
+	// Context management configuration.
+	//
+	// This allows you to control how Claude manages context across multiple requests,
+	// such as whether to clear function results or not.
 	ContextManagement BetaContextManagementConfigParam `json:"context_management,omitzero"`
 	// MCP servers to be utilized in this request
 	MCPServers []BetaRequestMCPServerURLDefinitionParam `json:"mcp_servers,omitzero"`
@@ -8315,7 +8748,7 @@ type BetaMessageCountTokensParams struct {
 	//
 	// A system prompt is a way of providing context and instructions to Claude, such
 	// as specifying a particular goal or role. See our
-	// [guide to system prompts](https://docs.anthropic.com/en/docs/system-prompts).
+	// [guide to system prompts](https://docs.claude.com/en/docs/system-prompts).
 	System BetaMessageCountTokensParamsSystemUnion `json:"system,omitzero"`
 	// Configuration for enabling Claude's extended thinking.
 	//
@@ -8324,7 +8757,7 @@ type BetaMessageCountTokensParams struct {
 	// tokens and counts towards your `max_tokens` limit.
 	//
 	// See
-	// [extended thinking](https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking)
+	// [extended thinking](https://docs.claude.com/en/docs/build-with-claude/extended-thinking)
 	// for details.
 	Thinking BetaThinkingConfigParamUnion `json:"thinking,omitzero"`
 	// How the model should use the provided tools. The model can use a specific tool,
@@ -8339,9 +8772,9 @@ type BetaMessageCountTokensParams struct {
 	//
 	// There are two types of tools: **client tools** and **server tools**. The
 	// behavior described below applies to client tools. For
-	// [server tools](https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview#server-tools),
+	// [server tools](https://docs.claude.com/en/docs/agents-and-tools/tool-use/overview#server-tools),
 	// see their individual documentation as each has its own behavior (e.g., the
-	// [web search tool](https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/web-search-tool)).
+	// [web search tool](https://docs.claude.com/en/docs/agents-and-tools/tool-use/web-search-tool)).
 	//
 	// Each tool definition includes:
 	//
@@ -8410,7 +8843,7 @@ type BetaMessageCountTokensParams struct {
 	// functions, or more generally whenever you want the model to produce a particular
 	// JSON structure of output.
 	//
-	// See our [guide](https://docs.anthropic.com/en/docs/tool-use) for more details.
+	// See our [guide](https://docs.claude.com/en/docs/tool-use) for more details.
 	Tools []BetaMessageCountTokensParamsToolUnion `json:"tools,omitzero"`
 	// Optional header to specify the beta version(s) you want to use.
 	Betas []AnthropicBeta `header:"anthropic-beta,omitzero" json:"-"`
