@@ -9,7 +9,6 @@ require (
 	github.com/go-pkgz/repeater/v2 v2.2.0
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/mark3labs/mcp-go v0.41.1
-	github.com/sashabaranov/go-openai v1.41.2
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/genai v1.28.0
 )
