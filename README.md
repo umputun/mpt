@@ -215,6 +215,7 @@ Available keys (use hyphens in flag values):
 - `name` - Display name for the provider (defaults to ID)
 - `max-tokens` - Maximum tokens to generate (default: 16384, 0 = use model maximum, supports k/kb/m/mb/g/gb suffixes)
 - `temperature` - Controls randomness 0-2 (default: 0.7, 0 = deterministic)
+- `endpoint-type` - API endpoint type: auto, responses, chat_completions (default: chat_completions)
 - `enabled` - Enable/disable provider (default: true)
 
 Examples:
@@ -225,10 +226,15 @@ mpt --customs openrouter:url=https://openrouter.ai/api/v1,model=claude-3.5-sonne
     --customs local:url=http://localhost:1234/v1,model=mixtral-8x7b \
     --prompt "Explain quantum computing"
 
+# Using GPT-5 with responses endpoint
+mpt --customs openai:url=https://api.openai.com,model=gpt-5,api-key=$OPENAI_KEY,endpoint-type=responses \
+    --prompt "Analyze this code"
+
 # Using environment variables for custom providers
 export CUSTOM_OPENROUTER_URL=https://openrouter.ai/api/v1
 export CUSTOM_OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
 export CUSTOM_OPENROUTER_API_KEY=$OPENROUTER_KEY
+export CUSTOM_OPENROUTER_ENDPOINT_TYPE=chat_completions
 export CUSTOM_LOCAL_URL=http://localhost:1234/v1
 export CUSTOM_LOCAL_MODEL=mixtral-8x7b
 
@@ -240,20 +246,27 @@ mpt --prompt "Analyze this code"  # Will use both configured providers
 For backward compatibility, you can still configure a single custom provider using the `--custom.*` flags:
 
 ```
---custom.name         Name for the custom provider
---custom.url          Base URL for the custom provider API (required)
---custom.api-key      API key for the custom provider (if needed)
---custom.model        Model to use (required)
---custom.enabled      Enable this custom provider (default: true)
---custom.max-tokens   Maximum number of tokens to generate (default: 16384, 0 = use model maximum, supports k/kb/m/mb/g/gb suffixes)
---custom.temperature  Controls randomness (0-2, higher is more random) (default: 0.7, 0 = deterministic)
+--custom.name           Name for the custom provider
+--custom.url            Base URL for the custom provider API (required)
+--custom.api-key        API key for the custom provider (if needed)
+--custom.model          Model to use (required)
+--custom.enabled        Enable this custom provider (default: true)
+--custom.max-tokens     Maximum number of tokens to generate (default: 16384, 0 = use model maximum, supports k/kb/m/mb/g/gb suffixes)
+--custom.temperature    Controls randomness (0-2, higher is more random) (default: 0.7, 0 = deterministic)
+--custom.endpoint-type  API endpoint type: auto, responses, chat_completions (default: chat_completions)
 ```
 
-Example:
+Examples:
 
-```
+```bash
+# Standard custom provider
 mpt --custom.enabled --custom.name="LocalLLM" --custom.url="http://localhost:1234/v1" \
     --custom.model="mixtral-8x7b" --prompt="Explain quantum computing"
+
+# Custom provider with specific endpoint type (e.g., for GPT-5)
+mpt --custom.enabled --custom.url="https://api.openai.com" \
+    --custom.model="gpt-5" --custom.api-key="$OPENAI_KEY" \
+    --custom.endpoint-type="responses" --prompt="Analyze this code"
 ```
 
 ##### Configuration Precedence
@@ -1024,6 +1037,7 @@ CUSTOM_TEMPERATURE=0.7
 #   - NAME: Display name for the provider
 #   - MAX_TOKENS: Maximum tokens (supports k/kb/m/mb/g/gb suffixes)
 #   - TEMPERATURE: Temperature setting (0-2)
+#   - ENDPOINT_TYPE: API endpoint type (auto, responses, chat_completions)
 #   - ENABLED: Whether the provider is enabled (true/false)
 
 CUSTOM_OPENROUTER_URL="https://openrouter.ai/api/v1"

@@ -2000,12 +2000,13 @@ func TestCustomSpec_UnmarshalFlag(t *testing.T) {
 			name:  "valid spec",
 			input: "url=https://api.example.com,model=gpt-4,api-key=secret",
 			expected: config.CustomSpec{
-				URL:         "https://api.example.com",
-				Model:       "gpt-4",
-				APIKey:      "secret",
-				Temperature: -1,
-				MaxTokens:   16384,
-				Enabled:     false, // default, matches standard providers
+				URL:          "https://api.example.com",
+				Model:        "gpt-4",
+				APIKey:       "secret",
+				Temperature:  -1,
+				MaxTokens:    16384,
+				EndpointType: "chat_completions", // default
+				Enabled:      false,              // default, matches standard providers
 			},
 		},
 		{

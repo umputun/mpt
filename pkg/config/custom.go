@@ -17,13 +17,14 @@ const defaultCustomMaxTokens = 16384
 
 // CustomSpec represents a parsed custom provider specification
 type CustomSpec struct {
-	Name        string
-	URL         string
-	APIKey      string
-	Model       string
-	MaxTokens   int
-	Temperature float32
-	Enabled     bool
+	Name         string
+	URL          string
+	APIKey       string
+	Model        string
+	MaxTokens    int
+	Temperature  float32
+	EndpointType string
+	Enabled      bool
 }
 
 // CustomProviderManager manages custom provider configuration and initialization
@@ -96,13 +97,14 @@ func (m *CustomProviderManager) InitializeProviders() (providers []provider.Prov
 
 		// create provider
 		p := provider.NewCustomOpenAI(provider.CustomOptions{
-			Name:        spec.Name,
-			BaseURL:     spec.URL,
-			APIKey:      spec.APIKey,
-			Model:       spec.Model,
-			Enabled:     true,
-			MaxTokens:   spec.MaxTokens,
-			Temperature: spec.Temperature,
+			Name:         spec.Name,
+			BaseURL:      spec.URL,
+			APIKey:       spec.APIKey,
+			Model:        spec.Model,
+			Enabled:      true,
+			MaxTokens:    spec.MaxTokens,
+			Temperature:  spec.Temperature,
+			EndpointType: provider.EndpointType(spec.EndpointType),
 		})
 
 		providers = append(providers, p)
@@ -234,6 +236,7 @@ func (m *CustomProviderManager) parseCustomProvidersFromEnv() (providers map[str
 
 		// known field suffixes (all use underscores to match env var convention)
 		knownFields := []string{
+			"_endpoint_type",
 			"_max_tokens",
 			"_api_key",
 			"_temperature",
@@ -266,7 +269,7 @@ func (m *CustomProviderManager) parseCustomProvidersFromEnv() (providers map[str
 		}
 
 		if !found {
-			warnings = append(warnings, fmt.Sprintf("skipping env var %s: unrecognized field name (valid fields: url, api_key, model, name, max_tokens, temperature, enabled)", key))
+			warnings = append(warnings, fmt.Sprintf("skipping env var %s: unrecognized field name (valid fields: url, api_key, model, name, max_tokens, temperature, endpoint_type, enabled)", key))
 			continue
 		}
 
@@ -289,61 +292,16 @@ func (m *CustomProviderManager) parseCustomProvidersFromEnv() (providers map[str
 	// convert to CustomSpec
 	for id, fields := range envMap {
 		spec := CustomSpec{
-			Name:        id, // default name to ID
-			Temperature: -1, // -1 means unset, will use provider default
-			MaxTokens:   defaultCustomMaxTokens,
-			Enabled:     false, // disabled by default, matches standard providers
+			Name:         id, // default name to ID
+			Temperature:  -1, // -1 means unset, will use provider default
+			MaxTokens:    defaultCustomMaxTokens,
+			EndpointType: "chat_completions", // default to chat_completions for custom providers
+			Enabled:      false,              // disabled by default, matches standard providers
 		}
 
 		for field, value := range fields {
-			switch field {
-			case "url":
-				spec.URL = value
-
-			case "api_key":
-				spec.APIKey = value
-
-			case "model":
-				spec.Model = value
-
-			case "name":
-				spec.Name = value
-
-			case "max_tokens":
-				if tokens, err := ParseSize(value); err == nil {
-					// safe downcast with overflow check
-					if tokens > math.MaxInt32 {
-						warnings = append(warnings,
-							fmt.Sprintf("custom[%s]: max_tokens value too large", id))
-					} else {
-						spec.MaxTokens = int(tokens)
-					}
-				} else {
-					warnings = append(warnings,
-						fmt.Sprintf("custom[%s]: invalid max_tokens '%s': %v", id, value, err))
-				}
-
-			case "temperature":
-				if temp, err := strconv.ParseFloat(value, 32); err == nil {
-					if temp >= 0 && temp <= 2 {
-						spec.Temperature = float32(temp)
-					} else {
-						warnings = append(warnings,
-							fmt.Sprintf("custom[%s]: temperature %g out of range [0,2]", id, temp))
-					}
-				} else {
-					warnings = append(warnings,
-						fmt.Sprintf("custom[%s]: invalid temperature '%s': %v", id, value, err))
-				}
-
-			case "enabled":
-				if enabled, err := strconv.ParseBool(value); err == nil {
-					spec.Enabled = enabled
-				} else {
-					warnings = append(warnings,
-						fmt.Sprintf("custom[%s]: invalid enabled value '%s': %v", id, value, err))
-				}
-			}
+			fieldWarnings := applyEnvField(&spec, id, field, value)
+			warnings = append(warnings, fieldWarnings...)
 		}
 
 		providers[id] = spec
@@ -352,14 +310,81 @@ func (m *CustomProviderManager) parseCustomProvidersFromEnv() (providers map[str
 	return providers, warnings
 }
 
+// applyEnvField applies a single environment variable field to a CustomSpec and returns any warnings
+func applyEnvField(spec *CustomSpec, id, field, value string) []string {
+	var warnings []string
+
+	switch field {
+	case "url":
+		spec.URL = value
+
+	case "api_key":
+		spec.APIKey = value
+
+	case "model":
+		spec.Model = value
+
+	case "name":
+		spec.Name = value
+
+	case "max_tokens":
+		if tokens, err := ParseSize(value); err == nil {
+			// safe downcast with overflow check
+			if tokens > math.MaxInt32 {
+				warnings = append(warnings,
+					fmt.Sprintf("custom[%s]: max_tokens value too large", id))
+			} else {
+				spec.MaxTokens = int(tokens)
+			}
+		} else {
+			warnings = append(warnings,
+				fmt.Sprintf("custom[%s]: invalid max_tokens '%s': %v", id, value, err))
+		}
+
+	case "temperature":
+		if temp, err := strconv.ParseFloat(value, 32); err == nil {
+			if temp >= 0 && temp <= 2 {
+				spec.Temperature = float32(temp)
+			} else {
+				warnings = append(warnings,
+					fmt.Sprintf("custom[%s]: temperature %g out of range [0,2]", id, temp))
+			}
+		} else {
+			warnings = append(warnings,
+				fmt.Sprintf("custom[%s]: invalid temperature '%s': %v", id, value, err))
+		}
+
+	case "endpoint_type":
+		// validate endpoint type
+		valueLower := strings.ToLower(value)
+		if valueLower == "auto" || valueLower == "responses" || valueLower == "chat_completions" {
+			spec.EndpointType = valueLower
+		} else {
+			warnings = append(warnings,
+				fmt.Sprintf("custom[%s]: invalid endpoint_type '%s' (valid: auto, responses, chat_completions)", id, value))
+		}
+
+	case "enabled":
+		if enabled, err := strconv.ParseBool(value); err == nil {
+			spec.Enabled = enabled
+		} else {
+			warnings = append(warnings,
+				fmt.Sprintf("custom[%s]: invalid enabled value '%s': %v", id, value, err))
+		}
+	}
+
+	return warnings
+}
+
 // ParseCustomSpec parses "url=https://...,model=xxx,api-key=xxx" format string into CustomSpec.
 // This is used for parsing CLI flag values.
 func ParseCustomSpec(value string) (CustomSpec, error) {
 	spec := CustomSpec{
 		// set defaults (-1 means unset for temperature to allow explicit 0)
-		Temperature: -1, // will be set to default by provider if not specified
-		MaxTokens:   defaultCustomMaxTokens,
-		Enabled:     false, // disabled by default, matches standard providers
+		Temperature:  -1, // will be set to default by provider if not specified
+		MaxTokens:    defaultCustomMaxTokens,
+		EndpointType: "chat_completions", // default to chat_completions for custom providers
+		Enabled:      false,              // disabled by default, matches standard providers
 	}
 
 	// parse comma-separated key=value pairs
@@ -406,6 +431,14 @@ func ParseCustomSpec(value string) (CustomSpec, error) {
 				return spec, fmt.Errorf("temperature must be between 0 and 2, got %g", temp)
 			}
 			spec.Temperature = float32(temp)
+
+		case "endpoint-type":
+			// validate endpoint type
+			valLower := strings.ToLower(val)
+			if valLower != "auto" && valLower != "responses" && valLower != "chat_completions" {
+				return spec, fmt.Errorf("invalid endpoint-type '%s' (valid: auto, responses, chat_completions)", val)
+			}
+			spec.EndpointType = valLower
 
 		case "enabled":
 			enabled, err := strconv.ParseBool(val)
