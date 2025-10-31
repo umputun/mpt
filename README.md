@@ -172,7 +172,7 @@ You can provide a prompt in the following ways:
 
 ```
 --openai.api-key      OpenAI API key (or OPENAI_API_KEY env var)
---openai.model        OpenAI model to use (default: gpt-5-codex)
+--openai.model        OpenAI model to use (default: gpt-5)
 --openai.enabled      Enable OpenAI provider
 --openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum, supports k/kb/m/mb/g/gb suffixes)
 --openai.temperature  Controls randomness (0-2, higher is more random) (default: 0.1)
@@ -191,7 +191,7 @@ You can provide a prompt in the following ways:
 
 ```
 --google.api-key      Google API key (or GOOGLE_API_KEY env var)
---google.model        Google model to use (default: gemini-2.5-pro-preview-06-05)
+--google.model        Google model to use (default: gemini-2.5-pro-exp-03-25)
 --google.enabled      Enable Google provider
 --google.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum, supports k/kb/m/mb/g/gb suffixes)
 ```
@@ -211,12 +211,17 @@ You can add multiple custom providers using the `--customs` flag with a compact 
 Available keys (use hyphens in flag values):
 - `url` - Base URL for the provider API (required)
 - `model` - Model to use (required)
-- `api-key` - API key for authentication
+- `api-key` - API key for authentication (optional, can be omitted for local LLMs or servers without authentication)
 - `name` - Display name for the provider (defaults to ID)
 - `max-tokens` - Maximum tokens to generate (default: 16384, 0 = use model maximum, supports k/kb/m/mb/g/gb suffixes)
 - `temperature` - Controls randomness 0-2 (default: 0.7, 0 = deterministic)
-- `endpoint-type` - API endpoint type: auto, responses, chat_completions (default: chat_completions)
+- `endpoint-type` - API endpoint type (default: chat_completions)
+  - `auto` - Automatically detect based on model name (GPT-5 → responses, others → chat_completions)
+  - `responses` - Force v1/responses endpoint (required for GPT-5 models)
+  - `chat_completions` - Force v1/chat/completions endpoint (for GPT-4, GPT-4o, and most compatible APIs)
 - `enabled` - Enable/disable provider (default: true)
+
+**Note on API Keys**: API keys are optional for custom providers. If your custom provider doesn't require authentication (e.g., local LLM servers like Ollama, LM Studio, or development servers), you can omit the `api-key` field. MPT will skip the Authorization header when the API key is empty.
 
 Examples:
 
@@ -225,6 +230,14 @@ Examples:
 mpt --customs openrouter:url=https://openrouter.ai/api/v1,model=claude-3.5-sonnet,api-key=$OPENROUTER_KEY \
     --customs local:url=http://localhost:1234/v1,model=mixtral-8x7b \
     --prompt "Explain quantum computing"
+
+# Local LLM without authentication
+mpt --customs local:url=http://localhost:11434/v1,model=llama2 \
+    --prompt "Explain quantum computing"
+
+# Ollama server
+mpt --customs ollama:url=http://localhost:11434/v1,model=mistral \
+    --prompt "Write a Python function"
 
 # Using GPT-5 with responses endpoint
 mpt --customs openai:url=https://api.openai.com,model=gpt-5,api-key=$OPENAI_KEY,endpoint-type=responses \
