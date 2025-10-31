@@ -702,6 +702,133 @@ func TestNewOpenAI_DefaultTemperature(t *testing.T) {
 	assert.InDelta(t, float32(DefaultTemperature), provider.temperature, 0.001)
 }
 
+func TestOpenAI_ChatCompletions_EmptyAPIKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// verify Authorization header is NOT present when API key is empty
+		authHeader := r.Header.Get("Authorization")
+		assert.Empty(t, authHeader, "Authorization header should not be present when API key is empty")
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"choices": [{
+				"message": {
+					"content": "Response without auth"
+				}
+			}]
+		}`))
+	}))
+	defer server.Close()
+
+	provider := &OpenAI{
+		httpClient: &http.Client{
+			Transport: &urlRewriteTransport{
+				base:   server.URL,
+				target: "https://api.openai.com",
+				inner:  http.DefaultTransport,
+			},
+		},
+		apiKey:            "", // empty API key
+		model:             "gpt-4o",
+		enabled:           true,
+		maxTokens:         100,
+		temperature:       0.7,
+		baseURL:           "https://api.openai.com",
+		forceEndpointType: EndpointTypeAuto,
+	}
+
+	result, err := provider.Generate(context.Background(), "test")
+	require.NoError(t, err)
+	assert.Equal(t, "Response without auth", result)
+}
+
+func TestOpenAI_ResponsesAPI_EmptyAPIKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// verify Authorization header is NOT present when API key is empty
+		authHeader := r.Header.Get("Authorization")
+		assert.Empty(t, authHeader, "Authorization header should not be present when API key is empty")
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"status": "completed",
+			"output": [
+				{
+					"type": "message",
+					"content": [
+						{
+							"type": "output_text",
+							"text": "Response without auth"
+						}
+					]
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	provider := &OpenAI{
+		httpClient: &http.Client{
+			Transport: &urlRewriteTransport{
+				base:   server.URL,
+				target: "https://api.openai.com",
+				inner:  http.DefaultTransport,
+			},
+		},
+		apiKey:            "", // empty API key
+		model:             "gpt-5",
+		enabled:           true,
+		maxTokens:         100,
+		temperature:       0.7,
+		baseURL:           "https://api.openai.com",
+		forceEndpointType: EndpointTypeAuto,
+	}
+
+	result, err := provider.Generate(context.Background(), "test")
+	require.NoError(t, err)
+	assert.Equal(t, "Response without auth", result)
+}
+
+func TestOpenAI_ChatCompletions_WithAPIKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// verify Authorization header IS present when API key is set
+		authHeader := r.Header.Get("Authorization")
+		assert.Equal(t, "Bearer test-api-key", authHeader)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"choices": [{
+				"message": {
+					"content": "Response with auth"
+				}
+			}]
+		}`))
+	}))
+	defer server.Close()
+
+	provider := &OpenAI{
+		httpClient: &http.Client{
+			Transport: &urlRewriteTransport{
+				base:   server.URL,
+				target: "https://api.openai.com",
+				inner:  http.DefaultTransport,
+			},
+		},
+		apiKey:            "test-api-key",
+		model:             "gpt-4o",
+		enabled:           true,
+		maxTokens:         100,
+		temperature:       0.7,
+		baseURL:           "https://api.openai.com",
+		forceEndpointType: EndpointTypeAuto,
+	}
+
+	result, err := provider.Generate(context.Background(), "test")
+	require.NoError(t, err)
+	assert.Equal(t, "Response with auth", result)
+}
+
 // urlRewriteTransport rewrites URLs from target to base for testing
 type urlRewriteTransport struct {
 	base   string

@@ -184,7 +184,9 @@ func (o *OpenAI) doRequest(ctx context.Context, url string, reqBody interface{})
 
 	// set headers
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+o.apiKey)
+	if o.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+o.apiKey)
+	}
 
 	// send request
 	resp, err := o.httpClient.Do(req)

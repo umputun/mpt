@@ -336,3 +336,76 @@ func TestCustomOpenAI_HTTPClientInjection(t *testing.T) {
 	_, err := provider.Generate(context.Background(), "test")
 	require.NoError(t, err)
 }
+
+func TestCustomOpenAI_Generate_EmptyAPIKey_ChatCompletions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// verify Authorization header is NOT present for custom providers without API key
+		authHeader := r.Header.Get("Authorization")
+		assert.Empty(t, authHeader, "Authorization header should not be present when API key is empty")
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"choices": [
+				{
+					"message": {
+						"content": "Response from local LLM without auth"
+					},
+					"finish_reason": "stop"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	provider := NewCustomOpenAI(CustomOptions{
+		Name:    "LocalLLM",
+		BaseURL: server.URL,
+		APIKey:  "", // empty API key for local providers
+		Model:   "local-model",
+		Enabled: true,
+	})
+
+	result, err := provider.Generate(context.Background(), "test")
+	require.NoError(t, err)
+	assert.Equal(t, "Response from local LLM without auth", result)
+}
+
+func TestCustomOpenAI_Generate_EmptyAPIKey_ResponsesAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// verify Authorization header is NOT present for custom providers without API key
+		authHeader := r.Header.Get("Authorization")
+		assert.Empty(t, authHeader, "Authorization header should not be present when API key is empty")
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"status": "completed",
+			"output": [
+				{
+					"type": "message",
+					"content": [
+						{
+							"type": "output_text",
+							"text": "Response from local GPT-5 without auth"
+						}
+					]
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	provider := NewCustomOpenAI(CustomOptions{
+		Name:         "LocalGPT5",
+		BaseURL:      server.URL,
+		APIKey:       "", // empty API key for local providers
+		Model:        "local-gpt-5",
+		Enabled:      true,
+		EndpointType: EndpointTypeResponses,
+	})
+
+	result, err := provider.Generate(context.Background(), "test")
+	require.NoError(t, err)
+	assert.Equal(t, "Response from local GPT-5 without auth", result)
+}
