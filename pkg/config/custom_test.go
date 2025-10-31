@@ -21,80 +21,87 @@ func TestParseCustomSpec(t *testing.T) {
 			name:  "full spec with all fields",
 			input: "url=https://api.example.com,model=gpt-4,api-key=secret,temperature=0.5,max-tokens=8k,name=MyProvider,enabled=true",
 			expected: CustomSpec{
-				URL:         "https://api.example.com",
-				Model:       "gpt-4",
-				APIKey:      "secret",
-				Temperature: 0.5,
-				MaxTokens:   8192,
-				Name:        "MyProvider",
-				Enabled:     true,
+				URL:          "https://api.example.com",
+				Model:        "gpt-4",
+				APIKey:       "secret",
+				Temperature:  0.5,
+				MaxTokens:    8192,
+				Name:         "MyProvider",
+				EndpointType: "chat_completions", // default
+				Enabled:      true,
 			},
 		},
 		{
 			name:  "minimal spec with required fields only",
 			input: "url=http://localhost:8080,model=local-llm",
 			expected: CustomSpec{
-				URL:         "http://localhost:8080",
-				Model:       "local-llm",
-				Temperature: -1,                     // unset, will use provider default
-				MaxTokens:   defaultCustomMaxTokens, // default
-				Enabled:     false,                  // default, matches standard providers
+				URL:          "http://localhost:8080",
+				Model:        "local-llm",
+				Temperature:  -1,                     // unset, will use provider default
+				MaxTokens:    defaultCustomMaxTokens, // default
+				EndpointType: "chat_completions",     // default
+				Enabled:      false,                  // default, matches standard providers
 			},
 		},
 		{
 			name:  "spec with temperature=0 for deterministic output",
 			input: "url=http://test.com,model=test,temperature=0",
 			expected: CustomSpec{
-				URL:         "http://test.com",
-				Model:       "test",
-				Temperature: 0, // explicit 0 for deterministic output
-				MaxTokens:   16384,
-				Enabled:     false, // default, matches standard providers
+				URL:          "http://test.com",
+				Model:        "test",
+				Temperature:  0, // explicit 0 for deterministic output
+				MaxTokens:    16384,
+				EndpointType: "chat_completions", // default
+				Enabled:      false,              // default, matches standard providers
 			},
 		},
 		{
 			name:  "disabled provider",
 			input: "url=http://test.com,model=test,enabled=false",
 			expected: CustomSpec{
-				URL:         "http://test.com",
-				Model:       "test",
-				Temperature: -1, // unset
-				MaxTokens:   defaultCustomMaxTokens,
-				Enabled:     false,
+				URL:          "http://test.com",
+				Model:        "test",
+				Temperature:  -1, // unset
+				MaxTokens:    defaultCustomMaxTokens,
+				EndpointType: "chat_completions", // default
+				Enabled:      false,
 			},
 		},
 		{
 			name:  "spec with spaces in values",
 			input: "url=http://test.com,model=test model,name=My Provider",
 			expected: CustomSpec{
-				URL:         "http://test.com",
-				Model:       "test model",
-				Name:        "My Provider",
-				Temperature: -1, // unset
-				MaxTokens:   defaultCustomMaxTokens,
-				Enabled:     false, // default, matches standard providers
+				URL:          "http://test.com",
+				Model:        "test model",
+				Name:         "My Provider",
+				Temperature:  -1, // unset
+				MaxTokens:    defaultCustomMaxTokens,
+				EndpointType: "chat_completions", // default
+				Enabled:      false,              // default, matches standard providers
 			},
 		},
 		{
 			name:  "spec with URL containing port and path",
 			input: "url=http://localhost:8080/v1/api,model=local",
 			expected: CustomSpec{
-				URL:         "http://localhost:8080/v1/api",
-				Model:       "local",
-				Temperature: -1, // unset
-				MaxTokens:   defaultCustomMaxTokens,
-				Enabled:     false, // default, matches standard providers
+				URL:          "http://localhost:8080/v1/api",
+				Model:        "local",
+				Temperature:  -1, // unset
+				MaxTokens:    defaultCustomMaxTokens,
+				EndpointType: "chat_completions", // default
+				Enabled:      false,              // default, matches standard providers
 			},
 		},
 		{
 			name:  "spec with https URL",
 			input: "url=https://api.openai.com/v1,model=gpt-4",
 			expected: CustomSpec{
-				URL:         "https://api.openai.com/v1",
-				Model:       "gpt-4",
-				Temperature: -1, // unset
-				MaxTokens:   defaultCustomMaxTokens,
-				Enabled:     false, // default, matches standard providers
+				URL:          "https://api.openai.com/v1",
+				Model:        "gpt-4",
+				Temperature:  -1, // unset
+				MaxTokens:    defaultCustomMaxTokens,
+				EndpointType: "chat_completions", // default
+				Enabled:      false,              // default, matches standard providers
 			},
 		},
 		{
@@ -137,23 +144,67 @@ func TestParseCustomSpec(t *testing.T) {
 			name:  "spec with human-readable max-tokens",
 			input: "url=test,model=test,max-tokens=32k",
 			expected: CustomSpec{
-				URL:         "test",
-				Model:       "test",
-				Temperature: -1, // unset
-				MaxTokens:   32768,
-				Enabled:     false, // default, matches standard providers
+				URL:          "test",
+				Model:        "test",
+				Temperature:  -1, // unset
+				MaxTokens:    32768,
+				EndpointType: "chat_completions", // default
+				Enabled:      false,              // default, matches standard providers
 			},
 		},
 		{
 			name:  "spec with megabyte max-tokens",
 			input: "url=test,model=test,max-tokens=1m",
 			expected: CustomSpec{
-				URL:         "test",
-				Model:       "test",
-				Temperature: -1, // unset
-				MaxTokens:   1048576,
-				Enabled:     false, // default, matches standard providers
+				URL:          "test",
+				Model:        "test",
+				Temperature:  -1, // unset
+				MaxTokens:    1048576,
+				EndpointType: "chat_completions", // default
+				Enabled:      false,              // default, matches standard providers
 			},
+		},
+		{
+			name:  "spec with endpoint-type auto",
+			input: "url=http://test.com,model=test,endpoint-type=auto",
+			expected: CustomSpec{
+				URL:          "http://test.com",
+				Model:        "test",
+				Temperature:  -1, // unset
+				MaxTokens:    defaultCustomMaxTokens,
+				EndpointType: "auto",
+				Enabled:      false, // default
+			},
+		},
+		{
+			name:  "spec with endpoint-type responses",
+			input: "url=http://test.com,model=gpt-5,endpoint-type=responses",
+			expected: CustomSpec{
+				URL:          "http://test.com",
+				Model:        "gpt-5",
+				Temperature:  -1, // unset
+				MaxTokens:    defaultCustomMaxTokens,
+				EndpointType: "responses",
+				Enabled:      false, // default
+			},
+		},
+		{
+			name:  "spec with endpoint-type chat_completions",
+			input: "url=http://test.com,model=gpt-4,endpoint-type=chat_completions",
+			expected: CustomSpec{
+				URL:          "http://test.com",
+				Model:        "gpt-4",
+				Temperature:  -1, // unset
+				MaxTokens:    defaultCustomMaxTokens,
+				EndpointType: "chat_completions",
+				Enabled:      false, // default
+			},
+		},
+		{
+			name:    "invalid endpoint-type",
+			input:   "url=http://test.com,model=test,endpoint-type=invalid",
+			wantErr: true,
+			errMsg:  "invalid endpoint-type 'invalid' (valid: auto, responses, chat_completions)",
 		},
 	}
 
@@ -398,6 +449,49 @@ func TestCustomProviderManager_parseCustomProvidersFromEnv(t *testing.T) {
 		assert.Empty(t, warnings)
 		assert.Len(t, providers, 1)
 		assert.False(t, providers["test"].Enabled)
+	})
+
+	t.Run("endpoint_type from env", func(t *testing.T) {
+		clearCustomEnv()
+		defer clearCustomEnv()
+
+		os.Setenv("CUSTOM_TEST1_URL", "http://test1.com")
+		os.Setenv("CUSTOM_TEST1_MODEL", "test1")
+		os.Setenv("CUSTOM_TEST1_ENDPOINT_TYPE", "auto")
+
+		os.Setenv("CUSTOM_TEST2_URL", "http://test2.com")
+		os.Setenv("CUSTOM_TEST2_MODEL", "gpt-5")
+		os.Setenv("CUSTOM_TEST2_ENDPOINT_TYPE", "responses")
+
+		os.Setenv("CUSTOM_TEST3_URL", "http://test3.com")
+		os.Setenv("CUSTOM_TEST3_MODEL", "gpt-4")
+		os.Setenv("CUSTOM_TEST3_ENDPOINT_TYPE", "chat_completions")
+
+		manager := NewCustomProviderManager(nil, nil)
+		providers, warnings := manager.parseCustomProvidersFromEnv()
+
+		assert.Empty(t, warnings)
+		assert.Len(t, providers, 3)
+		assert.Equal(t, "auto", providers["test1"].EndpointType)
+		assert.Equal(t, "responses", providers["test2"].EndpointType)
+		assert.Equal(t, "chat_completions", providers["test3"].EndpointType)
+	})
+
+	t.Run("invalid endpoint_type from env", func(t *testing.T) {
+		clearCustomEnv()
+		defer clearCustomEnv()
+
+		os.Setenv("CUSTOM_TEST_URL", "http://test.com")
+		os.Setenv("CUSTOM_TEST_MODEL", "test")
+		os.Setenv("CUSTOM_TEST_ENDPOINT_TYPE", "invalid")
+
+		manager := NewCustomProviderManager(nil, nil)
+		providers, warnings := manager.parseCustomProvidersFromEnv()
+
+		assert.Len(t, warnings, 1)
+		assert.Contains(t, warnings[0], "invalid endpoint_type")
+		assert.Len(t, providers, 1)
+		assert.Equal(t, "chat_completions", providers["test"].EndpointType) // keeps default
 	})
 }
 

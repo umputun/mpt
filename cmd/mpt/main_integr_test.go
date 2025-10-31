@@ -27,7 +27,7 @@ import (
 func TestIntegrationCustomProvider(t *testing.T) {
 	// create a stub server that simulates the custom provider API
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/chat/completions" {
+		if r.URL.Path == "/v1/chat/completions" {
 			resp := `{
 				"id": "test-id",
 				"object": "chat.completion",
@@ -106,7 +106,7 @@ func TestIntegrationMCPServerModeIntegration(t *testing.T) {
 		requestBody, _ = io.ReadAll(r.Body)
 		defer r.Body.Close()
 
-		if r.URL.Path == "/chat/completions" {
+		if r.URL.Path == "/v1/chat/completions" {
 			resp := `{
 				"id": "test-id",
 				"object": "chat.completion",
@@ -213,7 +213,7 @@ func TestCustomProviderIntegration(t *testing.T) {
 		requestReceived = true
 
 		// only respond to the chat completions endpoint
-		if r.URL.Path == "/chat/completions" {
+		if r.URL.Path == "/v1/chat/completions" {
 			// return an OpenAI-compatible response
 			resp := `{
 				"id": "test-id",
@@ -323,7 +323,7 @@ func TestCustomProviderWithFileAndVerbose(t *testing.T) {
 		bodyStr := string(body)
 
 		// only respond to the chat completions endpoint and verify the content includes our file
-		if r.URL.Path == "/chat/completions" && strings.Contains(bodyStr, testContent) {
+		if r.URL.Path == "/v1/chat/completions" && strings.Contains(bodyStr, testContent) {
 			// return an OpenAI-compatible response
 			resp := `{
 				"id": "test-id",
@@ -712,7 +712,7 @@ func TestHumanSizeValueIntegration(t *testing.T) {
 	// create a stub server that simulates the custom provider API
 	requestData := make(map[string]any)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/chat/completions" {
+		if r.URL.Path == "/v1/chat/completions" {
 			// read and parse the request body to check max_tokens value
 			body, err := io.ReadAll(r.Body)
 			assert.NoError(t, err, "Failed to read request body")
@@ -809,7 +809,7 @@ func TestHumanSizeValueIntegration(t *testing.T) {
 func TestIntegrationJSONOutput(t *testing.T) {
 	// create a stub server that simulates the custom provider API
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/chat/completions" {
+		if r.URL.Path == "/v1/chat/completions" {
 			resp := `{
 				"id": "test-id",
 				"object": "chat.completion",
@@ -886,7 +886,7 @@ func TestIntegrationJSONOutput(t *testing.T) {
 func TestIntegrationMultipleCustomProviders(t *testing.T) {
 	// create two test servers simulating different custom providers
 	ts1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/chat/completions" {
+		if r.URL.Path == "/v1/chat/completions" {
 			resp := `{
 				"id": "test-id-1",
 				"object": "chat.completion",
@@ -905,7 +905,7 @@ func TestIntegrationMultipleCustomProviders(t *testing.T) {
 	defer ts1.Close()
 
 	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/chat/completions" {
+		if r.URL.Path == "/v1/chat/completions" {
 			resp := `{
 				"id": "test-id-2",
 				"object": "chat.completion",
@@ -993,7 +993,7 @@ func TestIntegrationCustomProvidersEnvironmentVariables(t *testing.T) {
 
 	// create test server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/chat/completions" {
+		if r.URL.Path == "/v1/chat/completions" {
 			// check api key header
 			apiKey := r.Header.Get("Authorization")
 			content := "Response from environment-configured provider"
@@ -1069,7 +1069,7 @@ func TestIntegrationCustomProvidersEnvironmentVariables(t *testing.T) {
 func TestIntegrationCustomProvidersPrecedence(t *testing.T) {
 	// create test server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/chat/completions" {
+		if r.URL.Path == "/v1/chat/completions" {
 			// check which model is being used to determine precedence
 			body, _ := io.ReadAll(r.Body)
 			content := "Unknown source"

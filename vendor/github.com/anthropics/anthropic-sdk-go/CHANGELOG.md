@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.16.0 (2025-10-29)
+
+Full Changelog: [v1.15.0...v1.16.0](https://github.com/anthropics/anthropic-sdk-go/compare/v1.15.0...v1.16.0)
+
+### Features
+
+* **api:** add ability to clear thinking in context management ([6082754](https://github.com/anthropics/anthropic-sdk-go/commit/6082754e9b6a04570a93efdb5339853c71f1fe94))
+
+## 1.15.0 (2025-10-28)
+
+Full Changelog: [v1.14.0...v1.15.0](https://github.com/anthropics/anthropic-sdk-go/compare/v1.14.0...v1.15.0)
+
+### Features
+
+* **api:** adding support for agent skills ([5660b52](https://github.com/anthropics/anthropic-sdk-go/commit/5660b5252a4de07f3343c9089b148b16cda794d4))
+
+
+### Chores
+
+* **api:** mark older sonnet models as deprecated ([f13c5bd](https://github.com/anthropics/anthropic-sdk-go/commit/f13c5bd18ebb169c59913985537ca025634ef7eb))
+
+## 1.14.0 (2025-10-15)
+
+Full Changelog: [v1.13.0...v1.14.0](https://github.com/anthropics/anthropic-sdk-go/compare/v1.13.0...v1.14.0)
+
+### Features
+
+* **api:** manual updates ([3eac8aa](https://github.com/anthropics/anthropic-sdk-go/commit/3eac8aaee0dbb3f4a5e30b039d60503614365a82))
+
+
+### Chores
+
+* **client:** add context-management-2025-06-27 beta header ([eeba6fa](https://github.com/anthropics/anthropic-sdk-go/commit/eeba6fa95ca9eedf16897b413950fc5f80d0d8cb))
+* **client:** add model-context-window-exceeded-2025-08-26 beta header ([7d5a37d](https://github.com/anthropics/anthropic-sdk-go/commit/7d5a37d895b769739d23b6e91f6c0a806cade710))
+
 ## 1.13.0 (2025-09-29)
 
 Full Changelog: [v1.12.0...v1.13.0](https://github.com/anthropics/anthropic-sdk-go/compare/v1.12.0...v1.13.0)

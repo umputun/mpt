@@ -94,13 +94,14 @@ type mcpOpts struct {
 
 // customOpenAIProvider defines options for a custom OpenAI-compatible provider
 type customOpenAIProvider struct {
-	Enabled     bool      `long:"enabled" env:"ENABLED" description:"enable custom provider"`
-	Name        string    `long:"name" env:"NAME" description:"custom provider name" default:"custom"`
-	URL         string    `long:"url" env:"URL" description:"Base URL for the custom provider API"`
-	APIKey      string    `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
-	Model       string    `long:"model" env:"MODEL" description:"Model to use for the custom provider"`
-	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate (default: 16384, supports k/kb/m/mb/g/gb suffixes)" default:"16384"`
-	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-2, higher is more random)" default:"0.7"`
+	Enabled      bool      `long:"enabled" env:"ENABLED" description:"enable custom provider"`
+	Name         string    `long:"name" env:"NAME" description:"custom provider name" default:"custom"`
+	URL          string    `long:"url" env:"URL" description:"Base URL for the custom provider API"`
+	APIKey       string    `long:"api-key" env:"API_KEY" description:"API key for the custom provider (if needed)"`
+	Model        string    `long:"model" env:"MODEL" description:"Model to use for the custom provider"`
+	MaxTokens    SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"Maximum number of tokens to generate (default: 16384, supports k/kb/m/mb/g/gb suffixes)" default:"16384"`
+	Temperature  float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-2, higher is more random)" default:"0.7"`
+	EndpointType string    `long:"endpoint-type" env:"ENDPOINT_TYPE" description:"API endpoint type" choice:"auto" choice:"responses" choice:"chat_completions" default:"chat_completions"`
 }
 
 // gitOpts defines options for Git integration
@@ -700,13 +701,14 @@ func createCustomManager(opts *options) *config.CustomProviderManager {
 	var legacyCustom *config.CustomSpec
 	if opts.Custom.Enabled {
 		legacyCustom = &config.CustomSpec{
-			Name:        opts.Custom.Name,
-			URL:         opts.Custom.URL,
-			APIKey:      opts.Custom.APIKey,
-			Model:       opts.Custom.Model,
-			MaxTokens:   int(opts.Custom.MaxTokens),
-			Temperature: opts.Custom.Temperature,
-			Enabled:     opts.Custom.Enabled,
+			Name:         opts.Custom.Name,
+			URL:          opts.Custom.URL,
+			APIKey:       opts.Custom.APIKey,
+			Model:        opts.Custom.Model,
+			MaxTokens:    int(opts.Custom.MaxTokens),
+			Temperature:  opts.Custom.Temperature,
+			EndpointType: opts.Custom.EndpointType,
+			Enabled:      opts.Custom.Enabled,
 		}
 	}
 
