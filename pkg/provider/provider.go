@@ -67,6 +67,7 @@ type Options struct {
 	Model             string
 	MaxTokens         int          // maximum number of tokens to generate
 	Temperature       float32      // controls randomness (0-1, default: 0.7)
+	ReasoningEffort   string       // reasoning effort level: minimal, low, medium (default), high (OpenAI only)
 	HTTPClient        HTTPClient   // optional HTTP client for dependency injection, defaults to &http.Client{} if nil
 	BaseURL           string       // optional base URL for custom endpoints (OpenAI-compatible providers only)
 	ForceEndpointType EndpointType // optional manual endpoint selection (auto, responses, chat_completions)

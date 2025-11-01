@@ -859,6 +859,58 @@ func TestOpenAI_HTTPError_NonJSON(t *testing.T) {
 	assert.Contains(t, err.Error(), "502 Bad Gateway")
 }
 
+func TestOpenAI_ResponsesAPI_ReasoningEffort(t *testing.T) {
+	tests := []struct {
+		name   string
+		effort string
+	}{
+		{"minimal effort", "minimal"},
+		{"low effort", "low"},
+		{"medium effort", "medium"},
+		{"high effort", "high"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// verify reasoning effort is in request
+				body, _ := io.ReadAll(r.Body)
+				bodyStr := string(body)
+				assert.Contains(t, bodyStr, `"reasoning":{"effort":"`+tt.effort+`"}`)
+
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{
+					"status": "completed",
+					"output": [{
+						"type": "message",
+						"content": [{"type": "output_text", "text": "Response"}]
+					}]
+				}`))
+			}))
+			defer server.Close()
+
+			provider := &OpenAI{
+				httpClient: &http.Client{
+					Transport: &urlRewriteTransport{
+						base:   server.URL,
+						target: "https://api.openai.com",
+						inner:  http.DefaultTransport,
+					},
+				},
+				apiKey:            "test-key",
+				model:             "gpt-5",
+				enabled:           true,
+				reasoningEffort:   tt.effort,
+				baseURL:           "https://api.openai.com",
+				forceEndpointType: EndpointTypeAuto,
+			}
+
+			_, err := provider.Generate(context.Background(), "test")
+			require.NoError(t, err)
+		})
+	}
+}
+
 // urlRewriteTransport rewrites URLs from target to base for testing
 type urlRewriteTransport struct {
 	base   string

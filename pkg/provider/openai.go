@@ -24,16 +24,23 @@ type OpenAI struct {
 	enabled           bool
 	maxTokens         int
 	temperature       float32
+	reasoningEffort   string       // reasoning effort level (minimal, low, medium, high)
 	baseURL           string       // base URL for API (defaults to https://api.openai.com)
 	forceEndpointType EndpointType // manual endpoint selection (auto, responses, chat_completions)
 }
 
+// Reasoning represents reasoning configuration for responses API
+type Reasoning struct {
+	Effort string `json:"effort"` // minimal, low, medium, high
+}
+
 // responsesRequest represents request to OpenAI responses API
 type responsesRequest struct {
-	Model           string  `json:"model"`
-	Input           string  `json:"input"`
-	MaxOutputTokens int     `json:"max_output_tokens,omitempty"`
-	Temperature     float32 `json:"temperature,omitempty"`
+	Model           string    `json:"model"`
+	Input           string    `json:"input"`
+	MaxOutputTokens int       `json:"max_output_tokens,omitempty"`
+	Temperature     float32   `json:"temperature,omitempty"`
+	Reasoning       Reasoning `json:"reasoning"`
 }
 
 // responsesResponse represents response from OpenAI responses API
@@ -135,6 +142,12 @@ func NewOpenAI(opts Options) *OpenAI {
 		forceEndpointType = EndpointTypeAuto
 	}
 
+	// set default reasoning effort if not specified
+	reasoningEffort := opts.ReasoningEffort
+	if reasoningEffort == "" {
+		reasoningEffort = "medium"
+	}
+
 	return &OpenAI{
 		httpClient:        httpClient,
 		apiKey:            opts.APIKey,
@@ -142,6 +155,7 @@ func NewOpenAI(opts Options) *OpenAI {
 		enabled:           true,
 		maxTokens:         maxTokens,
 		temperature:       temperature,
+		reasoningEffort:   reasoningEffort,
 		baseURL:           baseURL,
 		forceEndpointType: forceEndpointType,
 	}
@@ -222,6 +236,9 @@ func (o *OpenAI) buildResponsesRequest(prompt string) responsesRequest {
 	reqBody := responsesRequest{
 		Model: o.model,
 		Input: prompt,
+		Reasoning: Reasoning{
+			Effort: o.reasoningEffort,
+		},
 	}
 
 	// set max_output_tokens if specified (0 means use model maximum)

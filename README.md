@@ -171,11 +171,12 @@ You can provide a prompt in the following ways:
 #### OpenAI
 
 ```
---openai.api-key      OpenAI API key (or OPENAI_API_KEY env var)
---openai.model        OpenAI model to use (default: gpt-5)
---openai.enabled      Enable OpenAI provider
---openai.max-tokens   Maximum number of tokens to generate (default: 16384, 0 for model maximum, supports k/kb/m/mb/g/gb suffixes)
---openai.temperature  Controls randomness (0-2, higher is more random) (default: 0.1)
+--openai.api-key          OpenAI API key (or OPENAI_API_KEY env var)
+--openai.model            OpenAI model to use (default: gpt-5)
+--openai.enabled          Enable OpenAI provider
+--openai.max-tokens       Maximum number of tokens to generate (default: 16384, 0 for model maximum, supports k/kb/m/mb/g/gb suffixes)
+--openai.temperature      Controls randomness (0-2, higher is more random) (default: 0.1)
+--openai.reasoning-effort Reasoning effort level for GPT-5 models: low, medium (default), high
 ```
 
 #### Anthropic (Claude)
@@ -1013,6 +1014,7 @@ OPENAI_MODEL="gpt-5"
 OPENAI_ENABLED=true
 OPENAI_MAX_TOKENS=16384
 OPENAI_TEMPERATURE=0.7
+OPENAI_REASONING_EFFORT=medium  # low, medium, high (for GPT-5)
 
 ANTHROPIC_API_KEY="your-anthropic-key"
 ANTHROPIC_MODEL="claude-sonnet-4-5"

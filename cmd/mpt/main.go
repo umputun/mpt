@@ -63,11 +63,12 @@ type options struct {
 
 // openAIOpts defines options for OpenAI provider
 type openAIOpts struct {
-	Enabled     bool      `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
-	APIKey      string    `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
-	Model       string    `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-5"`
-	MaxTokens   SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/kb/m/mb/g/gb suffixes)" default:"16384"`
-	Temperature float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-2, higher is more random)" default:"0.1"`
+	Enabled         bool      `long:"enabled" env:"ENABLED" description:"enable OpenAI provider"`
+	APIKey          string    `long:"api-key" env:"API_KEY" description:"OpenAI API key"`
+	Model           string    `long:"model" env:"MODEL" description:"OpenAI model" default:"gpt-5"`
+	MaxTokens       SizeValue `long:"max-tokens" env:"MAX_TOKENS" description:"maximum number of tokens to generate (default: 16384, supports k/kb/m/mb/g/gb suffixes)" default:"16384"`
+	Temperature     float32   `long:"temperature" env:"TEMPERATURE" description:"controls randomness (0-2, higher is more random)" default:"0.1"`
+	ReasoningEffort string    `long:"reasoning-effort" env:"REASONING_EFFORT" description:"reasoning effort level for GPT-5 models" choice:"low" choice:"medium" choice:"high" default:"medium"`
 }
 
 // anthropicOpts defines options for Anthropic provider
@@ -331,13 +332,14 @@ func buildFullPrompt(opts *options) error {
 
 // providerConfig holds configuration for a provider
 type providerConfig struct {
-	enabled   bool
-	provType  provider.ProviderType
-	name      string
-	apiKey    string
-	model     string
-	maxTokens int
-	temp      float32
+	enabled         bool
+	provType        provider.ProviderType
+	name            string
+	apiKey          string
+	model           string
+	maxTokens       int
+	temp            float32
+	reasoningEffort string
 }
 
 // initializeProviders creates provider instances from the options
@@ -358,11 +360,12 @@ func initializeProviders(opts *options) ([]provider.Provider, error) {
 		}
 
 		p, err := provider.CreateProvider(config.provType, provider.Options{
-			APIKey:      config.apiKey,
-			Model:       config.model,
-			Enabled:     true,
-			MaxTokens:   config.maxTokens,
-			Temperature: config.temp,
+			APIKey:          config.apiKey,
+			Model:           config.model,
+			Enabled:         true,
+			MaxTokens:       config.maxTokens,
+			Temperature:     config.temp,
+			ReasoningEffort: config.reasoningEffort,
 		})
 		if err != nil {
 			lgr.Printf("[WARN] %s provider failed to initialize: %v", config.name, err)
@@ -408,13 +411,14 @@ func initializeProviders(opts *options) ([]provider.Provider, error) {
 func getStandardProviderConfigs(opts *options) []providerConfig {
 	return []providerConfig{
 		{
-			enabled:   opts.OpenAI.Enabled,
-			provType:  provider.ProviderTypeOpenAI,
-			name:      "OpenAI",
-			apiKey:    opts.OpenAI.APIKey,
-			model:     opts.OpenAI.Model,
-			maxTokens: int(opts.OpenAI.MaxTokens),
-			temp:      opts.OpenAI.Temperature,
+			enabled:         opts.OpenAI.Enabled,
+			provType:        provider.ProviderTypeOpenAI,
+			name:            "OpenAI",
+			apiKey:          opts.OpenAI.APIKey,
+			model:           opts.OpenAI.Model,
+			maxTokens:       int(opts.OpenAI.MaxTokens),
+			temp:            opts.OpenAI.Temperature,
+			reasoningEffort: opts.OpenAI.ReasoningEffort,
 		},
 		{
 			enabled:   opts.Anthropic.Enabled,
