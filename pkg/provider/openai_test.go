@@ -829,6 +829,36 @@ func TestOpenAI_ChatCompletions_WithAPIKey(t *testing.T) {
 	assert.Equal(t, "Response with auth", result)
 }
 
+func TestOpenAI_HTTPError_NonJSON(t *testing.T) {
+	// test handling of non-JSON error responses (e.g., HTML error pages from proxies)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`<html><body><h1>502 Bad Gateway</h1></body></html>`))
+	}))
+	defer server.Close()
+
+	provider := &OpenAI{
+		httpClient: &http.Client{
+			Transport: &urlRewriteTransport{
+				base:   server.URL,
+				target: "https://api.openai.com",
+				inner:  http.DefaultTransport,
+			},
+		},
+		apiKey:            "test-key",
+		model:             "gpt-4o",
+		enabled:           true,
+		baseURL:           "https://api.openai.com",
+		forceEndpointType: EndpointTypeAuto,
+	}
+
+	_, err := provider.Generate(context.Background(), "test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "http 502")
+	assert.Contains(t, err.Error(), "502 Bad Gateway")
+}
+
 // urlRewriteTransport rewrites URLs from target to base for testing
 type urlRewriteTransport struct {
 	base   string

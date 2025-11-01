@@ -201,6 +201,19 @@ func (o *OpenAI) doRequest(ctx context.Context, url string, reqBody interface{})
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
+	// check HTTP status code for non-JSON responses (e.g., proxy errors, cloudflare errors)
+	// note: OpenAI API returns JSON with error details even for non-2xx status codes,
+	// so we only return an HTTP error if the response doesn't look like JSON
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// check if response looks like JSON (starts with { or [)
+		trimmedBody := strings.TrimSpace(string(body))
+		if !strings.HasPrefix(trimmedBody, "{") && !strings.HasPrefix(trimmedBody, "[") {
+			// non-JSON error response (HTML, plain text, etc.)
+			return nil, fmt.Errorf("http %d: %s", resp.StatusCode, trimmedBody)
+		}
+		// otherwise, return JSON body and let parse functions handle the error
+	}
+
 	return body, nil
 }
 
