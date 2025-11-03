@@ -55,8 +55,12 @@ func newGitDiffer() *gitDiffer {
 	// create a unique temp directory for this session
 	tempDir, err := os.MkdirTemp("", "mpt-git-diff-*")
 	if err != nil {
-		lgr.Printf("[WARN] failed to create temp directory, using system temp: %v", err)
-		tempDir = os.TempDir()
+		// fail fast instead of using shared temp directory
+		lgr.Printf("[ERROR] failed to create temp directory: %v", err)
+		return &gitDiffer{
+			executor: executor,
+			tempDir:  "", // empty indicates failure
+		}
 	}
 
 	return &gitDiffer{
@@ -72,8 +76,8 @@ func NewGitDiffer() GitDiffProcessor {
 
 // Cleanup removes the temporary directory and all its contents
 func (g *gitDiffer) Cleanup() {
-	// skip if using system temp dir (fallback case)
-	if g.tempDir == os.TempDir() {
+	// skip if temp dir was never created
+	if g.tempDir == "" {
 		return
 	}
 
@@ -129,6 +133,11 @@ func (g *gitDiffer) getCommandOutputTrimmed(cmd *exec.Cmd, errorContext string) 
 // ProcessGitDiff handles git diff extraction and returns a file path with the diff content
 // isDiff indicates whether to get uncommitted changes, if false branchName is used for branch comparison
 func (g *gitDiffer) ProcessGitDiff(isDiff bool, branchName string) (tempFilePath, diffDescription string, err error) {
+	// check if temp dir was successfully created
+	if g.tempDir == "" {
+		return "", "", fmt.Errorf("temp directory not available")
+	}
+
 	// verify git is available in the system
 	if _, err := g.executor.LookPath("git"); err != nil {
 		return "", "", fmt.Errorf("git executable not found: %w", err)

@@ -103,6 +103,9 @@ const DefaultMaxTokens = 1024
 // DefaultTemperature defines the default temperature if not specified or negative
 const DefaultTemperature = 0.7
 
+// MaxResponseSize defines the maximum size of HTTP response body to prevent memory exhaustion (10MB)
+const MaxResponseSize = 10 * 1024 * 1024
+
 // NewOpenAI creates a new OpenAI provider
 func NewOpenAI(opts Options) *OpenAI {
 	// quick validation for direct constructor usage (without CreateProvider)
@@ -209,10 +212,16 @@ func (o *OpenAI) doRequest(ctx context.Context, url string, reqBody interface{})
 	}
 	defer resp.Body.Close()
 
-	// read response
-	body, err := io.ReadAll(resp.Body)
+	// read response with size limit to prevent memory exhaustion
+	// read one extra byte to detect if response exceeds limit
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// check if response exceeded size limit
+	if len(body) > MaxResponseSize {
+		return nil, fmt.Errorf("response size exceeds maximum allowed size of %d bytes", MaxResponseSize)
 	}
 
 	// check HTTP status code for non-JSON responses (e.g., proxy errors, cloudflare errors)

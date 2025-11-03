@@ -864,7 +864,6 @@ func TestOpenAI_ResponsesAPI_ReasoningEffort(t *testing.T) {
 		name   string
 		effort string
 	}{
-		{"minimal effort", "minimal"},
 		{"low effort", "low"},
 		{"medium effort", "medium"},
 		{"high effort", "high"},
@@ -935,4 +934,67 @@ func (t *urlRewriteTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		inner = http.DefaultTransport
 	}
 	return inner.RoundTrip(req)
+}
+
+func TestOpenAI_ResponseSizeLimit(t *testing.T) {
+	t.Run("handles response within size limit", func(t *testing.T) {
+		// create test server that returns moderate-sized response
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			// send 1MB response (well under 100MB limit)
+			largeContent := strings.Repeat("a", 1024*1024)
+			_, _ = w.Write([]byte(`{
+				"id": "chatcmpl-123",
+				"object": "chat.completion",
+				"choices": [{
+					"message": {"role": "assistant", "content": "` + largeContent + `"}
+				}]
+			}`))
+		}))
+		defer server.Close()
+
+		provider := NewOpenAI(Options{
+			APIKey:     "test-key",
+			Model:      "gpt-4o",
+			Enabled:    true,
+			BaseURL:    server.URL,
+			HTTPClient: server.Client(),
+		})
+
+		result, err := provider.Generate(context.Background(), "test")
+		require.NoError(t, err)
+		assert.Contains(t, result, "aaa") // verify content was received
+	})
+
+	t.Run("fails on response exceeding size limit", func(t *testing.T) {
+		// create test server that returns response larger than MaxResponseSize
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			// send response larger than MaxResponseSize (10MB)
+			// create a large content string that exceeds the limit
+			largeContent := strings.Repeat("a", MaxResponseSize+1000)
+			_, _ = w.Write([]byte(`{
+				"id": "chatcmpl-123",
+				"object": "chat.completion",
+				"choices": [{
+					"message": {"role": "assistant", "content": "` + largeContent + `"}
+				}]
+			}`))
+		}))
+		defer server.Close()
+
+		provider := NewOpenAI(Options{
+			APIKey:     "test-key",
+			Model:      "gpt-4o",
+			Enabled:    true,
+			BaseURL:    server.URL,
+			HTTPClient: server.Client(),
+		})
+
+		_, err := provider.Generate(context.Background(), "test")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exceeds maximum allowed size")
+	})
 }

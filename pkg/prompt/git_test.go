@@ -506,24 +506,17 @@ func TestGitDiffer_Cleanup(t *testing.T) {
 		assert.True(t, os.IsNotExist(err), "Temp directory should have been removed")
 	})
 
-	t.Run("cleanup skips system temp dir", func(t *testing.T) {
-		// create a gitDiffer with system temp dir (fallback case)
+	t.Run("cleanup skips when temp dir is empty", func(t *testing.T) {
+		// create a gitDiffer with empty tempDir (simulating creation failure)
 		differ := &gitDiffer{
 			executor: executor,
-			tempDir:  os.TempDir(),
+			tempDir:  "",
 		}
 
-		// create a test file in system temp
-		testFile := filepath.Join(os.TempDir(), "mpt-test-should-remain.txt")
-		require.NoError(t, os.WriteFile(testFile, []byte("test"), 0o600))
-		defer os.Remove(testFile) // cleanup after test
-
-		// test cleanup
-		differ.Cleanup()
-
-		// verify the file still exists (cleanup should skip system temp)
-		_, err := os.Stat(testFile)
-		assert.NoError(t, err, "File in system temp should not be removed")
+		// cleanup should not panic when tempDir is empty
+		require.NotPanics(t, func() {
+			differ.Cleanup()
+		})
 	})
 }
 
@@ -968,5 +961,58 @@ func TestGitDiffer_newGitDiffer(t *testing.T) {
 		// verify temp dir is removed
 		_, err = os.Stat(differ.tempDir)
 		assert.True(t, os.IsNotExist(err))
+	})
+}
+
+func TestGitDiffer_TempDirFailure(t *testing.T) {
+	t.Run("process git diff fails when temp dir not available", func(t *testing.T) {
+		// create a gitDiffer with empty tempDir (simulating MkdirTemp failure)
+		differ := &gitDiffer{
+			executor: &mocks.GitExecutorMock{
+				LookPathFunc: func(file string) (string, error) {
+					return "/usr/bin/git", nil
+				},
+			},
+			tempDir: "", // empty tempDir simulates creation failure
+		}
+
+		_, _, err := differ.ProcessGitDiff(true, "")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "temp directory not available")
+	})
+
+	t.Run("cleanup handles empty temp dir gracefully", func(t *testing.T) {
+		differ := &gitDiffer{
+			executor: executor,
+			tempDir:  "", // empty tempDir
+		}
+
+		// should not panic or error
+		require.NotPanics(t, func() {
+			differ.Cleanup()
+		})
+	})
+
+	t.Run("cleanup removes non-empty temp dir", func(t *testing.T) {
+		// create actual temp dir for this test
+		tempDir, err := os.MkdirTemp("", "mpt-test-*")
+		require.NoError(t, err)
+
+		// create a test file in it
+		testFile := filepath.Join(tempDir, "test.txt")
+		err = os.WriteFile(testFile, []byte("test"), 0o600)
+		require.NoError(t, err)
+
+		differ := &gitDiffer{
+			executor: executor,
+			tempDir:  tempDir,
+		}
+
+		// cleanup should remove the directory
+		differ.Cleanup()
+
+		// verify directory was removed
+		_, err = os.Stat(tempDir)
+		assert.True(t, os.IsNotExist(err), "temp directory should be removed")
 	})
 }
