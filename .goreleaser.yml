@@ -42,6 +42,7 @@ archives:
     files:
       - LICENSE
       - README.md
+      - completions/*
     rlcp: true
 
 
@@ -60,6 +61,10 @@ brews:
     homepage: "https://github.com/umputun/mpt"
     description: "MPT is a command-line utility that sends prompts to multiple AI language model providers in parallel and combines the results"
     license: "MIT"
+    extra_install: |
+      bash_completion.install "completions/mpt.bash" => "mpt"
+      zsh_completion.install "completions/mpt.zsh" => "_mpt"
+      fish_completion.install "completions/mpt.fish" => "mpt.fish"
 
 nfpms:
   - id: mpt
@@ -77,3 +82,10 @@ nfpms:
     bindir: /usr/bin
     epoch: 1
     release: 1
+    contents:
+      - src: completions/mpt.bash
+        dst: /usr/share/bash-completion/completions/mpt
+      - src: completions/mpt.zsh
+        dst: /usr/share/zsh/vendor-completions/_mpt
+      - src: completions/mpt.fish
+        dst: /usr/share/fish/vendor_completions.d/mpt.fish
