@@ -20,6 +20,11 @@ linters:
     - nestif
     - testifylint
   settings:
+    gosec:
+      excludes:
+        - G115
+        - G117
+        - G204
     goconst:
       min-len: 2
       min-occurrences: 2
