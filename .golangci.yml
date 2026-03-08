@@ -53,6 +53,9 @@ linters:
           - staticcheck
         text: at least one file in a package should have a package comment
       - linters:
+          - staticcheck
+        text: "QF1012"
+      - linters:
           - dupl
           - gosec
         path: _test\.go
