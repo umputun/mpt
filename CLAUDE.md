@@ -4,7 +4,7 @@
 MPT (Multi-Provider Tool) is a command-line utility that sends prompts to multiple AI language model providers (OpenAI, Anthropic, Google, and custom providers) in parallel and combines the results. It enables easy file inclusion for context and supports flexible pattern matching to quickly include relevant code or documentation in your prompts.
 
 **Module**: `github.com/umputun/mpt`  
-**Go Version**: 1.24+  
+**Go Version**: 1.26+  
 **License**: MIT
 
 ## Architecture
@@ -92,7 +92,7 @@ mpt/
 - Always run tests, linter and normalize comments before committing
 - For linter use `golangci-lint run`
 - Run tests and linter after making significant changes to verify functionality
-- Go version: 1.24+
+- Go version: 1.26+
 - Don't add "Generated with Claude Code" or "Co-Authored-By: Claude" to commit messages or PRs
 - Do not include "Test plan" sections in PR descriptions
 - Do not add comments that describe changes, progress, or historical modifications. Avoid comments like "new function," "added test," "now we changed this," or "previously used X, now using Y." Comments should only describe the current state and purpose of the code, not its history or evolution.
